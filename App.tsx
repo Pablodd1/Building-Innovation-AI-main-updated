@@ -111,9 +111,13 @@ const App: React.FC = () => {
         setContractors(INITIAL_CONTRACTORS);
     }
 
-    // API Key
-    const savedKey = localStorage.getItem('custom_api_key');
-    if (savedKey) setCustomApiKey(savedKey);
+    // API Key - Load from database
+    fetch('/api/settings/custom_api_key')
+      .then(res => res.json())
+      .then(data => {
+        if (data.value) setCustomApiKey(data.value);
+      })
+      .catch(err => console.error('Failed to load API key:', err));
 
   }, []);
 
@@ -229,15 +233,27 @@ const App: React.FC = () => {
       setContractors(contractors.filter(c => c.id !== id));
   };
   
-  const handleSaveApiKey = () => {
-      localStorage.setItem('custom_api_key', customApiKey.trim());
-      alert("API Key Saved! The app will now use your custom key for Pro features.");
+  const handleSaveApiKey = async () => {
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'custom_api_key', value: customApiKey.trim() })
+        });
+        alert("API Key Saved! The app will now use your custom key for Pro features.");
+      } catch (error) {
+        alert("Failed to save API Key. Please try again.");
+      }
   };
   
-  const handleClearApiKey = () => {
-      localStorage.removeItem('custom_api_key');
-      setCustomApiKey('');
-      alert("Custom API Key removed. Reverting to default.");
+  const handleClearApiKey = async () => {
+      try {
+        await fetch('/api/settings/custom_api_key', { method: 'DELETE' });
+        setCustomApiKey('');
+        alert("Custom API Key removed. Reverting to default.");
+      } catch (error) {
+        alert("Failed to remove API Key. Please try again.");
+      }
   }
 
   const handleLogin = (e: React.FormEvent) => {
