@@ -34,25 +34,42 @@ const extractImage = (response: any): string => {
     throw new Error("No image generated in the response.");
 };
 
-// Helper to get API Key (Custom > Env)
-const getApiKey = (): string => {
+// Cached API key from backend
+let cachedApiKey: string | null = null;
+
+// Helper to get API Key (Custom > Backend)
+const getApiKey = async (): Promise<string> => {
     const customKey = localStorage.getItem('custom_api_key');
     if (customKey && customKey.trim().length > 0) {
         return customKey.trim();
     }
-    if (process.env.GEMINI_API_KEY) {
-        return process.env.GEMINI_API_KEY;
+    
+    // Return cached key if available
+    if (cachedApiKey) {
+        return cachedApiKey;
     }
-    if (process.env.API_KEY) {
-        return process.env.API_KEY;
+    
+    // Fetch from backend
+    try {
+        const response = await fetch('/api/gemini-key');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.key) {
+                cachedApiKey = data.key;
+                return data.key;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch API key from backend:', error);
     }
+    
     throw new Error("API Key missing. Please configure it in Settings.");
 };
 
 export const generateRoomAnalysis = async (
     imageBase64: string
 ): Promise<string> => {
-    const apiKey = getApiKey();
+    const apiKey = await getApiKey();
     const ai = new GoogleGenAI({ apiKey });
     
     const base64Data = cleanBase64(imageBase64);
@@ -75,7 +92,7 @@ export const generateCinematicVideo = async (
     imageBase64: string,
     prompt: string
 ): Promise<string | null> => {
-    const apiKey = getApiKey();
+    const apiKey = await getApiKey();
     const ai = new GoogleGenAI({ apiKey });
     
     const base64Data = cleanBase64(imageBase64);
@@ -131,7 +148,7 @@ export const generateMaterialOverlay = async (
   userInstruction: string
 ): Promise<string> => {
   
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
   const ai = new GoogleGenAI({ apiKey });
   
   const base64Data = cleanBase64(originalImageBase64);
