@@ -69,8 +69,11 @@ app.delete('/api/settings/:key', async (req, res) => {
 if (isProduction) {
   app.use(express.static(distPath));
   
-  app.get('/*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api')) {
+      return res.sendFile(path.join(distPath, 'index.html'));
+    }
+    next();
   });
 }
 
