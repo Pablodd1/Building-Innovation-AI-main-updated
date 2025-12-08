@@ -230,9 +230,9 @@ export const generateMaterialOverlay = async (
   };
 
   try {
-    // Use Flash model directly for faster response
+    // Use Flash image model for faster response
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-05-20',
+      model: 'gemini-2.5-flash-image',
       contents: contents
     });
     return extractImage(response);
