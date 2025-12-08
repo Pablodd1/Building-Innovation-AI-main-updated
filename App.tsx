@@ -111,11 +111,14 @@ const App: React.FC = () => {
         setContractors(INITIAL_CONTRACTORS);
     }
 
-    // API Key - Load from database
+    // API Key - Load from database and sync to localStorage
     fetch('/api/settings/custom_api_key')
       .then(res => res.json())
       .then(data => {
-        if (data.value) setCustomApiKey(data.value);
+        if (data.value) {
+          setCustomApiKey(data.value);
+          localStorage.setItem('custom_api_key', data.value);
+        }
       })
       .catch(err => console.error('Failed to load API key:', err));
 
@@ -240,6 +243,7 @@ const App: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key: 'custom_api_key', value: customApiKey.trim() })
         });
+        localStorage.setItem('custom_api_key', customApiKey.trim());
         alert("API Key Saved! The app will now use your custom key for Pro features.");
       } catch (error) {
         alert("Failed to save API Key. Please try again.");
@@ -249,6 +253,7 @@ const App: React.FC = () => {
   const handleClearApiKey = async () => {
       try {
         await fetch('/api/settings/custom_api_key', { method: 'DELETE' });
+        localStorage.removeItem('custom_api_key');
         setCustomApiKey('');
         alert("Custom API Key removed. Reverting to default.");
       } catch (error) {
