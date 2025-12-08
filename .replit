@@ -42,8 +42,17 @@ externalPort = 80
 localPort = 5001
 externalPort = 3000
 
+[[ports]]
+localPort = 46813
+externalPort = 3002
+
 [deployment]
 build = ["npm", "run", "build"]
 deploymentTarget = "autoscale"
 publicDir = "dist"
-run = ["node", "--import", "tsx", "server/index.ts"]
+run = ["node", "--import", "tsx", "--env-file=.env", "server/index.ts"]
+
+[userenv]
+
+[userenv.production]
+NODE_ENV = "production"
