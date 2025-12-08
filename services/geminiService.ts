@@ -230,32 +230,15 @@ export const generateMaterialOverlay = async (
   };
 
   try {
-    // Attempt 1: Try Pro Model (4K)
+    // Use Flash model directly for faster response
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: contents,
-      config: {
-        imageConfig: {
-          imageSize: '4K'
-        }
-      }
+      model: 'gemini-2.5-flash-preview-05-20',
+      contents: contents
     });
     return extractImage(response);
 
   } catch (error: any) {
-    console.warn("Pro Model generation failed, falling back to Flash model.");
-
-    // Attempt 2: Fallback to Flash Model (Standard Resolution)
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: contents
-        });
-        return extractImage(response);
-    } catch (fallbackError: any) {
-        // Use robust error extractor for final failure
-        const msg = getErrorMessage(fallbackError);
-        throw new Error(`Generation failed: ${msg}`);
-    }
+    const msg = getErrorMessage(error);
+    throw new Error(`Generation failed: ${msg}`);
   }
 };
