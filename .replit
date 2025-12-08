@@ -49,7 +49,6 @@ externalPort = 3002
 [deployment]
 build = ["npm", "run", "build"]
 deploymentTarget = "autoscale"
-publicDir = "dist"
 run = ["node", "--import", "tsx", "server/index.ts"]
 
 [userenv]
