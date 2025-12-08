@@ -40,6 +40,9 @@ const getApiKey = (): string => {
     if (customKey && customKey.trim().length > 0) {
         return customKey.trim();
     }
+    if (process.env.GEMINI_API_KEY) {
+        return process.env.GEMINI_API_KEY;
+    }
     if (process.env.API_KEY) {
         return process.env.API_KEY;
     }
