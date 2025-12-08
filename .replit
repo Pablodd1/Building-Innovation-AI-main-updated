@@ -34,11 +34,7 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 45753
-externalPort = 3000
-
 [deployment]
+build = ["sh", "-c", "npm run build"]
 deploymentTarget = "static"
-build = ["npm", "run", "build"]
 publicDir = "dist"
