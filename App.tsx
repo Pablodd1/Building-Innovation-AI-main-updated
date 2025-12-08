@@ -55,6 +55,11 @@ const App: React.FC = () => {
   const [contractorForm, setContractorForm] = useState<Partial<Contractor>>({});
   const [customApiKey, setCustomApiKey] = useState('');
 
+  // Login State
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>('');
   
@@ -235,6 +240,19 @@ const App: React.FC = () => {
       alert("Custom API Key removed. Reverting to default.");
   }
 
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    
+    if (loginEmail === 'admin' && loginPassword === 'admin@@@') {
+      setView(AppView.LANDING);
+      setLoginEmail('');
+      setLoginPassword('');
+    } else {
+      setLoginError('Invalid credentials. Please try again.');
+    }
+  };
+
   const resetMaterials = () => {
     if(confirm('This will delete all custom data. Are you sure?')) {
         setMaterials(INITIAL_MATERIALS);
@@ -363,16 +381,21 @@ const App: React.FC = () => {
             <p className="text-slate-400 text-sm mt-2 font-medium tracking-wide">AI-POWERED ARCHITECTURAL VISUALIZATION</p>
         </div>
 
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setView(AppView.LANDING); }}>
+        <form className="space-y-4" onSubmit={handleLogin}>
+            {loginError && (
+              <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-2 rounded-lg text-sm">
+                {loginError}
+              </div>
+            )}
             <div>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.login.email}</label>
-                <input type="email" className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white mt-1 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="architect@firm.com" />
+                <input type="text" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white mt-1 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="admin" />
             </div>
             <div>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.login.password}</label>
-                <input type="password" className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white mt-1 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="••••••••" />
+                <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white mt-1 focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="••••••••" />
             </div>
-            <Button className="w-full py-4 text-base font-bold shadow-blue-500/20 shadow-lg" onClick={() => setView(AppView.LANDING)}>
+            <Button type="submit" className="w-full py-4 text-base font-bold shadow-blue-500/20 shadow-lg">
                 {t.login.signIn}
             </Button>
             <div className="pt-4 text-center">
