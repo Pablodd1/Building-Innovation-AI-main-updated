@@ -103,7 +103,22 @@ app.post('/api/materials/bulk', async (req, res) => {
     for (const mat of materials) {
       await pool.query(
         `INSERT INTO materials (ref_code, name, category, subcategory, price, unit, items_per_box, width_cm, length_cm, thickness_m, description, image_url, usage, prompt_modifier, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
+         ON CONFLICT (ref_code) DO UPDATE SET
+           name = EXCLUDED.name,
+           category = EXCLUDED.category,
+           subcategory = EXCLUDED.subcategory,
+           price = EXCLUDED.price,
+           unit = EXCLUDED.unit,
+           items_per_box = EXCLUDED.items_per_box,
+           width_cm = EXCLUDED.width_cm,
+           length_cm = EXCLUDED.length_cm,
+           thickness_m = EXCLUDED.thickness_m,
+           description = EXCLUDED.description,
+           image_url = EXCLUDED.image_url,
+           usage = EXCLUDED.usage,
+           prompt_modifier = EXCLUDED.prompt_modifier,
+           updated_at = CURRENT_TIMESTAMP`,
         [mat.ref_code, mat.name, mat.category, mat.subcategory, mat.price || 0, mat.unit || 'Piece', mat.items_per_box || 1, mat.width_cm || 0, mat.length_cm || 0, mat.thickness_m || 0, mat.description, mat.image_url, mat.usage || 'Interior', mat.prompt_modifier]
       );
       imported++;
