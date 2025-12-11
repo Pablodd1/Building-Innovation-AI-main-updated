@@ -77,11 +77,36 @@ const App: React.FC = () => {
 
   const t = TRANSLATIONS[lang];
 
+  const loadMaterialsFromDB = async () => {
+    try {
+      const res = await fetch('/api/materials');
+      const dbMaterials = await res.json();
+      if (dbMaterials && dbMaterials.length > 0) {
+        const converted = dbMaterials.map((m: any) => ({
+          id: String(m.id),
+          refCode: m.ref_code || '',
+          name: m.name || '',
+          category: m.category || 'General',
+          subcategory: m.subcategory || '',
+          description: m.description || '',
+          imageUrl: m.image_url || '',
+          usage: m.usage || 'Interior',
+          promptModifier: m.prompt_modifier || '',
+          dimensions: { width: parseFloat(m.width_cm) || 100, length: parseFloat(m.length_cm) || 100, thickness: parseFloat(m.thickness_m) || 5 },
+          pricing: { pricePerUnit: parseFloat(m.price) || 0, currency: 'USD', unitLabel: m.unit || 'Piece', itemsPerBox: m.items_per_box || 1 }
+        }));
+        setMaterials(converted);
+      } else {
+        setMaterials(INITIAL_MATERIALS);
+      }
+    } catch (e) {
+      console.error('Failed to load materials from DB:', e);
+      setMaterials(INITIAL_MATERIALS);
+    }
+  };
+
   useEffect(() => {
-    const savedMaterials = localStorage.getItem('constructVizMaterials');
-    if (savedMaterials) {
-      try { setMaterials(JSON.parse(savedMaterials)); } catch (e) { setMaterials(INITIAL_MATERIALS); }
-    } else { setMaterials(INITIAL_MATERIALS); }
+    loadMaterialsFromDB();
 
     const savedContractors = localStorage.getItem('constructVizContractors');
     if (savedContractors) {
@@ -92,10 +117,6 @@ const App: React.FC = () => {
     if (savedKey) setCustomApiKey(savedKey);
     updateCartCount();
   }, []);
-
-  useEffect(() => {
-    if (materials.length > 0) localStorage.setItem('constructVizMaterials', JSON.stringify(materials));
-  }, [materials]);
 
   useEffect(() => {
     if (contractors.length > 0) localStorage.setItem('constructVizContractors', JSON.stringify(contractors));
@@ -123,41 +144,58 @@ const App: React.FC = () => {
 
   // --- Admin Functions ---
 
-  const handleSaveMaterial = () => {
+  const handleSaveMaterial = async () => {
     if (!editForm.name || !editForm.refCode) return;
 
-    // Helper to merge nested objects safely
-    const mergeMaterial = (base: Material, updates: Partial<Material>): Material => {
-        return {
-            ...base,
-            ...updates,
-            pricing: { ...base.pricing, ...(updates.pricing || {}) },
-            dimensions: { ...base.dimensions, ...(updates.dimensions || {}) },
-            specs: { ...base.specs, ...(updates.specs || {}) }
-        };
+    const dbMaterial = {
+      ref_code: editForm.refCode,
+      name: editForm.name,
+      category: editForm.category || 'General',
+      subcategory: editForm.subcategory || '',
+      price: editForm.pricing?.pricePerUnit || 0,
+      unit: editForm.pricing?.unitLabel || 'Piece',
+      items_per_box: editForm.pricing?.itemsPerBox || 1,
+      width_cm: editForm.dimensions?.width || 100,
+      length_cm: editForm.dimensions?.length || 100,
+      thickness_m: editForm.dimensions?.thickness || 5,
+      description: editForm.description || '',
+      image_url: editForm.imageUrl || '',
+      usage: editForm.usage || 'Interior',
+      prompt_modifier: editForm.promptModifier || ''
     };
 
-    if (isEditing && editForm.id) {
-        const updated = materials.map(m => m.id === editForm.id ? mergeMaterial(m, editForm) : m);
-        setMaterials(updated);
-    } else {
-        const base = INITIAL_MATERIALS[0];
-        const newMaterial: Material = {
-            ...base,
-            ...editForm as any, // Cast to allow partial override
-            id: `mat-${Date.now()}`,
-            pricing: { ...base.pricing, ...(editForm.pricing || {}) },
-            dimensions: { ...base.dimensions, ...(editForm.dimensions || {}) },
-            specs: { ...base.specs, ...(editForm.specs || {}) }
-        };
-        setMaterials([...materials, newMaterial]);
+    try {
+      if (isEditing && editForm.id) {
+        await fetch(`/api/materials/${editForm.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dbMaterial)
+        });
+      } else {
+        await fetch('/api/materials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dbMaterial)
+        });
+      }
+      loadMaterialsFromDB();
+    } catch (e) {
+      console.error('Failed to save material:', e);
     }
+    
     setEditForm({});
     setIsEditing(false);
   };
 
-  const handleDeleteMaterial = (id: string) => {
-    if (confirm('Delete material?')) setMaterials(materials.filter(m => m.id !== id));
+  const handleDeleteMaterial = async (id: string) => {
+    if (confirm('Delete material?')) {
+      try {
+        await fetch(`/api/materials/${id}`, { method: 'DELETE' });
+        loadMaterialsFromDB();
+      } catch (e) {
+        console.error('Failed to delete:', e);
+      }
+    }
   };
 
   // --- CSV BULK OPERATIONS ---
@@ -269,16 +307,41 @@ const App: React.FC = () => {
               }
 
               if(newMats.length > 0) {
-                  // Merge strategy: Overwrite by ID if exists, else add
-                  const merged = [...materials];
-                  newMats.forEach(nm => {
-                      const idx = merged.findIndex(m => m.id === nm.id);
-                      if (idx >= 0) merged[idx] = nm;
-                      else merged.push(nm);
+                  const dbMaterials = newMats.map(m => ({
+                    ref_code: m.refCode,
+                    name: m.name,
+                    category: m.category,
+                    subcategory: m.subcategory,
+                    price: m.pricing.pricePerUnit,
+                    unit: m.pricing.unitLabel,
+                    items_per_box: m.pricing.itemsPerBox,
+                    width_cm: m.dimensions.width,
+                    length_cm: m.dimensions.length,
+                    thickness_m: m.dimensions.thickness,
+                    description: m.description,
+                    image_url: m.imageUrl,
+                    usage: m.usage,
+                    prompt_modifier: m.promptModifier
+                  }));
+                  
+                  fetch('/api/materials/bulk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ materials: dbMaterials })
+                  })
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.success) {
+                      loadMaterialsFromDB();
+                      alert(`Imported ${data.imported} materials to database.`);
+                    } else {
+                      alert('Failed to import materials.');
+                    }
+                  })
+                  .catch(err => {
+                    console.error('Import error:', err);
+                    alert('Failed to import materials.');
                   });
-
-                  setMaterials(merged);
-                  alert(`Processed ${newMats.length} records successfully.`);
               }
           };
           reader.readAsText(file);
@@ -303,12 +366,16 @@ const App: React.FC = () => {
       alert("API Key Saved!");
   };
 
-  const resetMaterials = () => {
+  const resetMaterials = async () => {
     if(confirm('Factory Reset: All custom data will be lost.')) {
-        setMaterials(INITIAL_MATERIALS);
-        setContractors(INITIAL_CONTRACTORS);
-        localStorage.removeItem('constructVizMaterials');
-        localStorage.removeItem('constructVizContractors');
+        try {
+          await fetch('/api/materials', { method: 'DELETE' });
+          setMaterials(INITIAL_MATERIALS);
+          setContractors(INITIAL_CONTRACTORS);
+          localStorage.removeItem('constructVizContractors');
+        } catch (e) {
+          console.error('Failed to reset:', e);
+        }
     }
   };
 
