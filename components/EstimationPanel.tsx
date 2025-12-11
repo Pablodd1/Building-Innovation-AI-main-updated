@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Material, CartItem, Contractor } from '../types';
 import { Button } from './Button';
@@ -25,17 +26,16 @@ const BrandLogoSmall = ({ className = "stroke-white print:stroke-black" }: { cla
 export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en' }) => {
   const [width, setWidth] = useState<number>(3);
   const [height, setHeight] = useState<number>(2.5);
-  const [unitCount, setUnitCount] = useState<number>(1);
-  
+
   const [quantity, setQuantity] = useState<number>(0);
   const [totalCost, setTotalCost] = useState<number>(0);
-  
+
   const [patternRepeat, setPatternRepeat] = useState<number>(material.specs?.patternRepeat || 0);
   const [wasteFactor, setWasteFactor] = useState<number>(material.specs?.recommendedWaste || 0.10);
   const [layoutStyle, setLayoutStyle] = useState<'STRAIGHT' | 'DIAGONAL'>('STRAIGHT');
-  
+
   const [breakdown, setBreakdown] = useState<string[]>([]);
-  
+
   const [addedToCart, setAddedToCart] = useState<boolean>(false);
   const [selectedContractor, setSelectedContractor] = useState<string>('');
 
@@ -45,89 +45,108 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     // Determine Calculation Mode based on Material Specs or Category fallback
     const mode = material.specs?.installationType || 
                  (material.category === 'Zocalos' ? 'LINEAR' : 
-                  material.category === 'Rollos Adhesivos' ? 'ROLL' : 
-                  material.category === 'Muebles' ? 'UNIT' : 'TILE');
+                  material.category === 'Rollos Adhesivos' ? 'ROLL' : 'TILE');
 
     let calculatedQty = 0;
     const log: string[] = [];
 
-    // --- ALGORITHM A: WALLPAPER & ROLLS ---
+    // Basic Product Specs
+    const matWidthM = material.dimensions.width / 100; // cm -> m
+    const matLengthM = material.dimensions.length / 100; // cm -> m
+    const itemsPerBox = material.pricing.itemsPerBox || 1;
+
+    // --- ALGORITHM A: WALLPAPER & ROLLS (By Area/Strips) ---
     if (mode === 'ROLL') {
-        const rollWidthM = material.dimensions.width / 100; // cm to m
-        const rollLengthM = material.dimensions.length / 100; // cm to m
         const repeatM = patternRepeat / 100; // cm to m
 
-        // Basic strips required to cover width
-        const strips = Math.ceil(width / rollWidthM);
-        
-        // Calculate Waste Strips (If user messes up or needs extra for edges)
+        // 1. Calculate Strips needed to cover width
+        const strips = Math.ceil(width / matWidthM);
+
+        // 2. Add Waste Strips
         const wasteStrips = Math.ceil(strips * wasteFactor);
         const totalStrips = strips + wasteStrips;
 
-        log.push(`${lang === 'es' ? 'Ancho Pared' : 'Wall Width'} ${width}m / ${lang === 'es' ? 'Ancho Rollo' : 'Roll Width'} ${rollWidthM}m = ${strips} ${lang === 'es' ? 'tiras base' : 'base strips'}.`);
-        
-        if (wasteFactor > 0) {
-           log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} ${(wasteFactor*100).toFixed(0)}%: +${wasteStrips} ${lang === 'es' ? 'tiras' : 'strips'} -> ${totalStrips} total.`);
-        }
+        log.push(`${lang === 'es' ? 'Cobertura' : 'Coverage'}: ${width}m / ${matWidthM}m (${lang === 'es' ? 'ancho rollo' : 'roll width'}) = ${strips} ${lang === 'es' ? 'tiras' : 'strips'}.`);
+        log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} ${(wasteFactor*100).toFixed(0)}%: +${wasteStrips} ${lang === 'es' ? 'tiras' : 'strips'}.`);
 
+        // 3. Calculate working length per strip (including pattern match)
         let workingLength = height;
         if (repeatM > 0) {
-            // Adjust length for pattern matching
             workingLength = Math.ceil(height / repeatM) * repeatM;
-            log.push(`${lang === 'es' ? 'Patrón' : 'Pattern'} ${patternRepeat}cm: ${lang === 'es' ? 'Altura ajustada' : 'Height adjusted'} ${height}m -> ${workingLength.toFixed(2)}m.`);
+            log.push(`${lang === 'es' ? 'Patrón' : 'Pattern'} (${patternRepeat}cm): ${lang === 'es' ? 'Alto ajustado' : 'Height adjusted'} ${height}m -> ${workingLength.toFixed(2)}m.`);
         } else {
-            // Standard trim for non-pattern
             workingLength = height + 0.10; // 10cm trim
-            log.push(lang === 'es' ? "Sin patrón: +10cm desperdicio vertical." : "No pattern: Added 10cm vertical trim.");
+            log.push(lang === 'es' ? "Sin patrón: +10cm margen." : "Trim: Added 10cm safety.");
         }
 
-        const stripsPerRoll = Math.floor(rollLengthM / workingLength);
+        // 4. Calculate Rolls Needed
+        const stripsPerRoll = Math.floor(matLengthM / workingLength);
+
         if (stripsPerRoll >= 1) {
             calculatedQty = Math.ceil(totalStrips / stripsPerRoll);
-            log.push(`1 ${lang === 'es' ? 'Rollo' : 'Roll'} (${rollLengthM}m) = ${stripsPerRoll} ${lang === 'es' ? 'tiras útiles' : 'usable strips'}.`);
+            log.push(`1 ${lang === 'es' ? 'Rollo' : 'Roll'} (${matLengthM}m) = ${stripsPerRoll} ${lang === 'es' ? 'tiras útiles' : 'usable strips'}.`);
+            log.push(`Total: ${totalStrips} ${lang === 'es' ? 'tiras' : 'strips'} -> ${calculatedQty} ${lang === 'es' ? 'Rollos' : 'Rolls'}.`);
         } else {
-            // Edge case: Wall higher than Roll length (requires stacking or custom cuts)
-             calculatedQty = Math.ceil((totalStrips * workingLength) / rollLengthM);
+            // Wall is taller than roll length (rare for wallpaper, possible for other rolls)
+            const totalMetersNeeded = totalStrips * workingLength;
+            calculatedQty = Math.ceil(totalMetersNeeded / matLengthM);
+            log.push(`${lang === 'es' ? 'Alto > Largo Rollo. Total metros' : 'Wall height > Roll length. Total meters'}: ${totalMetersNeeded.toFixed(2)}m.`);
         }
     } 
-    // --- ALGORITHM B: FLOORING (TILES) ---
+    // --- ALGORITHM B: FLOORING & TILES (By Piece/Box) ---
     else if (mode === 'TILE') {
+        // 1. Calculate Real Area
         const area = width * height;
-        log.push(`${lang === 'es' ? 'Área Total' : 'Total Area'}: ${area.toFixed(2)}m²`);
+        log.push(`${lang === 'es' ? 'Área Superficie' : 'Surface Area'}: ${area.toFixed(2)}m²`);
 
+        // 2. Apply Waste
         const effectiveWaste = layoutStyle === 'DIAGONAL' ? 0.15 : wasteFactor;
         const totalAreaWithWaste = area * (1 + effectiveWaste);
-        log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'}: ${(effectiveWaste*100).toFixed(0)}% -> ${totalAreaWithWaste.toFixed(2)}m²`);
+        log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} (${(effectiveWaste*100).toFixed(0)}%): Total ${totalAreaWithWaste.toFixed(2)}m²`);
 
-        const pieceArea = (material.dimensions.width/100) * (material.dimensions.length/100); 
-        const pieces = Math.ceil(totalAreaWithWaste / pieceArea);
-        
-        calculatedQty = pieces;
-        log.push(`${lang === 'es' ? 'Unidades' : 'Total Units'}: ${pieces}.`);
+        // 3. Calculate Single Piece Area
+        const pieceArea = matWidthM * matLengthM;
+
+        // 4. Calculate Total Pieces
+        const totalPieces = Math.ceil(totalAreaWithWaste / pieceArea);
+        log.push(`${lang === 'es' ? 'Tamaño Ítem' : 'Item Size'}: ${material.dimensions.width}x${material.dimensions.length}cm (${pieceArea.toFixed(4)}m²)`);
+        log.push(`${lang === 'es' ? 'Piezas Necesarias' : 'Pieces Needed'}: ${totalPieces}.`);
+
+        // 5. Convert to Purchasing Unit (Boxes vs Pieces)
+        if (itemsPerBox > 1) {
+            calculatedQty = Math.ceil(totalPieces / itemsPerBox);
+            log.push(`${lang === 'es' ? 'Empaque' : 'Packaging'}: ${itemsPerBox} ${lang === 'es' ? 'ítems/caja' : 'items/box'}.`);
+            log.push(`${lang === 'es' ? 'Cálculo' : 'Calculation'}: ${totalPieces} / ${itemsPerBox} = ${calculatedQty} ${lang === 'es' ? 'Cajas' : 'Boxes'}.`);
+        } else {
+            calculatedQty = totalPieces;
+            log.push(lang === 'es' ? "Venta individual." : "Sold individually.");
+        }
     }
-    // --- ALGORITHM C: LINEAR (ZOCALOS) ---
+    // --- ALGORITHM C: LINEAR (Baseboards) ---
     else if (mode === 'LINEAR') {
-        const perimeter = width; // User inputs length in Width field
-        const pieceLengthM = material.dimensions.width / 100; // Stored as width in constant
-        
+        const perimeter = width; // Input field reused as "Length/Perimeter"
+
         const totalLen = perimeter * (1 + wasteFactor);
-        const pieces = Math.ceil(totalLen / pieceLengthM);
-        
-        calculatedQty = pieces;
-        log.push(`${lang === 'es' ? 'Perímetro' : 'Perimeter'}: ${perimeter}m + ${(wasteFactor*100)}% = ${totalLen.toFixed(2)}m.`);
-    }
-    // --- ALGORITHM D: UNIT (FURNITURE) ---
-    else if (mode === 'UNIT') {
-        calculatedQty = unitCount;
-        log.push(`Single unit price item.`);
-        log.push(`${lang === 'es' ? 'Cantidad manual' : 'Manual quantity'}: ${unitCount}`);
+        const pieces = Math.ceil(totalLen / matWidthM); // In Linear mode, 'width' dimension is usually length of the plank
+
+        // Check if sold by box
+        if (itemsPerBox > 1) {
+            calculatedQty = Math.ceil(pieces / itemsPerBox);
+            log.push(`${lang === 'es' ? 'Total Lineal' : 'Linear Total'}: ${totalLen.toFixed(2)}m.`);
+            log.push(`${lang === 'es' ? 'Piezas' : 'Pieces'}: ${pieces} (${matWidthM}m ${lang === 'es' ? 'c/u' : 'each'}).`);
+            log.push(`${lang === 'es' ? 'Empaque' : 'Packaging'}: ${pieces} / ${itemsPerBox} = ${calculatedQty} ${lang === 'es' ? 'Cajas' : 'Boxes'}.`);
+        } else {
+            calculatedQty = pieces;
+            log.push(`${lang === 'es' ? 'Largo Total' : 'Total Length'}: ${totalLen.toFixed(2)}m.`);
+            log.push(`${lang === 'es' ? 'Total Unidades' : 'Total Units'}: ${pieces}.`);
+        }
     }
 
     setQuantity(calculatedQty);
     setTotalCost(calculatedQty * material.pricing.pricePerUnit);
     setBreakdown(log);
 
-  }, [width, height, unitCount, material, patternRepeat, wasteFactor, layoutStyle, lang]);
+  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang]);
 
   const handleAddToCart = () => {
     const newItem: CartItem = {
@@ -160,7 +179,6 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
   const selectedContractorData = contractors.find(c => c.id === selectedContractor);
   const isLinear = material.category === 'Zocalos' || material.specs?.installationType === 'LINEAR';
   const isRoll = material.category === 'Rollos Adhesivos' || material.specs?.installationType === 'ROLL';
-  const isUnit = material.usage === 'Furniture' || material.specs?.installationType === 'UNIT';
 
   return (
     <div id="print-area" className="bg-slate-900 print:bg-white border border-slate-700 print:border-none rounded-none md:rounded-lg overflow-hidden shadow-2xl flex flex-col h-full animate-fadeIn">
@@ -168,7 +186,7 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
       <div className="bg-black print:bg-white p-4 md:p-6 border-b border-slate-800 print:border-black flex flex-col sm:flex-row justify-between items-start gap-4">
         <div className="flex items-center gap-4">
             <img 
-                src={material.thumbnailUrl} 
+                src={material.imageUrl} 
                 alt={material.name}
                 className="w-16 h-16 md:w-20 md:h-20 object-cover border border-slate-700 print:border-slate-200 print:block rounded"
             />
@@ -179,116 +197,101 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                 </div>
                 <h2 className="text-xl md:text-2xl font-black text-white print:text-black uppercase leading-none">{material.name}</h2>
                 <div className="text-blue-500 print:text-black font-bold text-sm tracking-wider mt-1">REF: {material.refCode}</div>
+                <div className="text-xs text-slate-500 mt-1">
+                    {material.dimensions.width}x{material.dimensions.length}cm • {material.dimensions.thickness}mm
+                </div>
             </div>
         </div>
         <div className="text-left sm:text-right hidden sm:block">
-            <div className="text-xs text-slate-500 print:text-slate-600 uppercase">Date</div>
+            <div className="text-xs text-slate-500 print:text-slate-600 uppercase">{t.quote.date}</div>
             <div className="text-white print:text-black text-sm font-medium">{new Date().toLocaleDateString()}</div>
         </div>
       </div>
 
       <div className="p-4 md:p-8 overflow-y-auto flex-1 space-y-8 print:space-y-6">
-        
+
         {/* INPUTS SECTION */}
         <section>
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
                     <div className="bg-blue-600 print:bg-black text-white text-xs font-bold px-2 py-1 mr-2 rounded">1</div>
                     <h3 className="text-sm font-bold text-white print:text-black uppercase tracking-wider">
-                        {isUnit ? t.quote.units : (isLinear ? t.quote.linear : t.quote.area)}
+                        {isLinear ? t.quote.linear : t.quote.area}
                     </h3>
                 </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                {isUnit ? (
-                     <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
-                        <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">
-                             {t.quote.quantity}
-                        </label>
-                        <input 
-                            type="number" 
-                            value={unitCount}
-                            onChange={(e) => setUnitCount(Math.max(1, parseInt(e.target.value) || 0))}
-                            step="1"
-                            min="1"
-                            className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                        />
-                    </div>
-                ) : (
-                    <>
+
+                <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
+                    <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">
+                            {isLinear ? `${t.quote.perimeter} (m)` : `${t.quote.width} (m)`}
+                    </label>
+                    <input 
+                        type="number" 
+                        value={width}
+                        onChange={(e) => setWidth(parseFloat(e.target.value) || 0)}
+                        step="0.1"
+                        className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
+                    />
+                </div>
+                {!isLinear && (
                     <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
-                        <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">
-                             {isLinear ? `${t.quote.perimeter} (m)` : `${t.quote.width} (m)`}
-                        </label>
+                        <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">{t.quote.height} (m)</label>
                         <input 
                             type="number" 
-                            value={width}
-                            onChange={(e) => setWidth(parseFloat(e.target.value) || 0)}
+                            value={height}
+                            onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
                             step="0.1"
                             className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
                         />
                     </div>
-                    {!isLinear && (
-                        <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
-                            <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">{t.quote.height} (m)</label>
-                            <input 
-                                type="number" 
-                                value={height}
-                                onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
-                                step="0.1"
-                                className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                            />
-                        </div>
-                    )}
-                    </>
                 )}
+
             </div>
 
             {/* ADVANCED SETTINGS */}
-            {!isUnit && (
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 no-print">
-                    {!isLinear && !isRoll && (
-                        <div className="bg-slate-800 p-3 rounded border border-slate-700">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t.quote.pattern}</label>
-                            <select 
-                                value={layoutStyle}
-                                onChange={e => setLayoutStyle(e.target.value as any)}
-                                className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
-                            >
-                                <option value="STRAIGHT">Straight</option>
-                                <option value="DIAGONAL">Diagonal</option>
-                            </select>
-                        </div>
-                    )}
-                    
-                    {isRoll && (
-                        <div className="bg-slate-800 p-3 rounded border border-slate-700">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Pattern Repeat (cm)</label>
-                            <input 
-                                type="number" 
-                                value={patternRepeat} 
-                                onChange={e => setPatternRepeat(parseFloat(e.target.value))}
-                                className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
-                            />
-                        </div>
-                    )}
-
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 no-print">
+                {!isLinear && !isRoll && (
                     <div className="bg-slate-800 p-3 rounded border border-slate-700">
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t.quote.waste}</label>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t.quote.pattern}</label>
                         <select 
-                            value={wasteFactor}
-                            onChange={e => setWasteFactor(parseFloat(e.target.value))}
+                            value={layoutStyle}
+                            onChange={e => setLayoutStyle(e.target.value as any)}
                             className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
                         >
-                            <option value="0">0%</option>
-                            <option value="0.05">5%</option>
-                            <option value="0.10">10% ({lang === 'es' ? 'Rec.' : 'Rec.'})</option>
-                            <option value="0.15">15%</option>
+                            <option value="STRAIGHT">Straight</option>
+                            <option value="DIAGONAL">Diagonal</option>
                         </select>
                     </div>
+                )}
+
+                {isRoll && (
+                    <div className="bg-slate-800 p-3 rounded border border-slate-700">
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Pattern Repeat (cm)</label>
+                        <input 
+                            type="number" 
+                            value={patternRepeat} 
+                            onChange={e => setPatternRepeat(parseFloat(e.target.value))}
+                            className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
+                        />
+                    </div>
+                )}
+
+                <div className="bg-slate-800 p-3 rounded border border-slate-700">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t.quote.waste}</label>
+                    <select 
+                        value={wasteFactor}
+                        onChange={e => setWasteFactor(parseFloat(e.target.value))}
+                        className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
+                    >
+                        <option value="0">0%</option>
+                        <option value="0.05">5%</option>
+                        <option value="0.10">10% ({lang === 'es' ? 'Rec.' : 'Rec.'})</option>
+                        <option value="0.15">15%</option>
+                    </select>
                 </div>
-            )}
+            </div>
         </section>
 
         {/* LOGIC BREAKDOWN */}
@@ -308,24 +311,22 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                 <div className="bg-slate-700 print:bg-slate-200 print:text-black text-white text-xs font-bold px-2 py-1 mr-2 rounded">2</div>
                 <h3 className="text-sm font-bold text-white print:text-black uppercase tracking-wider">{t.quote.summary}</h3>
             </div>
-            
+
             <div className="bg-slate-800/30 print:bg-white border border-slate-700 print:border-slate-200 p-6 rounded-lg">
                 <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-700/50 print:border-slate-200">
                     <span className="text-slate-400 print:text-slate-600 text-sm uppercase tracking-wide">
                          {t.quote.dimensions}
                     </span>
                     <span className="text-white print:text-black font-mono font-bold">
-                         {isUnit 
-                            ? `${material.dimensions.width}cm x ${material.dimensions.length}cm (Item Size)`
-                            : (isLinear ? `${width}m (Linear)` : `${width}m (W) x ${height}m (H)`)}
+                         {isLinear ? `${width}m (Linear)` : `${width}m (W) x ${height}m (H)`}
                     </span>
                 </div>
-                
+
                 <div className="flex justify-between items-end mb-2">
                     <span className="text-white print:text-black font-bold text-base md:text-lg uppercase">{t.quote.quantity}</span>
                     <span className="text-3xl font-black text-blue-500 print:text-black">{quantity} <span className="text-lg text-slate-400 print:text-slate-600 font-medium">{material.pricing.unitLabel}</span></span>
                 </div>
-                
+
                 <div className="mt-6 pt-6 border-t-2 border-slate-800 print:border-black flex justify-between items-center bg-slate-900/50 print:bg-slate-100 -mx-6 -mb-6 p-6 rounded-b-lg">
                     <span className="font-bold text-slate-300 print:text-black uppercase tracking-widest">{t.quote.cost}</span>
                     <span className="text-3xl font-black text-green-500 print:text-black">${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
@@ -345,22 +346,22 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                 {contractors.map(c => <option key={c.id} value={c.id}>{c.name} - {c.region}</option>)}
             </select>
         </div>
-        
+
         {/* Print Only Footer */}
         <div className="hidden print:block mt-10">
             {selectedContractorData && (
                  <div className="hidden print:block mt-8 pt-6 border-t border-slate-200">
-                    <h4 className="font-bold uppercase tracking-widest text-black mb-3">Assigned Installer</h4>
+                    <h4 className="font-bold uppercase tracking-widest text-black mb-3">{t.quote.assignedInstaller}</h4>
                     <div className="grid grid-cols-2 gap-4 text-sm text-black border border-slate-200 p-4">
-                        <div><span className="block text-[10px] uppercase text-slate-500">Name</span><span className="font-bold">{selectedContractorData.name}</span></div>
-                        <div><span className="block text-[10px] uppercase text-slate-500">Region</span><span className="font-bold">{selectedContractorData.region}</span></div>
-                        <div><span className="block text-[10px] uppercase text-slate-500">Phone</span><span className="font-bold">{selectedContractorData.phone}</span></div>
-                        <div><span className="block text-[10px] uppercase text-slate-500">Email</span><span className="font-bold">{selectedContractorData.email}</span></div>
+                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.name}</span><span className="font-bold">{selectedContractorData.name}</span></div>
+                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.region}</span><span className="font-bold">{selectedContractorData.region}</span></div>
+                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.phone}</span><span className="font-bold">{selectedContractorData.phone}</span></div>
+                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.email}</span><span className="font-bold">{selectedContractorData.email}</span></div>
                     </div>
                  </div>
             )}
             <div className="text-center mt-10 pt-4 border-t border-slate-200">
-                <p className="text-sm font-bold uppercase tracking-widest text-black">Building Innovation - ¡We design the future!</p>
+                <p className="text-sm font-bold uppercase tracking-widest text-black">{t.quote.footer}</p>
             </div>
         </div>
       </div>
