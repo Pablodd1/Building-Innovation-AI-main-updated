@@ -17,13 +17,10 @@ interface HistoryItem {
 }
 
 // Custom Logo Component
-const BrandLogo = ({ className = "stroke-white" }: { className?: string }) => (
-  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 20L20 15L30 20" className={className} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M10 26L20 21L30 26" className={className} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M10 32L20 27L30 32" className={className} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M5 10L20 2L35 10" className={className} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
+const LOGO_URL = "https://res.cloudinary.com/dsex1a9tu/image/upload/v1765472298/LOGO_Building_zp4k50.png";
+
+const BrandLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
+  <img src={LOGO_URL} alt="Building Innovation Logo" className={`${className} object-contain`} />
 );
 
 const App: React.FC = () => {
@@ -495,7 +492,7 @@ const App: React.FC = () => {
       <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=2000&q=80')] bg-cover bg-center opacity-20"></div>
       <div className="relative z-10 w-full max-w-md bg-slate-800/50 backdrop-blur-xl border border-slate-700 p-8 rounded-2xl shadow-2xl">
         <div className="flex flex-col items-center mb-8">
-            <BrandLogo className="stroke-blue-500 mb-4 w-16 h-16" />
+            <BrandLogo className="w-20 h-20 mb-4" />
             <h1 className="text-3xl font-black text-white tracking-tight">BUILDING <span className="text-blue-500">INNOVATION</span></h1>
         </div>
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setView(AppView.LANDING); }}>
@@ -526,7 +523,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-900 p-6 flex flex-col">
        <header className="flex justify-between items-center mb-8 md:mb-12">
            <div className="flex items-center gap-3">
-               <BrandLogo className="stroke-white w-8 h-8" />
+               <BrandLogo className="w-10 h-10" />
                <div className="hidden md:block">
                    <h1 className="text-lg font-black text-white leading-none">BUILDING</h1>
                    <div className="text-[10px] text-blue-500 font-bold tracking-[0.2em]">INNOVATION</div>
