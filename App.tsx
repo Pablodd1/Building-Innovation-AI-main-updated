@@ -366,37 +366,40 @@ const App: React.FC = () => {
                 // Skip header (row 0), start at 1
                 for (let i = 1; i < data.length; i++) {
                     const cols = data[i];
-                    if (cols.length < 4) continue;
+                    
+                    // Safe column getter - returns empty string if column doesn't exist
+                    const getCol = (index: number) => (cols[index] ? cols[index].trim() : "");
+                    
+                    // Skip completely empty rows
+                    if (cols.every(c => !c || c.trim() === "")) continue;
 
-                    // Cleaning logic
-                    const clean = (s: string) => (s ? s.trim() : "");
-                    const usage = clean(cols[13]);
-                    const validUsage =
-                        usage === "Exterior" ? usage : "Interior";
+                    const usage = getCol(13);
+                    const validUsage = usage === "Exterior" ? usage : "Interior";
+                    const name = getCol(2) || "Imported Material";
+                    const category = getCol(3) || "General";
+                    const subcategory = getCol(4) || "";
 
                     const newMat: Material = {
-                        id: cols[0] ? clean(cols[0]) : `csv-${Date.now()}-${i}`,
-                        refCode: clean(cols[1]) || `REF-${i}`,
-                        name: clean(cols[2]) || "Imported Material",
-                        category: clean(cols[3]) || "General",
-                        subcategory: clean(cols[4]) || "",
+                        id: getCol(0) || `csv-${Date.now()}-${i}`,
+                        refCode: getCol(1) || `REF-${Date.now()}-${i}`,
+                        name: name,
+                        category: category,
+                        subcategory: subcategory,
                         pricing: {
-                            pricePerUnit: parseFloat(cols[5]) || 0,
+                            pricePerUnit: parseFloat(getCol(5)) || 0,
                             currency: "USD",
-                            unitLabel: clean(cols[6]) || "Unit",
-                            itemsPerBox: parseFloat(cols[7]) || 1,
+                            unitLabel: getCol(6) || "Unit",
+                            itemsPerBox: parseFloat(getCol(7)) || 1,
                         },
                         dimensions: {
-                            width: parseFloat(cols[8]) || 100,
-                            length: parseFloat(cols[9]) || 100,
-                            thickness: parseFloat(cols[10]) || 5,
+                            width: parseFloat(getCol(8)) || 100,
+                            length: parseFloat(getCol(9)) || 100,
+                            thickness: parseFloat(getCol(10)) || 5,
                         },
-                        description: clean(cols[11]) || "",
-                        imageUrl: clean(cols[12]) || "",
+                        description: getCol(11) || "",
+                        imageUrl: getCol(12) || "",
                         usage: validUsage as "Interior" | "Exterior",
-                        promptModifier:
-                            clean(cols[14]) ||
-                            `${clean(cols[2])}, ${clean(cols[3])} ${clean(cols[4])}`,
+                        promptModifier: getCol(14) || `${name}, ${category} ${subcategory}`,
                     };
                     newMats.push(newMat);
                 }
