@@ -363,6 +363,22 @@ const App: React.FC = () => {
                 const data = parseCSV(text);
                 const newMats: Material[] = [];
 
+                // Helper to parse numbers - handles currency symbols, spaces, and different formats
+                const parseNumber = (s: string): number => {
+                    if (!s) return 0;
+                    // Remove currency symbols, spaces, and other non-numeric chars except . and ,
+                    let cleaned = s.replace(/[^0-9.,\-]/g, '').trim();
+                    // Handle European format (comma as decimal): if has comma but no dot, or comma after dot
+                    if (cleaned.includes(',') && !cleaned.includes('.')) {
+                        cleaned = cleaned.replace(',', '.');
+                    } else if (cleaned.includes(',') && cleaned.includes('.')) {
+                        // Has both - assume comma is thousands separator
+                        cleaned = cleaned.replace(/,/g, '');
+                    }
+                    const result = parseFloat(cleaned);
+                    return isNaN(result) ? 0 : result;
+                };
+
                 // Skip header (row 0), start at 1
                 for (let i = 1; i < data.length; i++) {
                     const cols = data[i];
@@ -386,15 +402,15 @@ const App: React.FC = () => {
                         category: category,
                         subcategory: subcategory,
                         pricing: {
-                            pricePerUnit: parseFloat(getCol(5)) || 0,
+                            pricePerUnit: parseNumber(getCol(5)),
                             currency: "USD",
                             unitLabel: getCol(6) || "Unit",
-                            itemsPerBox: parseFloat(getCol(7)) || 1,
+                            itemsPerBox: parseNumber(getCol(7)) || 1,
                         },
                         dimensions: {
-                            width: parseFloat(getCol(8)) || 100,
-                            length: parseFloat(getCol(9)) || 100,
-                            thickness: parseFloat(getCol(10)) || 5,
+                            width: parseNumber(getCol(8)) || 100,
+                            length: parseNumber(getCol(9)) || 100,
+                            thickness: parseNumber(getCol(10)) || 5,
                         },
                         description: getCol(11) || "",
                         imageUrl: getCol(12) || "",
