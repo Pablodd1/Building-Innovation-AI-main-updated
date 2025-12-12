@@ -9,7 +9,6 @@ import {
     RenderOptions,
 } from "./types";
 import {
-    MATERIALS as INITIAL_MATERIALS,
     CONTRACTORS as INITIAL_CONTRACTORS,
     TRANSLATIONS,
 } from "./constants";
@@ -134,11 +133,11 @@ const App: React.FC = () => {
                 }));
                 setMaterials(converted);
             } else {
-                setMaterials(INITIAL_MATERIALS);
+                setMaterials([]);
             }
         } catch (e) {
             console.error("Failed to load materials from DB:", e);
-            setMaterials(INITIAL_MATERIALS);
+            setMaterials([]);
         }
     };
 
@@ -376,20 +375,18 @@ const App: React.FC = () => {
                         usage === "Exterior" ? usage : "Interior";
 
                     const newMat: Material = {
-                        ...INITIAL_MATERIALS[0],
                         id: cols[0] ? clean(cols[0]) : `csv-${Date.now()}-${i}`,
                         refCode: clean(cols[1]) || `REF-${i}`,
                         name: clean(cols[2]) || "Imported Material",
                         category: clean(cols[3]) || "General",
                         subcategory: clean(cols[4]) || "",
                         pricing: {
-                            ...INITIAL_MATERIALS[0].pricing,
                             pricePerUnit: parseFloat(cols[5]) || 0,
+                            currency: "USD",
                             unitLabel: clean(cols[6]) || "Unit",
                             itemsPerBox: parseFloat(cols[7]) || 1,
                         },
                         dimensions: {
-                            ...INITIAL_MATERIALS[0].dimensions,
                             width: parseFloat(cols[8]) || 100,
                             length: parseFloat(cols[9]) || 100,
                             thickness: parseFloat(cols[10]) || 5,
@@ -470,7 +467,7 @@ const App: React.FC = () => {
         if (confirm("Factory Reset: All custom data will be lost.")) {
             try {
                 await fetch("/api/materials", { method: "DELETE" });
-                setMaterials(INITIAL_MATERIALS);
+                setMaterials([]);
                 setContractors(INITIAL_CONTRACTORS);
                 localStorage.removeItem("constructVizContractors");
             } catch (e) {
