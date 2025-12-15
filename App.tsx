@@ -756,10 +756,10 @@ const App: React.FC = () => {
     const renderLanding = () => (
         <div className="min-h-screen bg-slate-900 p-6 flex flex-col relative">
             <div 
-                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-30"
+                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60"
                 style={{ backgroundImage: "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1765805801/fondo_zxuhfe.png')" }}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-slate-900/70 to-slate-900" />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/20 via-slate-900/40 to-slate-900/70" />
             <header className="relative z-10 flex justify-between items-center mb-8 md:mb-12">
                 <div className="flex items-center gap-3">
                     <BrandLogo className="w-10 h-10" />
