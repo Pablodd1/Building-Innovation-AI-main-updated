@@ -754,8 +754,13 @@ const App: React.FC = () => {
     );
 
     const renderLanding = () => (
-        <div className="min-h-screen bg-slate-900 p-6 flex flex-col">
-            <header className="flex justify-between items-center mb-8 md:mb-12">
+        <div className="min-h-screen bg-slate-900 p-6 flex flex-col relative">
+            <div 
+                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-30"
+                style={{ backgroundImage: "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1765805801/fondo_zxuhfe.png')" }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-slate-900/70 to-slate-900" />
+            <header className="relative z-10 flex justify-between items-center mb-8 md:mb-12">
                 <div className="flex items-center gap-3">
                     <BrandLogo className="w-10 h-10" />
                     <div className="hidden md:block">
@@ -819,7 +824,7 @@ const App: React.FC = () => {
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">
+            <div className="relative z-10 flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">
                 <h2 className="text-5xl md:text-7xl font-black text-white mb-2 tracking-tighter">
                     {t.landing.title}{" "}
                     <span className="text-blue-500">{t.landing.materials}</span>
