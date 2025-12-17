@@ -126,7 +126,7 @@ const App: React.FC = () => {
                     },
                     pricing: {
                         pricePerUnit: parseFloat(m.price) || 0,
-                        currency: "USD",
+                        currency: "MXN",
                         unitLabel: m.unit || "Piece",
                         itemsPerBox: m.items_per_box || 1,
                     },
@@ -389,8 +389,8 @@ const App: React.FC = () => {
                     // Skip completely empty rows
                     if (cols.every(c => !c || c.trim() === "")) continue;
 
-                    const usage = getCol(13);
-                    const validUsage = usage === "Exterior" ? usage : "Interior";
+                    const usage = getCol(13).toLowerCase();
+                    const validUsage = usage.includes("exterior") ? "Exterior" : "Interior";
                     const name = getCol(2) || "Imported Material";
                     const category = getCol(3) || "General";
                     const subcategory = getCol(4) || "";
@@ -403,7 +403,7 @@ const App: React.FC = () => {
                         subcategory: subcategory,
                         pricing: {
                             pricePerUnit: parseNumber(getCol(5)),
-                            currency: "USD",
+                            currency: "MXN",
                             unitLabel: getCol(6) || "Unit",
                             itemsPerBox: parseNumber(getCol(7)) || 1,
                         },
@@ -1207,7 +1207,7 @@ const App: React.FC = () => {
                                                             parseFloat(
                                                                 e.target.value,
                                                             ),
-                                                        currency: "USD",
+                                                        currency: "MXN",
                                                     },
                                                 })
                                             }
@@ -1554,14 +1554,14 @@ const App: React.FC = () => {
                                     alt={material.name}
                                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-4 flex flex-col justify-end">
-                                    <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-2 flex flex-col justify-end">
+                                    <div className="text-[8px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
                                         {material.category}
                                     </div>
-                                    <div className="text-white font-bold leading-tight mb-1">
+                                    <div className="text-white text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
                                         {material.name}
                                     </div>
-                                    <div className="text-[10px] text-slate-400">
+                                    <div className="text-[8px] text-slate-400">
                                         {material.dimensions.width}x
                                         {material.dimensions.length}cm
                                     </div>
