@@ -208,8 +208,8 @@ export const TRANSLATIONS: Record<Language, any> = {
         },
         editor: {
             back: "Back to Camera",
-            errorTitle: "Generation Error",
-            processing: "Processing...",
+            errorTitle: "Processing Error",
+            processing: "We are working on it...",
             configuration: "Configuration",
             material: "Selected Material",
             instructions: "Custom Instructions",
@@ -220,8 +220,8 @@ export const TRANSLATIONS: Record<Language, any> = {
             viewMode: "View Mode",
             perspective: "Perspective (Default)",
             topDown: "Top-down (Plan)",
-            isometric: "3D Isometric (Cutaway)",
-            probe: "3D Sample",
+            isometric: "Isometric View",
+            probe: "Material Sample",
             lighting: "Lighting Condition"
         },
         quote: {
@@ -348,8 +348,8 @@ export const TRANSLATIONS: Record<Language, any> = {
         },
         editor: {
             back: "Volver a Cámara",
-            errorTitle: "Error de Generación",
-            processing: "Procesando...",
+            errorTitle: "Error de Procesamiento",
+            processing: "Estamos trabajando en ello...",
             configuration: "Configuración",
             material: "Material Seleccionado",
             instructions: "Instrucciones Personalizadas",
@@ -360,8 +360,8 @@ export const TRANSLATIONS: Record<Language, any> = {
             viewMode: "Modo de Vista",
             perspective: "Perspectiva (Original)",
             topDown: "Vista Superior (Plano)",
-            isometric: "Isométrico 3D (Corte)",
-            probe: "Muestra 3D",
+            isometric: "Vista Isométrica",
+            probe: "Muestra de Material",
             lighting: "Condiciones de Luz"
         },
         quote: {

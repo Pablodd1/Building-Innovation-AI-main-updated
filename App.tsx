@@ -1496,8 +1496,9 @@ const App: React.FC = () => {
                                 API Configuration
                             </h3>
                             <p className="text-sm text-slate-400 mb-4">
-                                Enter your Google GenAI API Key to enable Image
-                                and Video generation.
+                                {lang === "es" 
+                                    ? "Ingrese su clave de API para habilitar la visualización de materiales." 
+                                    : "Enter your API Key to enable material visualization."}
                             </p>
                             <input
                                 type="password"
@@ -1672,7 +1673,7 @@ const App: React.FC = () => {
                                         />
                                     </svg>
                                     <span className="text-blue-400 font-bold uppercase tracking-wider">
-                                        AI Analysis
+                                        {lang === "es" ? "Análisis del Espacio" : "Room Analysis"}
                                     </span>
                                 </div>
                                 {generationState.isAnalyzing ? (
@@ -2092,7 +2093,7 @@ const App: React.FC = () => {
                             <div className="flex flex-col items-center">
                                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
                                 <p className="text-blue-400 text-xs font-mono animate-pulse">
-                                    Generating 3D Sample...
+                                    {lang === "es" ? "Estamos trabajando en ello..." : "We are working on it..."}
                                 </p>
                             </div>
                         ) : generationState.materialProbe ? (
