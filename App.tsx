@@ -309,7 +309,7 @@ const App: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleCSVUploadForCollection = (e: React.ChangeEvent<HTMLInputElement>, collectionType: "Interior" | "Exterior") => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             const reader = new FileReader();
@@ -389,8 +389,6 @@ const App: React.FC = () => {
                     // Skip completely empty rows
                     if (cols.every(c => !c || c.trim() === "")) continue;
 
-                    const usage = getCol(13).toLowerCase();
-                    const validUsage = usage.includes("exterior") ? "Exterior" : "Interior";
                     const name = getCol(2) || "Imported Material";
                     const category = getCol(3) || "General";
                     const subcategory = getCol(4) || "";
@@ -414,7 +412,7 @@ const App: React.FC = () => {
                         },
                         description: getCol(11) || "",
                         imageUrl: getCol(12) || "",
-                        usage: validUsage as "Interior" | "Exterior",
+                        usage: collectionType,
                         promptModifier: getCol(14) || `${name}, ${category} ${subcategory}`,
                     };
                     newMats.push(newMat);
@@ -946,7 +944,7 @@ const App: React.FC = () => {
                                     <input
                                         type="file"
                                         accept=".csv"
-                                        onChange={handleCSVUpload}
+                                        onChange={(e) => handleCSVUploadForCollection(e, "Interior")}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                     />
                                     <Button
@@ -967,7 +965,35 @@ const App: React.FC = () => {
                                             </svg>
                                         }
                                     >
-                                        {t.admin.importCSV}
+                                        Import Interior
+                                    </Button>
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type="file"
+                                        accept=".csv"
+                                        onChange={(e) => handleCSVUploadForCollection(e, "Exterior")}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                    <Button
+                                        variant="secondary"
+                                        icon={
+                                            <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                                                />
+                                            </svg>
+                                        }
+                                    >
+                                        Import Exterior
                                     </Button>
                                 </div>
                             </div>
