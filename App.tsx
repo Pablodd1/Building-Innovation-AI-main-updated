@@ -211,11 +211,15 @@ const App: React.FC = () => {
         if (!url) return url;
         const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^\/]+)/);
         if (driveMatch && driveMatch[1]) {
-            return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+            return `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
         }
         const openMatch = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
         if (openMatch && openMatch[1]) {
-            return `https://drive.google.com/uc?export=view&id=${openMatch[1]}`;
+            return `https://lh3.googleusercontent.com/d/${openMatch[1]}`;
+        }
+        const ucMatch = url.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);
+        if (ucMatch && ucMatch[1]) {
+            return `https://lh3.googleusercontent.com/d/${ucMatch[1]}`;
         }
         return url;
     };
