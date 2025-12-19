@@ -20,6 +20,47 @@ const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// Initialize database tables
+async function initDatabase() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        id SERIAL PRIMARY KEY,
+        setting_key VARCHAR(255) UNIQUE NOT NULL,
+        setting_value TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS materials (
+        id SERIAL PRIMARY KEY,
+        ref_code VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100),
+        subcategory VARCHAR(100),
+        price DECIMAL(10,2) DEFAULT 0,
+        unit VARCHAR(50) DEFAULT 'Piece',
+        items_per_box INTEGER DEFAULT 1,
+        width_cm DECIMAL(10,2) DEFAULT 0,
+        length_cm DECIMAL(10,2) DEFAULT 0,
+        thickness_m DECIMAL(10,4) DEFAULT 0,
+        description TEXT,
+        image_url TEXT,
+        usage VARCHAR(50) DEFAULT 'Interior',
+        prompt_modifier TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    console.log('Database tables initialized');
+  } catch (error) {
+    console.error('Error initializing database:', error);
+  }
+}
+
+initDatabase();
+
 app.get('/api/settings/:key', async (req, res) => {
   try {
     const { key } = req.params;
