@@ -106,6 +106,7 @@ const App: React.FC = () => {
     const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(new Set());
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+    const [adminCollectionFilter, setAdminCollectionFilter] = useState<"All" | "Interior" | "Exterior">("All");
 
     const t = TRANSLATIONS[lang];
 
@@ -989,9 +990,31 @@ const App: React.FC = () => {
 
                 {adminTab === "MATERIALS" && (
                     <div className="space-y-6 animate-fadeIn">
+                        {/* Collection Filter */}
+                        <div className="flex gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700">
+                            <button
+                                onClick={() => { setAdminCollectionFilter("All"); setCurrentPage(1); setSelectedMaterialIds(new Set()); }}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "All" ? "bg-blue-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                            >
+                                {lang === "es" ? "Todos" : "All"} ({materials.length})
+                            </button>
+                            <button
+                                onClick={() => { setAdminCollectionFilter("Interior"); setCurrentPage(1); setSelectedMaterialIds(new Set()); }}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Interior" ? "bg-green-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                            >
+                                Interior ({materials.filter(m => m.usage === "Interior").length})
+                            </button>
+                            <button
+                                onClick={() => { setAdminCollectionFilter("Exterior"); setCurrentPage(1); setSelectedMaterialIds(new Set()); }}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Exterior" ? "bg-orange-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                            >
+                                Exterior ({materials.filter(m => m.usage === "Exterior").length})
+                            </button>
+                        </div>
+
                         {/* Toolbar */}
                         <div className="flex flex-col md:flex-row justify-between gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700">
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                                 <Button
                                     onClick={handleDownloadCSV}
                                     variant="secondary"
@@ -1408,9 +1431,12 @@ const App: React.FC = () => {
 
                         {/* Data Table */}
                         {(() => {
-                            const totalPages = Math.ceil(materials.length / itemsPerPage);
+                            const filteredMaterials = adminCollectionFilter === "All" 
+                                ? materials 
+                                : materials.filter(m => m.usage === adminCollectionFilter);
+                            const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage);
                             const startIndex = (currentPage - 1) * itemsPerPage;
-                            const paginatedMaterials = materials.slice(startIndex, startIndex + itemsPerPage);
+                            const paginatedMaterials = filteredMaterials.slice(startIndex, startIndex + itemsPerPage);
                             const allPageIds = paginatedMaterials.map(m => m.id);
                             const allSelected = allPageIds.length > 0 && allPageIds.every(id => selectedMaterialIds.has(id));
                             
@@ -1532,9 +1558,13 @@ const App: React.FC = () => {
                                                 ))}
                                             </tbody>
                                         </table>
-                                        {materials.length === 0 && (
+                                        {filteredMaterials.length === 0 && (
                                             <div className="p-8 text-center text-slate-500">
-                                                {t.admin.noProducts}
+                                                {adminCollectionFilter === "All" 
+                                                    ? t.admin.noProducts 
+                                                    : (lang === "es" 
+                                                        ? `No hay productos en ${adminCollectionFilter}` 
+                                                        : `No products in ${adminCollectionFilter}`)}
                                             </div>
                                         )}
                                     </div>
@@ -1544,8 +1574,8 @@ const App: React.FC = () => {
                                         <div className="flex items-center justify-between mt-4 px-4">
                                             <div className="text-sm text-slate-400">
                                                 {lang === "es" 
-                                                    ? `Mostrando ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, materials.length)} de ${materials.length}` 
-                                                    : `Showing ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, materials.length)} of ${materials.length}`}
+                                                    ? `Mostrando ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredMaterials.length)} de ${filteredMaterials.length}` 
+                                                    : `Showing ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredMaterials.length)} of ${filteredMaterials.length}`}
                                             </div>
                                             <div className="flex gap-2">
                                                 <button
