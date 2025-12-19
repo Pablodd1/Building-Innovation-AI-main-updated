@@ -61,6 +61,21 @@ async function initDatabase() {
 
 initDatabase();
 
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT COUNT(*) as count FROM materials');
+    res.json({ 
+      status: 'ok', 
+      database: 'connected',
+      materialsCount: parseInt(result.rows[0].count)
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({ status: 'error', database: 'disconnected', error: String(error) });
+  }
+});
+
 app.get('/api/settings/:key', async (req, res) => {
   try {
     const { key } = req.params;

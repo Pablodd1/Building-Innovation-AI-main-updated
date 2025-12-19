@@ -113,8 +113,13 @@ const App: React.FC = () => {
     const loadMaterialsFromDB = async () => {
         try {
             const res = await fetch("/api/materials");
+            if (!res.ok) {
+                console.error("Failed to load materials:", res.status, res.statusText);
+                return;
+            }
             const dbMaterials = await res.json();
-            if (dbMaterials && dbMaterials.length > 0) {
+            console.log("Loaded materials from DB:", dbMaterials?.length || 0);
+            if (dbMaterials && Array.isArray(dbMaterials) && dbMaterials.length > 0) {
                 const converted = dbMaterials.map((m: any) => ({
                     id: String(m.id),
                     refCode: m.ref_code || "",
@@ -246,22 +251,33 @@ const App: React.FC = () => {
         };
 
         try {
+            let response;
             if (isEditing && editForm.id) {
-                await fetch(`/api/materials/${editForm.id}`, {
+                response = await fetch(`/api/materials/${editForm.id}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(dbMaterial),
                 });
             } else {
-                await fetch("/api/materials", {
+                response = await fetch("/api/materials", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(dbMaterial),
                 });
             }
-            loadMaterialsFromDB();
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error("Save failed:", response.status, errorData);
+                alert(lang === "es" ? "Error al guardar el producto" : "Error saving product");
+                return;
+            }
+            
+            await loadMaterialsFromDB();
+            alert(lang === "es" ? "Producto guardado correctamente" : "Product saved successfully");
         } catch (e) {
             console.error("Failed to save material:", e);
+            alert(lang === "es" ? "Error al guardar el producto" : "Error saving product");
         }
 
         setEditForm({});
