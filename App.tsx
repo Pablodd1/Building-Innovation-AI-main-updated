@@ -102,6 +102,11 @@ const App: React.FC = () => {
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
     const [checkoutBody, setCheckoutBody] = useState("");
 
+    // Admin pagination and multi-select state
+    const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(new Set());
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
     const t = TRANSLATIONS[lang];
 
     const loadMaterialsFromDB = async () => {
@@ -169,6 +174,13 @@ const App: React.FC = () => {
                 JSON.stringify(contractors),
             );
     }, [contractors]);
+
+    useEffect(() => {
+        const maxPage = Math.max(1, Math.ceil(materials.length / itemsPerPage));
+        if (currentPage > maxPage) {
+            setCurrentPage(maxPage);
+        }
+    }, [materials.length, currentPage, itemsPerPage]);
 
     const updateCartCount = () => {
         try {
@@ -247,6 +259,50 @@ const App: React.FC = () => {
                 console.error("Failed to delete:", e);
             }
         }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedMaterialIds.size === 0) return;
+        const count = selectedMaterialIds.size;
+        const confirmMsg = lang === "es" 
+            ? `¿Eliminar ${count} producto(s) seleccionado(s)?` 
+            : `Delete ${count} selected product(s)?`;
+        if (confirm(confirmMsg)) {
+            try {
+                for (const id of selectedMaterialIds) {
+                    await fetch(`/api/materials/${id}`, { method: "DELETE" });
+                }
+                setSelectedMaterialIds(new Set());
+                loadMaterialsFromDB();
+            } catch (e) {
+                console.error("Failed to delete:", e);
+            }
+        }
+    };
+
+    const toggleSelectMaterial = (id: string) => {
+        setSelectedMaterialIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
+    };
+
+    const toggleSelectAll = (materialIds: string[]) => {
+        const allSelected = materialIds.every(id => selectedMaterialIds.has(id));
+        setSelectedMaterialIds(prev => {
+            const newSet = new Set(prev);
+            if (allSelected) {
+                materialIds.forEach(id => newSet.delete(id));
+            } else {
+                materialIds.forEach(id => newSet.add(id));
+            }
+            return newSet;
+        });
     };
 
     // --- CSV BULK OPERATIONS ---
@@ -998,6 +1054,29 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex gap-2">
+                                {selectedMaterialIds.size > 0 && (
+                                    <Button
+                                        onClick={handleBulkDelete}
+                                        variant="danger"
+                                        icon={
+                                            <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                                />
+                                            </svg>
+                                        }
+                                    >
+                                        {lang === "es" ? `Eliminar (${selectedMaterialIds.size})` : `Delete (${selectedMaterialIds.size})`}
+                                    </Button>
+                                )}
                                 <Button
                                     onClick={() => {
                                         setEditForm({ usage: "Interior" });
@@ -1021,27 +1100,6 @@ const App: React.FC = () => {
                                     }
                                 >
                                     {t.admin.addProduct}
-                                </Button>
-                                <Button
-                                    onClick={resetMaterials}
-                                    variant="danger"
-                                    icon={
-                                        <svg
-                                            className="w-4 h-4"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                            />
-                                        </svg>
-                                    }
-                                >
-                                    {t.admin.resetDB}
                                 </Button>
                             </div>
                         </div>
@@ -1288,20 +1346,27 @@ const App: React.FC = () => {
                                         />
                                     </div>
 
-                                    <div>
+                                    <div className="md:col-span-2">
                                         <label className="block text-xs uppercase text-slate-500 mb-1">
-                                            {t.admin.imageSource}
+                                            {lang === "es" ? "URL de Imagen" : "Image URL"}
                                         </label>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 items-center">
                                             <input
-                                                type="file"
-                                                onChange={handleFileUpload}
-                                                className="text-xs text-slate-400"
+                                                type="text"
+                                                className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm"
+                                                placeholder="https://example.com/image.jpg"
+                                                value={editForm.imageUrl || ""}
+                                                onChange={(e) =>
+                                                    setEditForm({
+                                                        ...editForm,
+                                                        imageUrl: e.target.value,
+                                                    })
+                                                }
                                             />
                                             {editForm.imageUrl && (
                                                 <img
                                                     src={editForm.imageUrl}
-                                                    className="w-8 h-8 rounded border border-slate-600"
+                                                    className="w-10 h-10 rounded border border-slate-600 object-cover"
                                                 />
                                             )}
                                         </div>
@@ -1325,112 +1390,178 @@ const App: React.FC = () => {
                         )}
 
                         {/* Data Table */}
-                        <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                            <table className="w-full text-left text-sm text-slate-400">
-                                <thead className="bg-slate-900 text-slate-200 uppercase text-xs font-bold">
-                                    <tr>
-                                        <th className="p-4">
-                                            {t.admin.tableImage}
-                                        </th>
-                                        <th className="p-4">
-                                            {t.admin.tableSKU}
-                                        </th>
-                                        <th className="p-4">
-                                            {t.admin.tableName}
-                                        </th>
-                                        <th className="p-4">
-                                            {t.admin.tableDimensions}
-                                        </th>
-                                        <th className="p-4">
-                                            {t.admin.tablePackaging}
-                                        </th>
-                                        <th className="p-4">
-                                            {t.admin.tablePrice}
-                                        </th>
-                                        <th className="p-4 text-right">
-                                            {t.admin.actions}
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-700">
-                                    {materials.map((m) => (
-                                        <tr
-                                            key={m.id}
-                                            className="hover:bg-slate-700/50 transition-colors"
-                                        >
-                                            <td className="p-4">
-                                                <img
-                                                    src={m.imageUrl}
-                                                    alt={m.name}
-                                                    className="w-12 h-12 rounded object-cover border border-slate-600 bg-slate-900"
-                                                />
-                                            </td>
-                                            <td className="p-4 font-mono text-blue-400">
-                                                {m.refCode}
-                                            </td>
-                                            <td className="p-4 font-medium text-white">
-                                                {m.name}
-                                                <div className="text-xs text-slate-500">
-                                                    {m.category}
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="text-white">
-                                                    {m.dimensions.width} x{" "}
-                                                    {m.dimensions.length} cm
-                                                </div>
-                                                <div className="text-xs text-slate-500">
-                                                    {m.dimensions.thickness} mm
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                {m.pricing.itemsPerBox &&
-                                                m.pricing.itemsPerBox > 1 ? (
-                                                    <span className="text-green-400">
-                                                        {m.pricing.itemsPerBox}{" "}
-                                                        items/box
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-500">
-                                                        Single Unit
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="p-4 text-white">
-                                                ${m.pricing.pricePerUnit} /{" "}
-                                                {m.pricing.unitLabel}
-                                            </td>
-                                            <td className="p-4 text-right space-x-2">
+                        {(() => {
+                            const totalPages = Math.ceil(materials.length / itemsPerPage);
+                            const startIndex = (currentPage - 1) * itemsPerPage;
+                            const paginatedMaterials = materials.slice(startIndex, startIndex + itemsPerPage);
+                            const allPageIds = paginatedMaterials.map(m => m.id);
+                            const allSelected = allPageIds.length > 0 && allPageIds.every(id => selectedMaterialIds.has(id));
+                            
+                            return (
+                                <>
+                                    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                                        <table className="w-full text-left text-sm text-slate-400">
+                                            <thead className="bg-slate-900 text-slate-200 uppercase text-xs font-bold">
+                                                <tr>
+                                                    <th className="p-4 w-12">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={allSelected}
+                                                            onChange={() => toggleSelectAll(allPageIds)}
+                                                            className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+                                                        />
+                                                    </th>
+                                                    <th className="p-4">
+                                                        {t.admin.tableImage}
+                                                    </th>
+                                                    <th className="p-4">
+                                                        {t.admin.tableSKU}
+                                                    </th>
+                                                    <th className="p-4">
+                                                        {t.admin.tableName}
+                                                    </th>
+                                                    <th className="p-4">
+                                                        {t.admin.tableDimensions}
+                                                    </th>
+                                                    <th className="p-4">
+                                                        {t.admin.tablePackaging}
+                                                    </th>
+                                                    <th className="p-4">
+                                                        {t.admin.tablePrice}
+                                                    </th>
+                                                    <th className="p-4 text-right">
+                                                        {t.admin.actions}
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-700">
+                                                {paginatedMaterials.map((m) => (
+                                                    <tr
+                                                        key={m.id}
+                                                        className={`hover:bg-slate-700/50 transition-colors ${selectedMaterialIds.has(m.id) ? 'bg-blue-900/20' : ''}`}
+                                                    >
+                                                        <td className="p-4">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedMaterialIds.has(m.id)}
+                                                                onChange={() => toggleSelectMaterial(m.id)}
+                                                                className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+                                                            />
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <img
+                                                                src={m.imageUrl}
+                                                                alt={m.name}
+                                                                className="w-12 h-12 rounded object-cover border border-slate-600 bg-slate-900"
+                                                            />
+                                                        </td>
+                                                        <td className="p-4 font-mono text-blue-400">
+                                                            {m.refCode}
+                                                        </td>
+                                                        <td className="p-4 font-medium text-white">
+                                                            {m.name}
+                                                            <div className="text-xs text-slate-500">
+                                                                {m.category}
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <div className="text-white">
+                                                                {m.dimensions.width} x{" "}
+                                                                {m.dimensions.length} cm
+                                                            </div>
+                                                            <div className="text-xs text-slate-500">
+                                                                {m.dimensions.thickness} mm
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-4">
+                                                            {m.pricing.itemsPerBox &&
+                                                            m.pricing.itemsPerBox > 1 ? (
+                                                                <span className="text-green-400">
+                                                                    {m.pricing.itemsPerBox}{" "}
+                                                                    items/box
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-500">
+                                                                    Single Unit
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-4 text-white">
+                                                            ${m.pricing.pricePerUnit} /{" "}
+                                                            {m.pricing.unitLabel}
+                                                        </td>
+                                                        <td className="p-4 text-right space-x-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditForm(m);
+                                                                    setIsEditing(true);
+                                                                }}
+                                                                className="text-blue-400 hover:text-white px-2 py-1 hover:bg-slate-600 rounded"
+                                                            >
+                                                                {t.admin.edit}
+                                                            </button>
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleDeleteMaterial(
+                                                                        m.id,
+                                                                    )
+                                                                }
+                                                                className="text-red-400 hover:text-white px-2 py-1 hover:bg-red-900/50 rounded"
+                                                            >
+                                                                {t.admin.delete}
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        {materials.length === 0 && (
+                                            <div className="p-8 text-center text-slate-500">
+                                                {t.admin.noProducts}
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Pagination Controls */}
+                                    {totalPages > 1 && (
+                                        <div className="flex items-center justify-between mt-4 px-4">
+                                            <div className="text-sm text-slate-400">
+                                                {lang === "es" 
+                                                    ? `Mostrando ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, materials.length)} de ${materials.length}` 
+                                                    : `Showing ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, materials.length)} of ${materials.length}`}
+                                            </div>
+                                            <div className="flex gap-2">
                                                 <button
-                                                    onClick={() => {
-                                                        setEditForm(m);
-                                                        setIsEditing(true);
-                                                    }}
-                                                    className="text-blue-400 hover:text-white px-2 py-1 hover:bg-slate-600 rounded"
+                                                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                                    disabled={currentPage === 1}
+                                                    className="px-3 py-1 rounded bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
                                                 >
-                                                    {t.admin.edit}
+                                                    {lang === "es" ? "Anterior" : "Previous"}
                                                 </button>
+                                                <div className="flex items-center gap-1">
+                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                                        <button
+                                                            key={page}
+                                                            onClick={() => setCurrentPage(page)}
+                                                            className={`w-8 h-8 rounded ${currentPage === page ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                                        >
+                                                            {page}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                                 <button
-                                                    onClick={() =>
-                                                        handleDeleteMaterial(
-                                                            m.id,
-                                                        )
-                                                    }
-                                                    className="text-red-400 hover:text-white px-2 py-1 hover:bg-red-900/50 rounded"
+                                                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                                                    disabled={currentPage === totalPages}
+                                                    className="px-3 py-1 rounded bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
                                                 >
-                                                    {t.admin.delete}
+                                                    {lang === "es" ? "Siguiente" : "Next"}
                                                 </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            {materials.length === 0 && (
-                                <div className="p-8 text-center text-slate-500">
-                                    {t.admin.noProducts}
-                                </div>
-                            )}
-                        </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()}
                     </div>
                 )}
 
