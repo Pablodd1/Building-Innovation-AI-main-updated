@@ -1567,7 +1567,7 @@ const App: React.FC = () => {
                                                             )}
                                                         </td>
                                                         <td className="p-4 text-white">
-                                                            ${m.pricing.pricePerUnit} /{" "}
+                                                            ${Math.round(m.pricing.pricePerUnit)} /{" "}
                                                             {m.pricing.unitLabel}
                                                         </td>
                                                         <td className="p-4 text-right space-x-2">
@@ -2169,7 +2169,7 @@ const App: React.FC = () => {
                                     </div>
                                     <div className="text-right">
                                         <div className="font-bold text-green-400">
-                                            ${item.totalCost.toFixed(2)}
+                                            ${Math.round(item.totalCost)}
                                         </div>
                                         <button
                                             onClick={() => {
@@ -2196,7 +2196,7 @@ const App: React.FC = () => {
                                     {t.cart.total}
                                 </span>
                                 <span className="text-3xl font-black text-white">
-                                    ${total.toFixed(2)}
+                                    ${Math.round(total)}
                                 </span>
                             </div>
 
@@ -2213,11 +2213,11 @@ const App: React.FC = () => {
                                         const body = cartItems
                                             .map(
                                                 (i) =>
-                                                    `- ${i.material.name}: ${i.quantity} units ($${i.totalCost})`,
+                                                    `- ${i.material.name}: ${i.quantity} units ($${Math.round(i.totalCost)})`,
                                             )
                                             .join("\n");
                                         setCheckoutBody(
-                                            `${lang === "es" ? "Orden de Compra" : "Order Request"}:\n\n${body}\n\nTotal: $${total}`,
+                                            `${lang === "es" ? "Orden de Compra" : "Order Request"}:\n\n${body}\n\nTotal: $${Math.round(total)}`,
                                         );
                                         setShowCheckoutModal(true);
                                     }}

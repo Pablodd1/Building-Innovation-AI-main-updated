@@ -172,7 +172,7 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
   const handleSendEmail = () => {
       const subject = `${t.quote.emailSubject} ${material.name} (Ref: ${material.refCode})`;
-      const body = `${t.quote.emailBody}:\n\n${t.quote.material}: ${material.name}\n${t.quote.quantity}: ${quantity} ${material.pricing.unitLabel}(s)\n${t.quote.dimensions}: ${width}m x ${height}m\n\n${t.quote.cost}: $${totalCost.toFixed(2)}`;
+      const body = `${t.quote.emailBody}:\n\n${t.quote.material}: ${material.name}\n${t.quote.quantity}: ${quantity} ${material.pricing.unitLabel}(s)\n${t.quote.dimensions}: ${width}m x ${height}m\n\n${t.quote.cost}: $${Math.round(totalCost)}`;
       window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
   };
 
@@ -329,7 +329,7 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
                 <div className="mt-6 pt-6 border-t-2 border-slate-800 print:border-black flex justify-between items-center bg-slate-900/50 print:bg-slate-100 -mx-6 -mb-6 p-6 rounded-b-lg">
                     <span className="font-bold text-slate-300 print:text-black uppercase tracking-widest">{t.quote.cost}</span>
-                    <span className="text-3xl font-black text-green-500 print:text-black">${totalCost.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                    <span className="text-3xl font-black text-green-500 print:text-black">${Math.round(totalCost)}</span>
                 </div>
             </div>
         </section>
