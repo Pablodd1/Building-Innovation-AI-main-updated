@@ -207,6 +207,19 @@ const App: React.FC = () => {
 
     // --- Admin Functions ---
 
+    const convertGoogleDriveUrl = (url: string): string => {
+        if (!url) return url;
+        const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^\/]+)/);
+        if (driveMatch && driveMatch[1]) {
+            return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+        }
+        const openMatch = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+        if (openMatch && openMatch[1]) {
+            return `https://drive.google.com/uc?export=view&id=${openMatch[1]}`;
+        }
+        return url;
+    };
+
     const handleSaveMaterial = async () => {
         if (!editForm.name || !editForm.refCode) return;
 
@@ -222,7 +235,7 @@ const App: React.FC = () => {
             length_cm: editForm.dimensions?.length || 100,
             thickness_m: editForm.dimensions?.thickness || 5,
             description: editForm.description || "",
-            image_url: editForm.imageUrl || "",
+            image_url: convertGoogleDriveUrl(editForm.imageUrl || ""),
             usage: editForm.usage || "Interior",
             prompt_modifier: editForm.promptModifier || "",
         };
@@ -467,7 +480,7 @@ const App: React.FC = () => {
                             thickness: parseNumber(getCol(10)) || 5,
                         },
                         description: getCol(11) || "",
-                        imageUrl: getCol(12) || "",
+                        imageUrl: convertGoogleDriveUrl(getCol(12)) || "",
                         usage: collectionType,
                         promptModifier: getCol(14) || `${name}, ${category} ${subcategory}`,
                     };
