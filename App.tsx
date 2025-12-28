@@ -1257,6 +1257,24 @@ const App: React.FC = () => {
                                             }
                                         />
                                     </div>
+                                    <div>
+                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                            {lang === "es" ? "Colección" : "Collection"}
+                                        </label>
+                                        <select
+                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            value={editForm.usage || "Interior"}
+                                            onChange={(e) =>
+                                                setEditForm({
+                                                    ...editForm,
+                                                    usage: e.target.value as "Interior" | "Exterior",
+                                                })
+                                            }
+                                        >
+                                            <option value="Interior">Interior</option>
+                                            <option value="Exterior">Exterior</option>
+                                        </select>
+                                    </div>
 
                                     {/* Row 3: Dimensions */}
                                     <div>
