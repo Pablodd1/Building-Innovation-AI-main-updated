@@ -25,26 +25,92 @@ const getErrorMessage = (error: any): string => {
 const fetchImageAsBase64 = async (
     url: string,
 ): Promise<{ data: string; mimeType: string }> => {
+    if (!url || url.trim() === "") {
+        throw new Error("No image URL provided");
+    }
+    
+    console.log("Fetching material image from:", url);
+    
     try {
-        const response = await fetch(url);
+        // Try direct fetch first
+        const response = await fetch(url, { mode: 'cors' });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const blob = await response.blob();
+        console.log("Successfully fetched image, size:", blob.size, "type:", blob.type);
+        
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const result = reader.result as string;
+                console.log("Image converted to base64, length:", result.length);
                 resolve({
                     data: cleanBase64(result),
-                    mimeType: getMimeType(result),
+                    mimeType: blob.type || getMimeType(result),
                 });
             };
             reader.onerror = reject;
             reader.readAsDataURL(blob);
         });
     } catch (error) {
-        console.error("Failed to fetch material image for VTO:", error);
-        throw new Error(
-            "Material image inaccessible. Ensure CORS is enabled on the source.",
-        );
+        console.error("Direct fetch failed, trying server proxy:", error);
+        
+        // Try using the server-side proxy
+        try {
+            const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`;
+            const proxyResponse = await fetch(proxyUrl);
+            if (!proxyResponse.ok) {
+                throw new Error(`Proxy HTTP ${proxyResponse.status}`);
+            }
+            const blob = await proxyResponse.blob();
+            console.log("Successfully fetched via proxy, size:", blob.size);
+            
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const result = reader.result as string;
+                    console.log("Proxy image converted to base64, length:", result.length);
+                    resolve({
+                        data: cleanBase64(result),
+                        mimeType: blob.type || "image/jpeg",
+                    });
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (proxyError) {
+            console.error("Proxy fetch also failed:", proxyError);
+            
+            // Final fallback: Try using an Image element
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    const ctx = canvas.getContext("2d");
+                    if (!ctx) {
+                        reject(new Error("Canvas context unavailable"));
+                        return;
+                    }
+                    ctx.drawImage(img, 0, 0);
+                    try {
+                        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+                        console.log("Image loaded via canvas fallback, length:", dataUrl.length);
+                        resolve({
+                            data: cleanBase64(dataUrl),
+                            mimeType: "image/jpeg",
+                        });
+                    } catch (e) {
+                        reject(new Error("Canvas export blocked by CORS"));
+                    }
+                };
+                img.onerror = () => reject(new Error("Image load failed - all methods exhausted"));
+                img.src = url;
+            });
+        }
     }
 };
 

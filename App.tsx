@@ -1625,7 +1625,7 @@ const App: React.FC = () => {
                                             />
                                             {editForm.imageUrl && (
                                                 <img
-                                                    src={editForm.imageUrl}
+                                                    src={editForm.imageUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"}
                                                     className="w-10 h-10 rounded border border-slate-600 object-cover"
                                                 />
                                             )}
@@ -1748,7 +1748,7 @@ const App: React.FC = () => {
                                                         </td>
                                                         <td className="p-4">
                                                             <img
-                                                                src={m.imageUrl}
+                                                                src={m.imageUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"}
                                                                 alt={m.name}
                                                                 className="w-12 h-12 rounded object-cover border border-slate-600 bg-slate-900"
                                                             />

@@ -117,6 +117,31 @@ async function initDatabase() {
 
 initDatabase();
 
+// Image proxy endpoint for CORS-blocked images
+app.get("/api/image-proxy", async (req, res) => {
+  const imageUrl = req.query.url as string;
+  if (!imageUrl) {
+    return res.status(400).json({ error: "URL parameter required" });
+  }
+  
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "Failed to fetch image" });
+    }
+    
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const buffer = await response.arrayBuffer();
+    
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error("Image proxy error:", error);
+    res.status(500).json({ error: "Failed to proxy image" });
+  }
+});
+
 // Health check endpoint
 app.get("/api/health", async (req, res) => {
   if (useMock) {
