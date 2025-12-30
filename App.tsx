@@ -8,10 +8,7 @@ import {
     Language,
     RenderOptions,
 } from "./types";
-import {
-    CONTRACTORS as INITIAL_CONTRACTORS,
-    TRANSLATIONS,
-} from "./constants";
+import { CONTRACTORS as INITIAL_CONTRACTORS, TRANSLATIONS } from "./constants";
 import { Button } from "./components/Button";
 import { CameraCapture } from "./components/CameraCapture";
 import { ImageComparator } from "./components/ImageComparator";
@@ -55,6 +52,9 @@ const App: React.FC = () => {
     const [contractors, setContractors] = useState<Contractor[]>([]);
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
         null,
+    );
+    const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">(
+        "USD",
     );
 
     // Search State
@@ -103,10 +103,14 @@ const App: React.FC = () => {
     const [checkoutBody, setCheckoutBody] = useState("");
 
     // Admin pagination and multi-select state
-    const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(new Set());
+    const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(
+        new Set(),
+    );
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
-    const [adminCollectionFilter, setAdminCollectionFilter] = useState<"All" | "Interior" | "Exterior">("All");
+    const [adminCollectionFilter, setAdminCollectionFilter] = useState<
+        "All" | "Interior" | "Exterior"
+    >("All");
 
     const t = TRANSLATIONS[lang];
 
@@ -114,12 +118,20 @@ const App: React.FC = () => {
         try {
             const res = await fetch("/api/materials");
             if (!res.ok) {
-                console.error("Failed to load materials:", res.status, res.statusText);
+                console.error(
+                    "Failed to load materials:",
+                    res.status,
+                    res.statusText,
+                );
                 return;
             }
             const dbMaterials = await res.json();
             console.log("Loaded materials from DB:", dbMaterials?.length || 0);
-            if (dbMaterials && Array.isArray(dbMaterials) && dbMaterials.length > 0) {
+            if (
+                dbMaterials &&
+                Array.isArray(dbMaterials) &&
+                dbMaterials.length > 0
+            ) {
                 const converted = dbMaterials.map((m: any) => ({
                     id: String(m.id),
                     refCode: m.ref_code || "",
@@ -137,7 +149,7 @@ const App: React.FC = () => {
                     },
                     pricing: {
                         pricePerUnit: parseFloat(m.price) || 0,
-                        currency: "MXN",
+                        currency: m.currency || "USD",
                         unitLabel: m.unit || "Piece",
                         itemsPerBox: m.items_per_box || 1,
                     },
@@ -239,7 +251,8 @@ const App: React.FC = () => {
             category: editForm.category || "General",
             subcategory: editForm.subcategory || "",
             price: editForm.pricing?.pricePerUnit || 0,
-            unit: editForm.pricing?.unitLabel || "Piece",
+            currency: editForm.pricing?.currency || "USD",
+            unitLabel: editForm.pricing?.unitLabel || "Piece",
             items_per_box: editForm.pricing?.itemsPerBox || 1,
             width_cm: editForm.dimensions?.width || 100,
             length_cm: editForm.dimensions?.length || 100,
@@ -265,19 +278,31 @@ const App: React.FC = () => {
                     body: JSON.stringify(dbMaterial),
                 });
             }
-            
+
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 console.error("Save failed:", response.status, errorData);
-                alert(lang === "es" ? "Error al guardar el producto" : "Error saving product");
+                alert(
+                    lang === "es"
+                        ? "Error al guardar el producto"
+                        : "Error saving product",
+                );
                 return;
             }
-            
+
             await loadMaterialsFromDB();
-            alert(lang === "es" ? "Producto guardado correctamente" : "Product saved successfully");
+            alert(
+                lang === "es"
+                    ? "Producto guardado correctamente"
+                    : "Product saved successfully",
+            );
         } catch (e) {
             console.error("Failed to save material:", e);
-            alert(lang === "es" ? "Error al guardar el producto" : "Error saving product");
+            alert(
+                lang === "es"
+                    ? "Error al guardar el producto"
+                    : "Error saving product",
+            );
         }
 
         setEditForm({});
@@ -298,9 +323,10 @@ const App: React.FC = () => {
     const handleBulkDelete = async () => {
         if (selectedMaterialIds.size === 0) return;
         const count = selectedMaterialIds.size;
-        const confirmMsg = lang === "es" 
-            ? `¿Eliminar ${count} producto(s) seleccionado(s)?` 
-            : `Delete ${count} selected product(s)?`;
+        const confirmMsg =
+            lang === "es"
+                ? `¿Eliminar ${count} producto(s) seleccionado(s)?`
+                : `Delete ${count} selected product(s)?`;
         if (confirm(confirmMsg)) {
             try {
                 for (const id of selectedMaterialIds) {
@@ -315,7 +341,7 @@ const App: React.FC = () => {
     };
 
     const toggleSelectMaterial = (id: string) => {
-        setSelectedMaterialIds(prev => {
+        setSelectedMaterialIds((prev) => {
             const newSet = new Set(prev);
             if (newSet.has(id)) {
                 newSet.delete(id);
@@ -327,13 +353,15 @@ const App: React.FC = () => {
     };
 
     const toggleSelectAll = (materialIds: string[]) => {
-        const allSelected = materialIds.every(id => selectedMaterialIds.has(id));
-        setSelectedMaterialIds(prev => {
+        const allSelected = materialIds.every((id) =>
+            selectedMaterialIds.has(id),
+        );
+        setSelectedMaterialIds((prev) => {
             const newSet = new Set(prev);
             if (allSelected) {
-                materialIds.forEach(id => newSet.delete(id));
+                materialIds.forEach((id) => newSet.delete(id));
             } else {
-                materialIds.forEach(id => newSet.add(id));
+                materialIds.forEach((id) => newSet.add(id));
             }
             return newSet;
         });
@@ -350,6 +378,7 @@ const App: React.FC = () => {
             "Category",
             "Subcategory",
             "Price",
+            "Currency",
             "Unit",
             "ItemsPerBox",
             "Width(cm)",
@@ -365,19 +394,20 @@ const App: React.FC = () => {
         const rows = materials.map((m) => [
             m.id,
             m.refCode,
-            `"${m.name.replace(/"/g, '""')}"`,
+            `"${(m.name || "").replace(/"/g, '""')}"`,
             m.category,
             m.subcategory || "",
             m.pricing.pricePerUnit,
+            m.pricing.currency || "USD",
             m.pricing.unitLabel,
             m.pricing.itemsPerBox || 1,
             m.dimensions.width,
             m.dimensions.length,
             m.dimensions.thickness,
-            `"${m.description.replace(/"/g, '""')}"`,
+            `"${(m.description || "").replace(/"/g, '""')}"`,
             `"${m.imageUrl}"`,
             m.usage,
-            `"${m.promptModifier.replace(/"/g, '""')}"`,
+            `"${(m.promptModifier || "").replace(/"/g, '""')}"`,
         ]);
 
         // 3. Construct CSV String
@@ -399,7 +429,10 @@ const App: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    const handleCSVUploadForCollection = (e: React.ChangeEvent<HTMLInputElement>, collectionType: "Interior" | "Exterior") => {
+    const handleCSVUploadForCollection = (
+        e: React.ChangeEvent<HTMLInputElement>,
+        collectionType: "Interior" | "Exterior",
+    ) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             const reader = new FileReader();
@@ -457,13 +490,13 @@ const App: React.FC = () => {
                 const parseNumber = (s: string): number => {
                     if (!s) return 0;
                     // Remove currency symbols, spaces, and other non-numeric chars except . and ,
-                    let cleaned = s.replace(/[^0-9.,\-]/g, '').trim();
+                    let cleaned = s.replace(/[^0-9.,\-]/g, "").trim();
                     // Handle European format (comma as decimal): if has comma but no dot, or comma after dot
-                    if (cleaned.includes(',') && !cleaned.includes('.')) {
-                        cleaned = cleaned.replace(',', '.');
-                    } else if (cleaned.includes(',') && cleaned.includes('.')) {
+                    if (cleaned.includes(",") && !cleaned.includes(".")) {
+                        cleaned = cleaned.replace(",", ".");
+                    } else if (cleaned.includes(",") && cleaned.includes(".")) {
                         // Has both - assume comma is thousands separator
-                        cleaned = cleaned.replace(/,/g, '');
+                        cleaned = cleaned.replace(/,/g, "");
                     }
                     const result = parseFloat(cleaned);
                     return isNaN(result) ? 0 : result;
@@ -472,12 +505,13 @@ const App: React.FC = () => {
                 // Skip header (row 0), start at 1
                 for (let i = 1; i < data.length; i++) {
                     const cols = data[i];
-                    
+
                     // Safe column getter - returns empty string if column doesn't exist
-                    const getCol = (index: number) => (cols[index] ? cols[index].trim() : "");
-                    
+                    const getCol = (index: number) =>
+                        cols[index] ? cols[index].trim() : "";
+
                     // Skip completely empty rows
-                    if (cols.every(c => !c || c.trim() === "")) continue;
+                    if (cols.every((c) => !c || c.trim() === "")) continue;
 
                     const name = getCol(2) || "Imported Material";
                     const category = getCol(3) || "General";
@@ -491,19 +525,20 @@ const App: React.FC = () => {
                         subcategory: subcategory,
                         pricing: {
                             pricePerUnit: parseNumber(getCol(5)),
-                            currency: "MXN",
-                            unitLabel: getCol(6) || "Unit",
-                            itemsPerBox: parseNumber(getCol(7)) || 1,
+                            currency: getCol(6) || "USD",
+                            unitLabel: getCol(7) || "Unit",
+                            itemsPerBox: parseNumber(getCol(8)) || 1,
                         },
                         dimensions: {
-                            width: parseNumber(getCol(8)) || 100,
-                            length: parseNumber(getCol(9)) || 100,
-                            thickness: parseNumber(getCol(10)) || 5,
+                            width: parseNumber(getCol(9)) || 100,
+                            length: parseNumber(getCol(10)) || 100,
+                            thickness: parseNumber(getCol(11)) || 5,
                         },
-                        description: getCol(11) || "",
-                        imageUrl: convertGoogleDriveUrl(getCol(12)) || "",
+                        description: getCol(12) || "",
+                        imageUrl: convertGoogleDriveUrl(getCol(13)) || "",
                         usage: collectionType,
-                        promptModifier: getCol(14) || `${name}, ${category} ${subcategory}`,
+                        promptModifier:
+                            getCol(15) || `${name}, ${category} ${subcategory}`,
                     };
                     newMats.push(newMat);
                 }
@@ -593,29 +628,7 @@ const App: React.FC = () => {
     const handleSelectMaterial = async (material: Material) => {
         setSelectedMaterial(material);
         setShowProbeModal(true);
-
-        // Reset probe state and start loading
-        setGenerationState((prev) => ({
-            ...prev,
-            isGenerating: true,
-            error: null,
-            materialProbe: null,
-        }));
-
-        try {
-            const probeImage = await generateMaterialProbe(material);
-            setGenerationState((prev) => ({
-                ...prev,
-                isGenerating: false,
-                materialProbe: probeImage,
-            }));
-        } catch (error: any) {
-            setGenerationState((prev) => ({
-                ...prev,
-                isGenerating: false,
-                error: error.message,
-            }));
-        }
+        // Removed 3D Probe Generation as per user request (too slow/non-functional)
     };
 
     const handleImageCapture = (file: File) => {
@@ -651,6 +664,7 @@ const App: React.FC = () => {
                 selectedMaterial,
                 customPrompt,
                 renderOptions,
+                lang,
             );
 
             const newHistoryItem: HistoryItem = {
@@ -682,28 +696,8 @@ const App: React.FC = () => {
     };
 
     const handleGenerateProbe = async () => {
-        if (!selectedMaterial) return;
+        // Feature disabled or simplified to just opening the modal
         setShowProbeModal(true);
-        setGenerationState((prev) => ({
-            ...prev,
-            isGenerating: true,
-            error: null,
-            materialProbe: null,
-        }));
-        try {
-            const probeImage = await generateMaterialProbe(selectedMaterial);
-            setGenerationState((prev) => ({
-                ...prev,
-                isGenerating: false,
-                materialProbe: probeImage,
-            }));
-        } catch (error: any) {
-            setGenerationState((prev) => ({
-                ...prev,
-                isGenerating: false,
-                error: error.message,
-            }));
-        }
     };
 
     const handleRoomAnalysis = async () => {
@@ -714,7 +708,10 @@ const App: React.FC = () => {
             error: null,
         })); // Use isAnalyzing instead of isGenerating
         try {
-            const analysisText = await generateRoomAnalysis(originalImage);
+            const analysisText = await generateRoomAnalysis(
+                originalImage,
+                lang,
+            );
             setGenerationState((prev) => ({
                 ...prev,
                 isAnalyzing: false,
@@ -843,9 +840,12 @@ const App: React.FC = () => {
 
     const renderLanding = () => (
         <div className="min-h-screen bg-slate-900 p-6 flex flex-col relative">
-            <div 
+            <div
                 className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60"
-                style={{ backgroundImage: "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1765805801/fondo_zxuhfe.png')" }}
+                style={{
+                    backgroundImage:
+                        "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1765805801/fondo_zxuhfe.png')",
+                }}
             />
             <div className="absolute inset-0 bg-gradient-to-b from-slate-900/20 via-slate-900/40 to-slate-900/70" />
             <header className="relative z-10 flex justify-between items-center mb-8 md:mb-12">
@@ -914,7 +914,7 @@ const App: React.FC = () => {
 
             <div className="relative z-10 flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">
                 <h2 className="text-5xl md:text-7xl font-black text-white mb-2 tracking-tighter">
-                    {t.landing.title}{" "}
+                    {t.landing.title}
                     <span className="text-blue-500">{t.landing.materials}</span>
                 </h2>
                 <p className="text-slate-400 text-lg md:text-xl max-w-xl mb-12">
@@ -1006,26 +1006,71 @@ const App: React.FC = () => {
 
                 {adminTab === "MATERIALS" && (
                     <div className="space-y-6 animate-fadeIn">
-                        {/* Collection Filter */}
-                        <div className="flex gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700">
-                            <button
-                                onClick={() => { setAdminCollectionFilter("All"); setCurrentPage(1); setSelectedMaterialIds(new Set()); }}
-                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "All" ? "bg-blue-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
-                            >
-                                {lang === "es" ? "Todos" : "All"} ({materials.length})
-                            </button>
-                            <button
-                                onClick={() => { setAdminCollectionFilter("Interior"); setCurrentPage(1); setSelectedMaterialIds(new Set()); }}
-                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Interior" ? "bg-green-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
-                            >
-                                Interior ({materials.filter(m => m.usage === "Interior").length})
-                            </button>
-                            <button
-                                onClick={() => { setAdminCollectionFilter("Exterior"); setCurrentPage(1); setSelectedMaterialIds(new Set()); }}
-                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Exterior" ? "bg-orange-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
-                            >
-                                Exterior ({materials.filter(m => m.usage === "Exterior").length})
-                            </button>
+                        <div className="flex justify-between items-center bg-slate-800 p-2 rounded-xl border border-slate-700">
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        setAdminCollectionFilter("All");
+                                        setCurrentPage(1);
+                                        setSelectedMaterialIds(new Set());
+                                    }}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "All" ? "bg-blue-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                                >
+                                    {t.admin.all ||
+                                        (lang === "es" ? "Todos" : "All")}{" "}
+                                    ({materials.length})
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setAdminCollectionFilter("Interior");
+                                        setCurrentPage(1);
+                                        setSelectedMaterialIds(new Set());
+                                    }}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Interior" ? "bg-green-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                                >
+                                    {t.admin.interior} (
+                                    {
+                                        materials.filter(
+                                            (m) => m.usage === "Interior",
+                                        ).length
+                                    }
+                                    )
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setAdminCollectionFilter("Exterior");
+                                        setCurrentPage(1);
+                                        setSelectedMaterialIds(new Set());
+                                    }}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Exterior" ? "bg-orange-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                                >
+                                    {t.admin.exterior} (
+                                    {
+                                        materials.filter(
+                                            (m) => m.usage === "Exterior",
+                                        ).length
+                                    }
+                                    )
+                                </button>
+                            </div>
+
+                            <div className="flex gap-2 items-center px-4 border-l border-slate-700">
+                                <span className="text-xs font-bold text-slate-500 uppercase">
+                                    {t.admin.showPricesIn}
+                                </span>
+                                <button
+                                    onClick={() => setDisplayCurrency("USD")}
+                                    className={`px-3 py-1 text-xs font-bold rounded ${displayCurrency === "USD" ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-700"}`}
+                                >
+                                    USD ($)
+                                </button>
+                                <button
+                                    onClick={() => setDisplayCurrency("COP")}
+                                    className={`px-3 py-1 text-xs font-bold rounded ${displayCurrency === "COP" ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-700"}`}
+                                >
+                                    COP (Pesos)
+                                </button>
+                            </div>
                         </div>
 
                         {/* Toolbar */}
@@ -1056,7 +1101,12 @@ const App: React.FC = () => {
                                     <input
                                         type="file"
                                         accept=".csv"
-                                        onChange={(e) => handleCSVUploadForCollection(e, "Interior")}
+                                        onChange={(e) =>
+                                            handleCSVUploadForCollection(
+                                                e,
+                                                "Interior",
+                                            )
+                                        }
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                     />
                                     <Button
@@ -1084,7 +1134,12 @@ const App: React.FC = () => {
                                     <input
                                         type="file"
                                         accept=".csv"
-                                        onChange={(e) => handleCSVUploadForCollection(e, "Exterior")}
+                                        onChange={(e) =>
+                                            handleCSVUploadForCollection(
+                                                e,
+                                                "Exterior",
+                                            )
+                                        }
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                     />
                                     <Button
@@ -1112,24 +1167,37 @@ const App: React.FC = () => {
                             <div className="flex gap-2">
                                 <Button
                                     onClick={() => {
-                                        const filtered = adminCollectionFilter === "All" 
-                                            ? materials 
-                                            : materials.filter(m => m.usage === adminCollectionFilter);
-                                        setSelectedMaterialIds(new Set(filtered.map(m => m.id)));
+                                        const filtered =
+                                            adminCollectionFilter === "All"
+                                                ? materials
+                                                : materials.filter(
+                                                      (m) =>
+                                                          m.usage ===
+                                                          adminCollectionFilter,
+                                                  );
+                                        setSelectedMaterialIds(
+                                            new Set(filtered.map((m) => m.id)),
+                                        );
                                     }}
                                     variant="secondary"
                                 >
-                                    {lang === "es" 
-                                        ? `Seleccionar Todo (${adminCollectionFilter === "All" ? materials.length : materials.filter(m => m.usage === adminCollectionFilter).length})` 
-                                        : `Select All (${adminCollectionFilter === "All" ? materials.length : materials.filter(m => m.usage === adminCollectionFilter).length})`}
+                                    {lang === "es"
+                                        ? `Seleccionar Todo (${adminCollectionFilter === "All" ? materials.length : materials.filter((m) => m.usage === adminCollectionFilter).length})`
+                                        : `Select All (${adminCollectionFilter === "All" ? materials.length : materials.filter((m) => m.usage === adminCollectionFilter).length})`}
                                 </Button>
                                 {selectedMaterialIds.size > 0 && (
                                     <>
                                         <Button
-                                            onClick={() => setSelectedMaterialIds(new Set())}
+                                            onClick={() =>
+                                                setSelectedMaterialIds(
+                                                    new Set(),
+                                                )
+                                            }
                                             variant="secondary"
                                         >
-                                            {lang === "es" ? "Deseleccionar" : "Clear Selection"}
+                                            {lang === "es"
+                                                ? "Deseleccionar"
+                                                : "Clear Selection"}
                                         </Button>
                                         <Button
                                             onClick={handleBulkDelete}
@@ -1150,7 +1218,9 @@ const App: React.FC = () => {
                                                 </svg>
                                             }
                                         >
-                                            {lang === "es" ? `Eliminar (${selectedMaterialIds.size})` : `Delete (${selectedMaterialIds.size})`}
+                                            {lang === "es"
+                                                ? `Eliminar (${selectedMaterialIds.size})`
+                                                : `Delete (${selectedMaterialIds.size})`}
                                         </Button>
                                     </>
                                 )}
@@ -1256,24 +1326,6 @@ const App: React.FC = () => {
                                                 })
                                             }
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
-                                            {lang === "es" ? "Colección" : "Collection"}
-                                        </label>
-                                        <select
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
-                                            value={editForm.usage || "Interior"}
-                                            onChange={(e) =>
-                                                setEditForm({
-                                                    ...editForm,
-                                                    usage: e.target.value as "Interior" | "Exterior",
-                                                })
-                                            }
-                                        >
-                                            <option value="Interior">Interior</option>
-                                            <option value="Exterior">Exterior</option>
-                                        </select>
                                     </div>
 
                                     {/* Row 3: Dimensions */}
@@ -1441,9 +1493,121 @@ const App: React.FC = () => {
                                         />
                                     </div>
 
+                                    <div className="md:col-span-3">
+                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                            {t.admin.detailedDesc}
+                                        </label>
+                                        <textarea
+                                            rows={4}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm"
+                                            placeholder={
+                                                t.admin.texturePlaceholder
+                                            }
+                                            value={editForm.description || ""}
+                                            onChange={(e) =>
+                                                setEditForm({
+                                                    ...editForm,
+                                                    description: e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                            {t.admin.usage}
+                                        </label>
+                                        <div className="flex gap-4 p-2 bg-slate-900 border border-slate-700 rounded">
+                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                                <input
+                                                    type="radio"
+                                                    name="usage"
+                                                    checked={
+                                                        editForm.usage ===
+                                                        "Interior"
+                                                    }
+                                                    onChange={() =>
+                                                        setEditForm({
+                                                            ...editForm,
+                                                            usage: "Interior",
+                                                        })
+                                                    }
+                                                />
+                                                {t.admin.interior}
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                                <input
+                                                    type="radio"
+                                                    name="usage"
+                                                    checked={
+                                                        editForm.usage ===
+                                                        "Exterior"
+                                                    }
+                                                    onChange={() =>
+                                                        setEditForm({
+                                                            ...editForm,
+                                                            usage: "Exterior",
+                                                        })
+                                                    }
+                                                />
+                                                {t.admin.exterior}
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                            {t.admin.currency}
+                                        </label>
+                                        <div className="flex gap-4 p-2 bg-slate-900 border border-slate-700 rounded">
+                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                                <input
+                                                    type="radio"
+                                                    name="currency"
+                                                    checked={
+                                                        editForm.pricing
+                                                            ?.currency === "USD"
+                                                    }
+                                                    onChange={() =>
+                                                        setEditForm({
+                                                            ...editForm,
+                                                            pricing: {
+                                                                ...editForm.pricing!,
+                                                                currency: "USD",
+                                                            },
+                                                        })
+                                                    }
+                                                />
+                                                USD
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                                <input
+                                                    type="radio"
+                                                    name="currency"
+                                                    checked={
+                                                        editForm.pricing
+                                                            ?.currency === "COP"
+                                                    }
+                                                    onChange={() =>
+                                                        setEditForm({
+                                                            ...editForm,
+                                                            pricing: {
+                                                                ...editForm.pricing!,
+                                                                currency: "COP",
+                                                            },
+                                                        })
+                                                    }
+                                                />
+                                                COP (Pesos)
+                                            </label>
+                                        </div>
+                                    </div>
+
                                     <div className="md:col-span-2">
                                         <label className="block text-xs uppercase text-slate-500 mb-1">
-                                            {lang === "es" ? "URL de Imagen" : "Image URL"}
+                                            {lang === "es"
+                                                ? "URL de Imagen"
+                                                : "Image URL"}
                                         </label>
                                         <div className="flex gap-2 items-center">
                                             <input
@@ -1454,7 +1618,8 @@ const App: React.FC = () => {
                                                 onChange={(e) =>
                                                     setEditForm({
                                                         ...editForm,
-                                                        imageUrl: e.target.value,
+                                                        imageUrl:
+                                                            e.target.value,
                                                     })
                                                 }
                                             />
@@ -1486,15 +1651,30 @@ const App: React.FC = () => {
 
                         {/* Data Table */}
                         {(() => {
-                            const filteredMaterials = adminCollectionFilter === "All" 
-                                ? materials 
-                                : materials.filter(m => m.usage === adminCollectionFilter);
-                            const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage);
+                            const filteredMaterials =
+                                adminCollectionFilter === "All"
+                                    ? materials
+                                    : materials.filter(
+                                          (m) =>
+                                              m.usage === adminCollectionFilter,
+                                      );
+                            const totalPages = Math.ceil(
+                                filteredMaterials.length / itemsPerPage,
+                            );
                             const startIndex = (currentPage - 1) * itemsPerPage;
-                            const paginatedMaterials = filteredMaterials.slice(startIndex, startIndex + itemsPerPage);
-                            const allPageIds = paginatedMaterials.map(m => m.id);
-                            const allSelected = allPageIds.length > 0 && allPageIds.every(id => selectedMaterialIds.has(id));
-                            
+                            const paginatedMaterials = filteredMaterials.slice(
+                                startIndex,
+                                startIndex + itemsPerPage,
+                            );
+                            const allPageIds = paginatedMaterials.map(
+                                (m) => m.id,
+                            );
+                            const allSelected =
+                                allPageIds.length > 0 &&
+                                allPageIds.every((id) =>
+                                    selectedMaterialIds.has(id),
+                                );
+
                             return (
                                 <>
                                     <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
@@ -1504,8 +1684,14 @@ const App: React.FC = () => {
                                                     <th className="p-4 w-12">
                                                         <input
                                                             type="checkbox"
-                                                            checked={allSelected}
-                                                            onChange={() => toggleSelectAll(allPageIds)}
+                                                            checked={
+                                                                allSelected
+                                                            }
+                                                            onChange={() =>
+                                                                toggleSelectAll(
+                                                                    allPageIds,
+                                                                )
+                                                            }
                                                             className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
                                                         />
                                                     </th>
@@ -1519,10 +1705,18 @@ const App: React.FC = () => {
                                                         {t.admin.tableName}
                                                     </th>
                                                     <th className="p-4">
-                                                        {t.admin.tableDimensions}
+                                                        {
+                                                            t.admin
+                                                                .tableDimensions
+                                                        }
                                                     </th>
                                                     <th className="p-4">
                                                         {t.admin.tablePackaging}
+                                                    </th>
+                                                    <th className="p-4">
+                                                        {lang === "es"
+                                                            ? "Uso"
+                                                            : "Usage"}
                                                     </th>
                                                     <th className="p-4">
                                                         {t.admin.tablePrice}
@@ -1536,13 +1730,19 @@ const App: React.FC = () => {
                                                 {paginatedMaterials.map((m) => (
                                                     <tr
                                                         key={m.id}
-                                                        className={`hover:bg-slate-700/50 transition-colors ${selectedMaterialIds.has(m.id) ? 'bg-blue-900/20' : ''}`}
+                                                        className={`hover:bg-slate-700/50 transition-colors ${selectedMaterialIds.has(m.id) ? "bg-blue-900/20" : ""}`}
                                                     >
                                                         <td className="p-4">
                                                             <input
                                                                 type="checkbox"
-                                                                checked={selectedMaterialIds.has(m.id)}
-                                                                onChange={() => toggleSelectMaterial(m.id)}
+                                                                checked={selectedMaterialIds.has(
+                                                                    m.id,
+                                                                )}
+                                                                onChange={() =>
+                                                                    toggleSelectMaterial(
+                                                                        m.id,
+                                                                    )
+                                                                }
                                                                 className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
                                                             />
                                                         </td>
@@ -1564,18 +1764,37 @@ const App: React.FC = () => {
                                                         </td>
                                                         <td className="p-4">
                                                             <div className="text-white">
-                                                                {m.dimensions.width} x{" "}
-                                                                {m.dimensions.length} cm
+                                                                {
+                                                                    m.dimensions
+                                                                        .width
+                                                                }{" "}
+                                                                x{" "}
+                                                                {
+                                                                    m.dimensions
+                                                                        .length
+                                                                }{" "}
+                                                                cm
                                                             </div>
                                                             <div className="text-xs text-slate-500">
-                                                                {m.dimensions.thickness} mm
+                                                                {
+                                                                    m.dimensions
+                                                                        .thickness
+                                                                }{" "}
+                                                                mm
                                                             </div>
                                                         </td>
                                                         <td className="p-4">
-                                                            {m.pricing.itemsPerBox &&
-                                                            m.pricing.itemsPerBox > 1 ? (
+                                                            {m.pricing
+                                                                .itemsPerBox &&
+                                                            m.pricing
+                                                                .itemsPerBox >
+                                                                1 ? (
                                                                 <span className="text-green-400">
-                                                                    {m.pricing.itemsPerBox}{" "}
+                                                                    {
+                                                                        m
+                                                                            .pricing
+                                                                            .itemsPerBox
+                                                                    }{" "}
                                                                     items/box
                                                                 </span>
                                                             ) : (
@@ -1584,15 +1803,60 @@ const App: React.FC = () => {
                                                                 </span>
                                                             )}
                                                         </td>
-                                                        <td className="p-4 text-white">
-                                                            ${Math.round(m.pricing.pricePerUnit)} /{" "}
-                                                            {m.pricing.unitLabel}
+                                                        <td className="p-4">
+                                                            <span
+                                                                className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${m.usage === "Interior" ? "bg-green-900/50 text-green-400" : "bg-orange-900/50 text-orange-400"}`}
+                                                            >
+                                                                {m.usage ===
+                                                                "Interior"
+                                                                    ? t.admin
+                                                                          .interior
+                                                                    : t.admin
+                                                                          .exterior}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 text-white font-bold">
+                                                            {m.pricing
+                                                                .currency ===
+                                                            displayCurrency ? (
+                                                                <>
+                                                                    {displayCurrency ===
+                                                                    "USD"
+                                                                        ? "$"
+                                                                        : ""}
+                                                                    {m.pricing.pricePerUnit.toLocaleString()}
+                                                                    {displayCurrency ===
+                                                                    "COP"
+                                                                        ? " COP"
+                                                                        : ""}
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-slate-400">
+                                                                    {m.pricing.pricePerUnit.toLocaleString()}{" "}
+                                                                    {
+                                                                        m
+                                                                            .pricing
+                                                                            .currency
+                                                                    }
+                                                                </span>
+                                                            )}
+                                                            <span className="text-xs text-slate-500 font-normal ml-1">
+                                                                /{" "}
+                                                                {
+                                                                    m.pricing
+                                                                        .unitLabel
+                                                                }
+                                                            </span>
                                                         </td>
                                                         <td className="p-4 text-right space-x-2">
                                                             <button
                                                                 onClick={() => {
-                                                                    setEditForm(m);
-                                                                    setIsEditing(true);
+                                                                    setEditForm(
+                                                                        m,
+                                                                    );
+                                                                    setIsEditing(
+                                                                        true,
+                                                                    );
                                                                 }}
                                                                 className="text-blue-400 hover:text-white px-2 py-1 hover:bg-slate-600 rounded"
                                                             >
@@ -1615,48 +1879,76 @@ const App: React.FC = () => {
                                         </table>
                                         {filteredMaterials.length === 0 && (
                                             <div className="p-8 text-center text-slate-500">
-                                                {adminCollectionFilter === "All" 
-                                                    ? t.admin.noProducts 
-                                                    : (lang === "es" 
-                                                        ? `No hay productos en ${adminCollectionFilter}` 
-                                                        : `No products in ${adminCollectionFilter}`)}
+                                                {adminCollectionFilter === "All"
+                                                    ? t.admin.noProducts
+                                                    : lang === "es"
+                                                      ? `No hay productos en ${adminCollectionFilter}`
+                                                      : `No products in ${adminCollectionFilter}`}
                                             </div>
                                         )}
                                     </div>
-                                    
+
                                     {/* Pagination Controls */}
                                     {totalPages > 1 && (
                                         <div className="flex items-center justify-between mt-4 px-4">
                                             <div className="text-sm text-slate-400">
-                                                {lang === "es" 
-                                                    ? `Mostrando ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredMaterials.length)} de ${filteredMaterials.length}` 
+                                                {lang === "es"
+                                                    ? `Mostrando ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredMaterials.length)} de ${filteredMaterials.length}`
                                                     : `Showing ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredMaterials.length)} of ${filteredMaterials.length}`}
                                             </div>
                                             <div className="flex gap-2">
                                                 <button
-                                                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                                    onClick={() =>
+                                                        setCurrentPage(
+                                                            Math.max(
+                                                                1,
+                                                                currentPage - 1,
+                                                            ),
+                                                        )
+                                                    }
                                                     disabled={currentPage === 1}
                                                     className="px-3 py-1 rounded bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
                                                 >
-                                                    {lang === "es" ? "Anterior" : "Previous"}
+                                                    {lang === "es"
+                                                        ? "Anterior"
+                                                        : "Previous"}
                                                 </button>
                                                 <div className="flex items-center gap-1">
-                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                                    {Array.from(
+                                                        { length: totalPages },
+                                                        (_, i) => i + 1,
+                                                    ).map((page) => (
                                                         <button
                                                             key={page}
-                                                            onClick={() => setCurrentPage(page)}
-                                                            className={`w-8 h-8 rounded ${currentPage === page ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                                            onClick={() =>
+                                                                setCurrentPage(
+                                                                    page,
+                                                                )
+                                                            }
+                                                            className={`w-8 h-8 rounded ${currentPage === page ? "bg-blue-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
                                                         >
                                                             {page}
                                                         </button>
                                                     ))}
                                                 </div>
                                                 <button
-                                                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                                                    disabled={currentPage === totalPages}
+                                                    onClick={() =>
+                                                        setCurrentPage(
+                                                            Math.min(
+                                                                totalPages,
+                                                                currentPage + 1,
+                                                            ),
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        currentPage ===
+                                                        totalPages
+                                                    }
                                                     className="px-3 py-1 rounded bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
                                                 >
-                                                    {lang === "es" ? "Siguiente" : "Next"}
+                                                    {lang === "es"
+                                                        ? "Siguiente"
+                                                        : "Next"}
                                                 </button>
                                             </div>
                                         </div>
@@ -1729,8 +2021,8 @@ const App: React.FC = () => {
                                 API Configuration
                             </h3>
                             <p className="text-sm text-slate-400 mb-4">
-                                {lang === "es" 
-                                    ? "Ingrese su clave de API para habilitar la visualización de materiales." 
+                                {lang === "es"
+                                    ? "Ingrese su clave de API para habilitar la visualización de materiales."
                                     : "Enter your API Key to enable material visualization."}
                             </p>
                             <input
@@ -1906,7 +2198,9 @@ const App: React.FC = () => {
                                         />
                                     </svg>
                                     <span className="text-blue-400 font-bold uppercase tracking-wider">
-                                        {lang === "es" ? "Análisis del Espacio" : "Room Analysis"}
+                                        {lang === "es"
+                                            ? "Análisis del Espacio"
+                                            : "Room Analysis"}
                                     </span>
                                 </div>
                                 {generationState.isAnalyzing ? (
@@ -1993,48 +2287,6 @@ const App: React.FC = () => {
                             </div>
                         )}
 
-                        {/* View Mode Toggle */}
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">
-                                {t.editor.viewMode}
-                            </label>
-                            <div className="flex flex-col gap-2">
-                                <button
-                                    onClick={() =>
-                                        setRenderOptions({
-                                            ...renderOptions,
-                                            viewAngle: "PERSPECTIVE",
-                                        })
-                                    }
-                                    className={`p-3 rounded-lg text-xs font-bold border transition-all text-left ${renderOptions.viewAngle === "PERSPECTIVE" ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`}
-                                >
-                                    {t.editor.perspective}
-                                </button>
-                                <button
-                                    onClick={() =>
-                                        setRenderOptions({
-                                            ...renderOptions,
-                                            viewAngle: "TOP_DOWN",
-                                        })
-                                    }
-                                    className={`p-3 rounded-lg text-xs font-bold border transition-all text-left ${renderOptions.viewAngle === "TOP_DOWN" ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`}
-                                >
-                                    {t.editor.topDown}
-                                </button>
-                                <button
-                                    onClick={() =>
-                                        setRenderOptions({
-                                            ...renderOptions,
-                                            viewAngle: "ISOMETRIC",
-                                        })
-                                    }
-                                    className={`p-3 rounded-lg text-xs font-bold border transition-all text-left ${renderOptions.viewAngle === "ISOMETRIC" ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`}
-                                >
-                                    {t.editor.isometric}
-                                </button>
-                            </div>
-                        </div>
-
                         {/* Lighting Toggle */}
                         <div>
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">
@@ -2115,7 +2367,8 @@ const App: React.FC = () => {
                                     className="text-xs uppercase"
                                     disabled={generationState.isGenerating}
                                 >
-                                    Video Pan (Veo)
+                                    {t.editor.videoPan || "Video Pan"} (
+                                    {t.common.comingSoon})
                                 </Button>
                                 <Button
                                     onClick={() => setView(AppView.ESTIMATION)}
@@ -2272,7 +2525,7 @@ const App: React.FC = () => {
                                 <Button
                                     onClick={() => {
                                         window.open(
-                                            `mailto:sales@buildinginnovation.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
+                                            `mailto:comercial.buildinginnovation@gmail.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
                                         );
                                         setShowCheckoutModal(false);
                                     }}
@@ -2322,22 +2575,14 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="flex-1 bg-black flex items-center justify-center min-h-[300px] relative">
-                        {generationState.isGenerating ? (
-                            <div className="flex flex-col items-center">
-                                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-                                <p className="text-blue-400 text-xs font-mono animate-pulse">
-                                    {lang === "es" ? "Estamos trabajando en ello..." : "We are working on it..."}
-                                </p>
-                            </div>
-                        ) : generationState.materialProbe ? (
+                        {selectedMaterial ? (
                             <img
-                                src={generationState.materialProbe}
+                                src={selectedMaterial.imageUrl}
                                 className="w-full h-full object-contain"
                             />
                         ) : (
                             <div className="text-red-400 text-sm p-4 text-center">
-                                {generationState.error ||
-                                    "Failed to generate preview."}
+                                {lang === "es" ? "Cargando..." : "Loading..."}
                             </div>
                         )}
                     </div>
