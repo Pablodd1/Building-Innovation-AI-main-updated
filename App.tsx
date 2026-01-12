@@ -2574,11 +2574,11 @@ const App: React.FC = () => {
                         </button>
                     </div>
 
-                    <div className="flex-1 bg-black flex items-center justify-center min-h-[300px] relative">
+                    <div className="bg-black flex items-center justify-center min-h-[200px] max-h-[50vh] relative overflow-hidden">
                         {selectedMaterial ? (
                             <img
                                 src={selectedMaterial.imageUrl}
-                                className="w-full h-full object-contain"
+                                className="w-full h-full object-contain max-h-[50vh]"
                             />
                         ) : (
                             <div className="text-red-400 text-sm p-4 text-center">
