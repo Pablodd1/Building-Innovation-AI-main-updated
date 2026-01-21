@@ -841,7 +841,7 @@ const App: React.FC = () => {
     const renderLanding = () => (
         <div className="min-h-screen bg-gray-100 p-6 flex flex-col relative">
             <div
-                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-50"
                 style={{
                     backgroundImage:
                         "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/APP_Horizontal_-07_ydmd3m.jpg')",
