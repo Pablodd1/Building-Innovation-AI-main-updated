@@ -30,7 +30,7 @@ interface HistoryItem {
 
 // Custom Logo Component
 const LOGO_URL =
-    "https://res.cloudinary.com/dsex1a9tu/image/upload/v1765472298/LOGO_Building_zp4k50.png";
+    "https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Logo_Building_PNG_u0cjpu.png";
 
 const BrandLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
     <img
