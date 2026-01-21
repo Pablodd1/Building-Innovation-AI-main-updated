@@ -783,16 +783,27 @@ const App: React.FC = () => {
     );
 
     const renderLogin = () => (
-        <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-slate-900">
-            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=2000&q=80')] bg-cover bg-center opacity-20"></div>
-            <div className="relative z-10 w-full max-w-md bg-slate-800/50 backdrop-blur-xl border border-slate-700 p-8 rounded-2xl shadow-2xl">
-                <div className="flex flex-col items-center mb-8">
-                    <BrandLogo className="w-20 h-20 mb-4" />
-                    <h1 className="text-3xl font-black text-white tracking-tight">
-                        BUILDING{" "}
-                        <span className="text-blue-500">INNOVATION</span>
-                    </h1>
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-gray-100">
+            <div
+                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-50"
+                style={{
+                    backgroundImage:
+                        "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/APP_Horizontal_-07_ydmd3m.jpg')",
+                }}
+            />
+            <header className="absolute top-4 right-4 z-20">
+                <LanguageToggle />
+            </header>
+            <div className="relative z-10 flex flex-col items-center mb-8">
+                <BrandLogo className="w-24 h-24 mb-2" />
+                <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                    BUILDING
+                </h1>
+                <div className="text-sm text-slate-600 font-semibold tracking-[0.15em]">
+                    INNOVATION
                 </div>
+            </div>
+            <div className="relative z-10 w-full max-w-sm bg-gray-200/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg">
                 <form
                     className="space-y-4"
                     onSubmit={(e) => {
@@ -802,37 +813,37 @@ const App: React.FC = () => {
                 >
                     <input
                         type="email"
-                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white"
+                        className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
                         placeholder={t.login.email}
                     />
                     <input
                         type="password"
-                        className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white"
+                        className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
                         placeholder={t.login.password}
                     />
-                    <Button
-                        className="w-full py-4 text-base font-bold shadow-lg"
+                    <button
+                        type="submit"
+                        className="w-full bg-gray-400 hover:bg-gray-500 text-slate-700 py-4 rounded-lg text-base font-semibold transition-colors"
                         onClick={() => setView(AppView.LANDING)}
                     >
                         {t.login.signIn}
-                    </Button>
+                    </button>
 
                     <div className="relative flex py-2 items-center">
-                        <div className="flex-grow border-t border-slate-700"></div>
+                        <div className="flex-grow border-t border-gray-400"></div>
                         <span className="flex-shrink-0 mx-4 text-slate-500 text-xs font-bold uppercase">
-                            Or
+                            OR
                         </span>
-                        <div className="flex-grow border-t border-slate-700"></div>
+                        <div className="flex-grow border-t border-gray-400"></div>
                     </div>
 
-                    <Button
+                    <button
                         type="button"
-                        variant="ghost"
-                        className="w-full py-3 text-slate-400 hover:text-white hover:bg-slate-800/50"
+                        className="w-full py-3 text-slate-600 hover:text-slate-800 text-sm"
                         onClick={() => setView(AppView.LANDING)}
                     >
                         {t.login.skip} →
-                    </Button>
+                    </button>
                 </form>
             </div>
         </div>
