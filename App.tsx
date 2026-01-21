@@ -839,32 +839,20 @@ const App: React.FC = () => {
     );
 
     const renderLanding = () => (
-        <div className="min-h-screen bg-slate-900 p-6 flex flex-col relative">
+        <div className="min-h-screen bg-gray-100 p-6 flex flex-col relative">
             <div
-                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60"
+                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
                 style={{
                     backgroundImage:
-                        "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1765805801/fondo_zxuhfe.png')",
+                        "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/APP_Horizontal_-07_ydmd3m.jpg')",
                 }}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/20 via-slate-900/40 to-slate-900/70" />
-            <header className="relative z-10 flex justify-between items-center mb-8 md:mb-12">
-                <div className="flex items-center gap-3">
-                    <BrandLogo className="w-10 h-10" />
-                    <div className="hidden md:block">
-                        <h1 className="text-lg font-black text-white leading-none">
-                            BUILDING
-                        </h1>
-                        <div className="text-[10px] text-blue-500 font-bold tracking-[0.2em]">
-                            INNOVATION
-                        </div>
-                    </div>
-                </div>
+            <header className="relative z-10 flex justify-end items-center mb-4">
                 <div className="flex items-center gap-4">
                     <LanguageToggle />
                     <button
                         onClick={() => setView(AppView.CART)}
-                        className="relative p-2 text-slate-400 hover:text-white"
+                        className="relative p-2 text-slate-600 hover:text-slate-900"
                     >
                         <svg
                             className="w-6 h-6"
@@ -887,7 +875,7 @@ const App: React.FC = () => {
                     </button>
                     <button
                         onClick={() => setView(AppView.ADMIN)}
-                        className="p-2 text-slate-400 hover:text-white"
+                        className="p-2 text-slate-600 hover:text-slate-900"
                     >
                         <svg
                             className="w-6 h-6"
@@ -912,49 +900,52 @@ const App: React.FC = () => {
                 </div>
             </header>
 
-            <div className="relative z-10 flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">
-                <h2 className="text-5xl md:text-7xl font-black text-white mb-2 tracking-tighter">
-                    {t.landing.title}
-                    <span className="text-blue-500">{t.landing.materials}</span>
+            <div className="relative z-10 flex-1 flex flex-col items-center justify-center max-w-xl mx-auto w-full text-center">
+                <div className="mb-6">
+                    <BrandLogo className="w-24 h-24 mx-auto" />
+                    <h1 className="text-2xl font-black text-slate-800 mt-2">BUILDING</h1>
+                    <div className="text-sm text-slate-600 font-semibold tracking-[0.15em]">INNOVATION</div>
+                </div>
+
+                <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">
+                    {t.landing.title === "Visualize " ? "¡Bienvenido!" : t.landing.title}
                 </h2>
-                <p className="text-slate-400 text-lg md:text-xl max-w-xl mb-12">
+                <p className="text-slate-600 text-sm md:text-base mb-8">
                     {t.landing.subtitle}
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <p className="text-slate-700 font-semibold uppercase tracking-wider text-xs mb-6">
+                    {lang === "es" ? "SELECCIONA EL TIPO DE ESPACIO" : "SELECT SPACE TYPE"}
+                </p>
+
+                <div className="grid grid-cols-2 gap-4 w-full">
                     <button
                         onClick={() => handleStart("Interior")}
-                        className="group relative h-48 rounded-2xl overflow-hidden border border-slate-700 hover:border-blue-500 transition-all"
+                        className="group flex flex-col items-center"
                     >
-                        <img
-                            src="https://res.cloudinary.com/dsex1a9tu/image/upload/v1765473265/Interior_zl8aus.png"
-                            className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent flex flex-col justify-end p-6">
-                            <span className="text-blue-400 font-bold uppercase tracking-wider text-xs mb-1">
-                                {t.landing.interiorsDesc}
-                            </span>
-                            <span className="text-2xl font-black text-white">
-                                {t.landing.interiors}
-                            </span>
+                        <div className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all">
+                            <img
+                                src="https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Espacio_Int_ipvzyz.jpg"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
                         </div>
+                        <span className="mt-3 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">
+                            {lang === "es" ? "Espacio interior" : "Interior Space"}
+                        </span>
                     </button>
                     <button
                         onClick={() => handleStart("Exterior")}
-                        className="group relative h-48 rounded-2xl overflow-hidden border border-slate-700 hover:border-blue-500 transition-all"
+                        className="group flex flex-col items-center"
                     >
-                        <img
-                            src="https://res.cloudinary.com/dsex1a9tu/image/upload/v1765473265/Exterior_znoarm.jpg"
-                            className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 to-transparent flex flex-col justify-end p-6">
-                            <span className="text-green-400 font-bold uppercase tracking-wider text-xs mb-1">
-                                {t.landing.exteriorDesc}
-                            </span>
-                            <span className="text-2xl font-black text-white">
-                                {t.landing.exterior}
-                            </span>
+                        <div className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all">
+                            <img
+                                src="https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Espacio_Ext_t4ic8u.jpg"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
                         </div>
+                        <span className="mt-3 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">
+                            {lang === "es" ? "Espacio exterior" : "Exterior Space"}
+                        </span>
                     </button>
                 </div>
             </div>
