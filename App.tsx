@@ -795,13 +795,7 @@ const App: React.FC = () => {
                 <LanguageToggle />
             </header>
             <div className="relative z-10 flex flex-col items-center mb-8">
-                <BrandLogo className="w-24 h-24 mb-2" />
-                <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-                    BUILDING
-                </h1>
-                <div className="text-sm text-slate-600 font-semibold tracking-[0.15em]">
-                    INNOVATION
-                </div>
+                <BrandLogo className="w-32 h-32" />
             </div>
             <div className="relative z-10 w-full max-w-sm bg-gray-200/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg">
                 <form
@@ -913,9 +907,7 @@ const App: React.FC = () => {
 
             <div className="relative z-10 flex-1 flex flex-col items-center justify-center max-w-xl mx-auto w-full text-center">
                 <div className="mb-6">
-                    <BrandLogo className="w-24 h-24 mx-auto" />
-                    <h1 className="text-2xl font-black text-slate-800 mt-2">BUILDING</h1>
-                    <div className="text-sm text-slate-600 font-semibold tracking-[0.15em]">INNOVATION</div>
+                    <BrandLogo className="w-32 h-32 mx-auto" />
                 </div>
 
                 <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">
