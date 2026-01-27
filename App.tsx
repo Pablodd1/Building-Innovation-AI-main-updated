@@ -780,16 +780,16 @@ const App: React.FC = () => {
     };
 
     const LanguageToggle = () => (
-        <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+        <div className="flex bg-gray-200 rounded-lg p-1 border border-gray-300">
             <button
                 onClick={() => setLang("en")}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:text-white"}`}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
                 EN
             </button>
             <button
                 onClick={() => setLang("es")}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:text-white"}`}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
                 ES
             </button>
@@ -852,7 +852,7 @@ const App: React.FC = () => {
                             type="text"
                             value={authForm.name}
                             onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
-                            className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
+                            className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
                             placeholder={lang === "es" ? "Nombre" : "Name"}
                             required
                         />
@@ -861,7 +861,7 @@ const App: React.FC = () => {
                         type="email"
                         value={authForm.email}
                         onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                        className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
+                        className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
                         placeholder={t.login.email}
                         required
                     />
@@ -869,7 +869,7 @@ const App: React.FC = () => {
                         type="password"
                         value={authForm.password}
                         onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                        className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
+                        className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
                         placeholder={t.login.password}
                         required
                     />
@@ -883,7 +883,7 @@ const App: React.FC = () => {
                     <button
                         type="submit"
                         disabled={authLoading}
-                        className="w-full bg-gray-400 hover:bg-gray-500 text-slate-700 py-4 rounded-lg text-base font-semibold transition-colors disabled:opacity-50"
+                        className="w-full bg-gray-400 hover:bg-gray-500 text-gray-700 py-4 rounded-lg text-base font-semibold transition-colors disabled:opacity-50"
                     >
                         {authLoading 
                             ? "..." 
@@ -892,7 +892,7 @@ const App: React.FC = () => {
                                 : (lang === "es" ? "Registrarse" : "Sign Up")}
                     </button>
 
-                    <div className="text-center text-sm text-slate-600">
+                    <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>
                                 {lang === "es" ? "¿No tienes cuenta? " : "Don't have an account? "}
@@ -932,7 +932,7 @@ const App: React.FC = () => {
                 }}
             />
             <header className="relative z-10 flex justify-between items-center mb-4">
-                <div className="text-slate-700 text-sm">
+                <div className="text-gray-700 text-sm">
                     {currentUser && (
                         <span className="font-medium">{currentUser.name}</span>
                     )}
@@ -941,7 +941,7 @@ const App: React.FC = () => {
                     <LanguageToggle />
                     <button
                         onClick={() => setView(AppView.CART)}
-                        className="relative p-2 text-slate-600 hover:text-slate-900"
+                        className="relative p-2 text-gray-600 hover:text-gray-900"
                     >
                         <svg
                             className="w-6 h-6"
@@ -957,7 +957,7 @@ const App: React.FC = () => {
                             />
                         </svg>
                         {cartCount > 0 && (
-                            <span className="absolute top-0 right-0 w-4 h-4 bg-blue-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center">
+                            <span className="absolute top-0 right-0 w-4 h-4 bg-blue-500 rounded-full text-[10px] font-bold text-gray-700 flex items-center justify-center">
                                 {cartCount}
                             </span>
                         )}
@@ -965,7 +965,7 @@ const App: React.FC = () => {
                     {currentUser?.role === "admin" && (
                         <button
                             onClick={() => setView(AppView.ADMIN)}
-                            className="p-2 text-slate-600 hover:text-slate-900"
+                            className="p-2 text-gray-600 hover:text-gray-900"
                         >
                             <svg
                                 className="w-6 h-6"
@@ -993,7 +993,7 @@ const App: React.FC = () => {
                             setCurrentUser(null);
                             setView(AppView.LOGIN);
                         }}
-                        className="p-2 text-slate-600 hover:text-slate-900"
+                        className="p-2 text-gray-600 hover:text-gray-900"
                         title={lang === "es" ? "Cerrar sesión" : "Logout"}
                     >
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1008,14 +1008,14 @@ const App: React.FC = () => {
                     <BrandLogo className="w-32 h-32 mx-auto" />
                 </div>
 
-                <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">
                     {t.landing.title === "Visualize " ? "¡Bienvenido!" : t.landing.title}
                 </h2>
-                <p className="text-slate-600 text-sm md:text-base mb-8">
+                <p className="text-gray-600 text-sm md:text-base mb-8">
                     {t.landing.subtitle}
                 </p>
 
-                <p className="text-slate-700 font-semibold uppercase tracking-wider text-xs mb-6">
+                <p className="text-gray-700 font-semibold uppercase tracking-wider text-xs mb-6">
                     {lang === "es" ? "SELECCIONA EL TIPO DE ESPACIO" : "SELECT SPACE TYPE"}
                 </p>
 
@@ -1030,7 +1030,7 @@ const App: React.FC = () => {
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                         </div>
-                        <span className="mt-3 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">
+                        <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
                             {lang === "es" ? "Espacio interior" : "Interior Space"}
                         </span>
                     </button>
@@ -1044,7 +1044,7 @@ const App: React.FC = () => {
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                         </div>
-                        <span className="mt-3 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium">
+                        <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
                             {lang === "es" ? "Espacio exterior" : "Exterior Space"}
                         </span>
                     </button>
@@ -1054,7 +1054,7 @@ const App: React.FC = () => {
     );
 
     const renderAdmin = () => (
-        <div className="min-h-screen bg-slate-900 text-slate-100 p-6 overflow-auto">
+        <div className="min-h-screen bg-gray-100 text-gray-700 p-6 overflow-auto">
             <div className="max-w-7xl mx-auto">
                 <div className="flex justify-between items-center mb-8">
                     <div className="flex items-center gap-3">
@@ -1064,7 +1064,7 @@ const App: React.FC = () => {
                         >
                             ← {t.common.back}
                         </Button>
-                        <h1 className="text-2xl font-black text-white uppercase">
+                        <h1 className="text-2xl font-black text-gray-700 uppercase">
                             {t.admin.dashboard}
                         </h1>
                     </div>
@@ -1098,7 +1098,7 @@ const App: React.FC = () => {
 
                 {adminTab === "MATERIALS" && (
                     <div className="space-y-6 animate-fadeIn">
-                        <div className="flex justify-between items-center bg-slate-800 p-2 rounded-xl border border-slate-700">
+                        <div className="flex justify-between items-center bg-gray-200 p-2 rounded-xl border border-gray-300">
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => {
@@ -1106,7 +1106,7 @@ const App: React.FC = () => {
                                         setCurrentPage(1);
                                         setSelectedMaterialIds(new Set());
                                     }}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "All" ? "bg-blue-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "All" ? "bg-blue-600 text-gray-700" : "bg-gray-300 text-gray-600 hover:bg-gray-400"}`}
                                 >
                                     {t.admin.all ||
                                         (lang === "es" ? "Todos" : "All")}{" "}
@@ -1118,7 +1118,7 @@ const App: React.FC = () => {
                                         setCurrentPage(1);
                                         setSelectedMaterialIds(new Set());
                                     }}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Interior" ? "bg-green-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Interior" ? "bg-green-600 text-gray-700" : "bg-gray-300 text-gray-600 hover:bg-gray-400"}`}
                                 >
                                     {t.admin.interior} (
                                     {
@@ -1134,7 +1134,7 @@ const App: React.FC = () => {
                                         setCurrentPage(1);
                                         setSelectedMaterialIds(new Set());
                                     }}
-                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Exterior" ? "bg-orange-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${adminCollectionFilter === "Exterior" ? "bg-orange-600 text-gray-700" : "bg-gray-300 text-gray-600 hover:bg-gray-400"}`}
                                 >
                                     {t.admin.exterior} (
                                     {
@@ -1146,19 +1146,19 @@ const App: React.FC = () => {
                                 </button>
                             </div>
 
-                            <div className="flex gap-2 items-center px-4 border-l border-slate-700">
-                                <span className="text-xs font-bold text-slate-500 uppercase">
+                            <div className="flex gap-2 items-center px-4 border-l border-gray-300">
+                                <span className="text-xs font-bold text-gray-500 uppercase">
                                     {t.admin.showPricesIn}
                                 </span>
                                 <button
                                     onClick={() => setDisplayCurrency("USD")}
-                                    className={`px-3 py-1 text-xs font-bold rounded ${displayCurrency === "USD" ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-700"}`}
+                                    className={`px-3 py-1 text-xs font-bold rounded ${displayCurrency === "USD" ? "bg-blue-600 text-gray-700" : "text-gray-500 hover:bg-gray-300"}`}
                                 >
                                     USD ($)
                                 </button>
                                 <button
                                     onClick={() => setDisplayCurrency("COP")}
-                                    className={`px-3 py-1 text-xs font-bold rounded ${displayCurrency === "COP" ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-700"}`}
+                                    className={`px-3 py-1 text-xs font-bold rounded ${displayCurrency === "COP" ? "bg-blue-600 text-gray-700" : "text-gray-500 hover:bg-gray-300"}`}
                                 >
                                     COP (Pesos)
                                 </button>
@@ -1166,7 +1166,7 @@ const App: React.FC = () => {
                         </div>
 
                         {/* Toolbar */}
-                        <div className="flex flex-col md:flex-row justify-between gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <div className="flex flex-col md:flex-row justify-between gap-4 bg-gray-200 p-4 rounded-xl border border-gray-300">
                             <div className="flex gap-2 flex-wrap">
                                 <Button
                                     onClick={handleDownloadCSV}
@@ -1345,8 +1345,8 @@ const App: React.FC = () => {
 
                         {/* Add/Edit Form */}
                         {(isEditing || editForm.usage) && (
-                            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
-                                <h3 className="text-lg font-bold text-white mb-4">
+                            <div className="bg-gray-200 p-6 rounded-xl border border-gray-300 shadow-xl">
+                                <h3 className="text-lg font-bold text-gray-700 mb-4">
                                     {isEditing
                                         ? t.admin.editProduct
                                         : t.admin.newProduct}
@@ -1354,11 +1354,11 @@ const App: React.FC = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                                     {/* Row 1: Identifiers */}
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.refCode}
                                         </label>
                                         <input
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="e.g. SPC-001"
                                             value={editForm.refCode || ""}
                                             onChange={(e) =>
@@ -1370,11 +1370,11 @@ const App: React.FC = () => {
                                         />
                                     </div>
                                     <div className="md:col-span-2">
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.productName}
                                         </label>
                                         <input
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="Product Name"
                                             value={editForm.name || ""}
                                             onChange={(e) =>
@@ -1388,11 +1388,11 @@ const App: React.FC = () => {
 
                                     {/* Row 2: Categories */}
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.category}
                                         </label>
                                         <input
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="e.g. Flooring"
                                             value={editForm.category || ""}
                                             onChange={(e) =>
@@ -1404,11 +1404,11 @@ const App: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.subcategory}
                                         </label>
                                         <input
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="e.g. SPC"
                                             value={editForm.subcategory || ""}
                                             onChange={(e) =>
@@ -1422,12 +1422,12 @@ const App: React.FC = () => {
 
                                     {/* Row 3: Dimensions */}
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.width}
                                         </label>
                                         <input
                                             type="number"
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="0.00"
                                             value={
                                                 editForm.dimensions?.width || ""
@@ -1450,12 +1450,12 @@ const App: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.length}
                                         </label>
                                         <input
                                             type="number"
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="0.00"
                                             value={
                                                 editForm.dimensions?.length ||
@@ -1479,12 +1479,12 @@ const App: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.thickness}
                                         </label>
                                         <input
                                             type="number"
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="0.00"
                                             value={
                                                 editForm.dimensions
@@ -1510,12 +1510,12 @@ const App: React.FC = () => {
 
                                     {/* Row 4: Pricing */}
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.price}
                                         </label>
                                         <input
                                             type="number"
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="0.00"
                                             value={
                                                 editForm.pricing
@@ -1537,11 +1537,11 @@ const App: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.unitLabel}
                                         </label>
                                         <input
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="Box, Roll, Piece"
                                             value={
                                                 editForm.pricing?.unitLabel ||
@@ -1560,12 +1560,12 @@ const App: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.itemsPerBox}
                                         </label>
                                         <input
                                             type="number"
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
                                             placeholder="1"
                                             value={
                                                 editForm.pricing?.itemsPerBox ||
@@ -1586,12 +1586,12 @@ const App: React.FC = () => {
                                     </div>
 
                                     <div className="md:col-span-3">
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.detailedDesc}
                                         </label>
                                         <textarea
                                             rows={4}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 text-sm"
                                             placeholder={
                                                 t.admin.texturePlaceholder
                                             }
@@ -1606,11 +1606,11 @@ const App: React.FC = () => {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.usage}
                                         </label>
-                                        <div className="flex gap-4 p-2 bg-slate-900 border border-slate-700 rounded">
-                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                        <div className="flex gap-4 p-2 bg-gray-200 border border-gray-300 rounded">
+                                            <label className="flex items-center gap-2 cursor-pointer text-gray-700">
                                                 <input
                                                     type="radio"
                                                     name="usage"
@@ -1627,7 +1627,7 @@ const App: React.FC = () => {
                                                 />
                                                 {t.admin.interior}
                                             </label>
-                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                            <label className="flex items-center gap-2 cursor-pointer text-gray-700">
                                                 <input
                                                     type="radio"
                                                     name="usage"
@@ -1648,11 +1648,11 @@ const App: React.FC = () => {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.currency}
                                         </label>
-                                        <div className="flex gap-4 p-2 bg-slate-900 border border-slate-700 rounded">
-                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                        <div className="flex gap-4 p-2 bg-gray-200 border border-gray-300 rounded">
+                                            <label className="flex items-center gap-2 cursor-pointer text-gray-700">
                                                 <input
                                                     type="radio"
                                                     name="currency"
@@ -1672,7 +1672,7 @@ const App: React.FC = () => {
                                                 />
                                                 USD
                                             </label>
-                                            <label className="flex items-center gap-2 cursor-pointer text-white">
+                                            <label className="flex items-center gap-2 cursor-pointer text-gray-700">
                                                 <input
                                                     type="radio"
                                                     name="currency"
@@ -1696,7 +1696,7 @@ const App: React.FC = () => {
                                     </div>
 
                                     <div className="md:col-span-2">
-                                        <label className="block text-xs uppercase text-slate-500 mb-1">
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {lang === "es"
                                                 ? "URL de Imagen"
                                                 : "Image URL"}
@@ -1704,7 +1704,7 @@ const App: React.FC = () => {
                                         <div className="flex gap-2 items-center">
                                             <input
                                                 type="text"
-                                                className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm"
+                                                className="flex-1 bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 text-sm"
                                                 placeholder="https://example.com/image.jpg"
                                                 value={editForm.imageUrl || ""}
                                                 onChange={(e) =>
@@ -1718,7 +1718,7 @@ const App: React.FC = () => {
                                             {editForm.imageUrl && (
                                                 <img
                                                     src={editForm.imageUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"}
-                                                    className="w-10 h-10 rounded border border-slate-600 object-cover"
+                                                    className="w-10 h-10 rounded border border-gray-300 object-cover"
                                                 />
                                             )}
                                         </div>
@@ -1769,9 +1769,9 @@ const App: React.FC = () => {
 
                             return (
                                 <>
-                                    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                                        <table className="w-full text-left text-sm text-slate-400">
-                                            <thead className="bg-slate-900 text-slate-200 uppercase text-xs font-bold">
+                                    <div className="bg-white rounded-xl border border-gray-300 overflow-hidden">
+                                        <table className="w-full text-left text-sm text-gray-600">
+                                            <thead className="bg-gray-300 text-gray-700 uppercase text-xs font-bold">
                                                 <tr>
                                                     <th className="p-4 w-12">
                                                         <input
@@ -1784,7 +1784,7 @@ const App: React.FC = () => {
                                                                     allPageIds,
                                                                 )
                                                             }
-                                                            className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+                                                            className="w-4 h-4 rounded border-gray-300 bg-gray-200 text-blue-500 focus:ring-blue-500"
                                                         />
                                                     </th>
                                                     <th className="p-4">
@@ -1822,7 +1822,7 @@ const App: React.FC = () => {
                                                 {paginatedMaterials.map((m) => (
                                                     <tr
                                                         key={m.id}
-                                                        className={`hover:bg-slate-700/50 transition-colors ${selectedMaterialIds.has(m.id) ? "bg-blue-900/20" : ""}`}
+                                                        className={`hover:bg-gray-300/50 transition-colors ${selectedMaterialIds.has(m.id) ? "bg-blue-900/20" : ""}`}
                                                     >
                                                         <td className="p-4">
                                                             <input
@@ -1835,27 +1835,27 @@ const App: React.FC = () => {
                                                                         m.id,
                                                                     )
                                                                 }
-                                                                className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+                                                                className="w-4 h-4 rounded border-gray-300 bg-gray-200 text-blue-500 focus:ring-blue-500"
                                                             />
                                                         </td>
                                                         <td className="p-4">
                                                             <img
                                                                 src={m.imageUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"}
                                                                 alt={m.name}
-                                                                className="w-12 h-12 rounded object-cover border border-slate-600 bg-slate-900"
+                                                                className="w-12 h-12 rounded object-cover border border-gray-300 bg-gray-200"
                                                             />
                                                         </td>
                                                         <td className="p-4 font-mono text-blue-400">
                                                             {m.refCode}
                                                         </td>
-                                                        <td className="p-4 font-medium text-white">
+                                                        <td className="p-4 font-medium text-gray-700">
                                                             {m.name}
-                                                            <div className="text-xs text-slate-500">
+                                                            <div className="text-xs text-gray-500">
                                                                 {m.category}
                                                             </div>
                                                         </td>
                                                         <td className="p-4">
-                                                            <div className="text-white">
+                                                            <div className="text-gray-700">
                                                                 {
                                                                     m.dimensions
                                                                         .width
@@ -1867,7 +1867,7 @@ const App: React.FC = () => {
                                                                 }{" "}
                                                                 cm
                                                             </div>
-                                                            <div className="text-xs text-slate-500">
+                                                            <div className="text-xs text-gray-500">
                                                                 {
                                                                     m.dimensions
                                                                         .thickness
@@ -1890,7 +1890,7 @@ const App: React.FC = () => {
                                                                     items/box
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-slate-500">
+                                                                <span className="text-gray-500">
                                                                     Single Unit
                                                                 </span>
                                                             )}
@@ -1907,7 +1907,7 @@ const App: React.FC = () => {
                                                                           .exterior}
                                                             </span>
                                                         </td>
-                                                        <td className="p-4 text-white font-bold">
+                                                        <td className="p-4 text-gray-700 font-bold">
                                                             {m.pricing
                                                                 .currency ===
                                                             displayCurrency ? (
@@ -1923,7 +1923,7 @@ const App: React.FC = () => {
                                                                         : ""}
                                                                 </>
                                                             ) : (
-                                                                <span className="text-slate-400">
+                                                                <span className="text-gray-500">
                                                                     {m.pricing.pricePerUnit.toLocaleString()}{" "}
                                                                     {
                                                                         m
@@ -1932,7 +1932,7 @@ const App: React.FC = () => {
                                                                     }
                                                                 </span>
                                                             )}
-                                                            <span className="text-xs text-slate-500 font-normal ml-1">
+                                                            <span className="text-xs text-gray-500 font-normal ml-1">
                                                                 /{" "}
                                                                 {
                                                                     m.pricing
@@ -1950,7 +1950,7 @@ const App: React.FC = () => {
                                                                         true,
                                                                     );
                                                                 }}
-                                                                className="text-blue-400 hover:text-white px-2 py-1 hover:bg-slate-600 rounded"
+                                                                className="text-blue-400 hover:text-gray-700 px-2 py-1 hover:bg-gray-400 rounded"
                                                             >
                                                                 {t.admin.edit}
                                                             </button>
@@ -1960,7 +1960,7 @@ const App: React.FC = () => {
                                                                         m.id,
                                                                     )
                                                                 }
-                                                                className="text-red-400 hover:text-white px-2 py-1 hover:bg-red-900/50 rounded"
+                                                                className="text-red-400 hover:text-gray-700 px-2 py-1 hover:bg-red-900/50 rounded"
                                                             >
                                                                 {t.admin.delete}
                                                             </button>
@@ -1970,7 +1970,7 @@ const App: React.FC = () => {
                                             </tbody>
                                         </table>
                                         {filteredMaterials.length === 0 && (
-                                            <div className="p-8 text-center text-slate-500">
+                                            <div className="p-8 text-center text-gray-500">
                                                 {adminCollectionFilter === "All"
                                                     ? t.admin.noProducts
                                                     : lang === "es"
@@ -1983,7 +1983,7 @@ const App: React.FC = () => {
                                     {/* Pagination Controls */}
                                     {totalPages > 1 && (
                                         <div className="flex items-center justify-between mt-4 px-4">
-                                            <div className="text-sm text-slate-400">
+                                            <div className="text-sm text-gray-500">
                                                 {lang === "es"
                                                     ? `Mostrando ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredMaterials.length)} de ${filteredMaterials.length}`
                                                     : `Showing ${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredMaterials.length)} of ${filteredMaterials.length}`}
@@ -1999,7 +1999,7 @@ const App: React.FC = () => {
                                                         )
                                                     }
                                                     disabled={currentPage === 1}
-                                                    className="px-3 py-1 rounded bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
+                                                    className="px-3 py-1 rounded bg-gray-300 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-400"
                                                 >
                                                     {lang === "es"
                                                         ? "Anterior"
@@ -2017,7 +2017,7 @@ const App: React.FC = () => {
                                                                     page,
                                                                 )
                                                             }
-                                                            className={`w-8 h-8 rounded ${currentPage === page ? "bg-blue-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+                                                            className={`w-8 h-8 rounded ${currentPage === page ? "bg-blue-600 text-gray-700" : "bg-gray-300 text-gray-600 hover:bg-gray-400"}`}
                                                         >
                                                             {page}
                                                         </button>
@@ -2036,7 +2036,7 @@ const App: React.FC = () => {
                                                         currentPage ===
                                                         totalPages
                                                     }
-                                                    className="px-3 py-1 rounded bg-slate-700 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600"
+                                                    className="px-3 py-1 rounded bg-gray-300 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-400"
                                                 >
                                                     {lang === "es"
                                                         ? "Siguiente"
@@ -2053,13 +2053,13 @@ const App: React.FC = () => {
 
                 {adminTab === "CONTRACTORS" && (
                     <div className="space-y-6">
-                        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-                            <h3 className="text-lg font-bold text-white mb-4">
+                        <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
+                            <h3 className="text-lg font-bold text-gray-700 mb-4">
                                 Add Installer
                             </h3>
                             <div className="flex gap-4 mb-4">
                                 <input
-                                    className="bg-slate-900 border border-slate-700 rounded p-2 text-white flex-1"
+                                    className="bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 flex-1"
                                     placeholder="Company Name"
                                     value={contractorForm.name || ""}
                                     onChange={(e) =>
@@ -2070,7 +2070,7 @@ const App: React.FC = () => {
                                     }
                                 />
                                 <input
-                                    className="bg-slate-900 border border-slate-700 rounded p-2 text-white flex-1"
+                                    className="bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 flex-1"
                                     placeholder="Region"
                                     value={contractorForm.region || ""}
                                     onChange={(e) =>
@@ -2089,15 +2089,15 @@ const App: React.FC = () => {
                             {contractors.map((c) => (
                                 <div
                                     key={c.id}
-                                    className="bg-slate-800 p-4 rounded-xl border border-slate-700"
+                                    className="bg-gray-200 p-4 rounded-xl border border-gray-300"
                                 >
-                                    <div className="font-bold text-white">
+                                    <div className="font-bold text-gray-700">
                                         {c.name}
                                     </div>
                                     <div className="text-sm text-blue-400">
                                         {c.region}
                                     </div>
-                                    <div className="text-xs text-slate-500 mt-2">
+                                    <div className="text-xs text-gray-500 mt-2">
                                         {c.email}
                                     </div>
                                 </div>
@@ -2108,18 +2108,18 @@ const App: React.FC = () => {
 
                 {adminTab === "SETTINGS" && (
                     <div className="max-w-xl">
-                        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-                            <h3 className="text-lg font-bold text-white mb-4">
+                        <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
+                            <h3 className="text-lg font-bold text-gray-700 mb-4">
                                 API Configuration
                             </h3>
-                            <p className="text-sm text-slate-400 mb-4">
+                            <p className="text-sm text-gray-500 mb-4">
                                 {lang === "es"
                                     ? "Ingrese su clave de API para habilitar la visualización de materiales."
                                     : "Enter your API Key to enable material visualization."}
                             </p>
                             <input
                                 type="password"
-                                className="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white mb-4"
+                                className="w-full bg-gray-200 border border-gray-300 rounded p-3 text-gray-700 mb-4"
                                 placeholder="AIzaSy..."
                                 value={customApiKey}
                                 onChange={(e) =>
@@ -2145,8 +2145,8 @@ const App: React.FC = () => {
         );
 
         return (
-            <div className="min-h-screen bg-slate-900 flex flex-col">
-                <header className="bg-slate-900/80 backdrop-blur-md sticky top-0 z-20 border-b border-slate-800 p-4">
+            <div className="min-h-screen bg-gray-100 flex flex-col">
+                <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-gray-300 p-4">
                     <div className="max-w-7xl mx-auto flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <Button
@@ -2168,7 +2168,7 @@ const App: React.FC = () => {
                                     />
                                 </svg>
                             </Button>
-                            <h2 className="text-xl font-bold text-white uppercase tracking-wider">
+                            <h2 className="text-xl font-bold text-gray-700 uppercase tracking-wider">
                                 {t.gallery.collection}
                             </h2>
                         </div>
@@ -2177,7 +2177,7 @@ const App: React.FC = () => {
                             <input
                                 type="text"
                                 placeholder="Search..."
-                                className="hidden md:block bg-slate-800 border-none rounded-full px-4 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500"
+                                className="hidden md:block bg-gray-200 border-none rounded-full px-4 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -2191,7 +2191,7 @@ const App: React.FC = () => {
                             <button
                                 key={material.id}
                                 onClick={() => handleSelectMaterial(material)}
-                                className="group relative aspect-square rounded-2xl overflow-hidden bg-slate-800 border border-slate-700 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all text-left"
+                                className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 border border-gray-300 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all text-left"
                             >
                                 <img
                                     src={material.imageUrl}
@@ -2202,10 +2202,10 @@ const App: React.FC = () => {
                                     <div className="text-[8px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
                                         {material.category}
                                     </div>
-                                    <div className="text-white text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
+                                    <div className="text-gray-700 text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
                                         {material.name}
                                     </div>
-                                    <div className="text-[8px] text-slate-400">
+                                    <div className="text-[8px] text-gray-500">
                                         {material.dimensions.width}x
                                         {material.dimensions.length}cm
                                     </div>
@@ -2214,7 +2214,7 @@ const App: React.FC = () => {
                         ))}
                     </div>
                     {filtered.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                        <div className="flex flex-col items-center justify-center py-20 text-gray-500">
                             <p>{t.gallery.noMaterials}</p>
                         </div>
                     )}
@@ -2274,8 +2274,8 @@ const App: React.FC = () => {
                         {/* AI Analysis Overlay */}
                         {(generationState.analysis ||
                             generationState.isAnalyzing) && (
-                            <div className="absolute bottom-8 left-8 right-8 z-40 bg-slate-900/90 backdrop-blur border border-slate-700 p-4 rounded-xl text-xs text-slate-300 max-h-48 overflow-y-auto animate-fadeIn shadow-2xl max-w-2xl mx-auto">
-                                <div className="flex items-center gap-2 mb-2 sticky top-0 bg-slate-900/90 pb-2 border-b border-slate-800">
+                            <div className="absolute bottom-8 left-8 right-8 z-40 bg-white/95 backdrop-blur border border-gray-300 p-4 rounded-xl text-xs text-gray-600 max-h-48 overflow-y-auto animate-fadeIn shadow-2xl max-w-2xl mx-auto">
+                                <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white/95 pb-2 border-b border-gray-300">
                                     <svg
                                         className="w-4 h-4 text-blue-400"
                                         fill="none"
@@ -2297,9 +2297,9 @@ const App: React.FC = () => {
                                 </div>
                                 {generationState.isAnalyzing ? (
                                     <div className="space-y-2 py-1">
-                                        <div className="h-1.5 bg-slate-700 rounded w-full animate-pulse"></div>
-                                        <div className="h-1.5 bg-slate-700 rounded w-2/3 animate-pulse"></div>
-                                        <div className="h-1.5 bg-slate-700 rounded w-5/6 animate-pulse"></div>
+                                        <div className="h-1.5 bg-gray-300 rounded w-full animate-pulse"></div>
+                                        <div className="h-1.5 bg-gray-300 rounded w-2/3 animate-pulse"></div>
+                                        <div className="h-1.5 bg-gray-300 rounded w-5/6 animate-pulse"></div>
                                     </div>
                                 ) : (
                                     <p className="leading-relaxed">
@@ -2312,8 +2312,8 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Sidebar Controls */}
-                <div className="w-full md:w-96 bg-slate-900 border-l border-slate-800 flex flex-col h-[40vh] md:h-full z-20 shadow-2xl">
-                    <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                <div className="w-full md:w-96 bg-white border-l border-gray-300 flex flex-col h-[40vh] md:h-full z-20 shadow-2xl">
+                    <div className="p-4 border-b border-gray-300 flex items-center justify-between">
                         <Button
                             variant="ghost"
                             onClick={() => setView(AppView.CAMERA)}
@@ -2327,7 +2327,7 @@ const App: React.FC = () => {
                     <div className="flex-1 overflow-y-auto p-6 space-y-8">
                         {/* Material Info */}
                         {selectedMaterial && (
-                            <div className="flex flex-col gap-2 bg-slate-800 p-4 rounded-xl border border-slate-700">
+                            <div className="flex flex-col gap-2 bg-gray-200 p-4 rounded-xl border border-gray-300">
                                 <div className="flex items-center gap-4">
                                     <div
                                         className="relative group cursor-pointer"
@@ -2335,11 +2335,11 @@ const App: React.FC = () => {
                                     >
                                         <img
                                             src={selectedMaterial.imageUrl}
-                                            className="w-16 h-16 rounded-lg object-cover border border-slate-600"
+                                            className="w-16 h-16 rounded-lg object-cover border border-gray-300"
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
                                             <svg
-                                                className="w-6 h-6 text-white"
+                                                className="w-6 h-6 text-gray-700"
                                                 fill="none"
                                                 stroke="currentColor"
                                                 viewBox="0 0 24 24"
@@ -2354,10 +2354,10 @@ const App: React.FC = () => {
                                         </div>
                                     </div>
                                     <div>
-                                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
                                             {t.editor.material}
                                         </div>
-                                        <div className="font-bold text-white leading-tight">
+                                        <div className="font-bold text-gray-700 leading-tight">
                                             {selectedMaterial.name}
                                         </div>
                                         <div className="text-xs text-blue-400 mt-1">
@@ -2370,7 +2370,7 @@ const App: React.FC = () => {
                                     variant="ghost"
                                     onClick={handleRoomAnalysis}
                                     disabled={generationState.isAnalyzing}
-                                    className="w-full text-[10px] uppercase tracking-widest border border-dashed border-slate-600 hover:border-blue-500 hover:text-blue-400 py-2 mt-2"
+                                    className="w-full text-[10px] uppercase tracking-widest border border-dashed border-gray-300 hover:border-blue-500 hover:text-blue-400 py-2 mt-2"
                                 >
                                     {generationState.isAnalyzing
                                         ? "Analyzing..."
@@ -2381,7 +2381,7 @@ const App: React.FC = () => {
 
                         {/* Lighting Toggle */}
                         <div>
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block">
                                 {t.editor.lighting}
                             </label>
                             <div className="flex gap-2">
@@ -2395,7 +2395,7 @@ const App: React.FC = () => {
                                                     lighting: l as any,
                                                 })
                                             }
-                                            className={`flex-1 p-2 rounded-lg text-[10px] font-bold border transition-all ${renderOptions.lighting === l ? "bg-slate-700 border-slate-500 text-white" : "bg-slate-800 border-slate-800 text-slate-500"}`}
+                                            className={`flex-1 p-2 rounded-lg text-[10px] font-bold border transition-all ${renderOptions.lighting === l ? "bg-gray-300 border-gray-400 text-gray-700" : "bg-gray-200 border-gray-300 text-gray-500"}`}
                                         >
                                             {l.replace("_", " ")}
                                         </button>
@@ -2406,11 +2406,11 @@ const App: React.FC = () => {
 
                         {/* Prompt */}
                         <div>
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 block">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block">
                                 {t.editor.instructions}
                             </label>
                             <textarea
-                                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
+                                className="w-full bg-gray-200 border border-gray-300 rounded-xl p-3 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
                                 rows={3}
                                 placeholder={
                                     lang === "es"
@@ -2431,7 +2431,7 @@ const App: React.FC = () => {
                                             onClick={() =>
                                                 setCustomPrompt(template)
                                             }
-                                            className="text-[10px] bg-slate-800 text-slate-400 px-2 py-1 rounded-full hover:bg-slate-700 border border-slate-700 text-left"
+                                            className="text-[10px] bg-gray-200 text-gray-500 px-2 py-1 rounded-full hover:bg-gray-300 border border-gray-300 text-left"
                                         >
                                             {template}
                                         </button>
@@ -2440,7 +2440,7 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="p-6 bg-slate-900 border-t border-slate-800 space-y-3">
+                    <div className="p-6 bg-white border-t border-gray-300 space-y-3">
                         <Button
                             onClick={handleGenerate}
                             isLoading={generationState.isGenerating}
@@ -2465,7 +2465,7 @@ const App: React.FC = () => {
                                 <Button
                                     onClick={() => setView(AppView.ESTIMATION)}
                                     variant="secondary"
-                                    className="bg-green-600 border-green-500 hover:bg-green-500 text-white text-xs uppercase"
+                                    className="bg-green-600 border-green-500 hover:bg-green-500 text-gray-700 text-xs uppercase"
                                 >
                                     {t.editor.createQuote}
                                 </Button>
@@ -2485,7 +2485,7 @@ const App: React.FC = () => {
         const total = cartItems.reduce((acc, item) => acc + item.totalCost, 0);
 
         return (
-            <div className="min-h-screen bg-slate-900 flex flex-col p-6">
+            <div className="min-h-screen bg-gray-100 flex flex-col p-6">
                 <header className="flex justify-between items-center mb-8">
                     <Button
                         variant="ghost"
@@ -2493,7 +2493,7 @@ const App: React.FC = () => {
                     >
                         ← {t.common.back}
                     </Button>
-                    <h1 className="text-2xl font-black text-white">
+                    <h1 className="text-2xl font-black text-gray-700">
                         {t.cart.title}
                     </h1>
                 </header>
@@ -2501,7 +2501,7 @@ const App: React.FC = () => {
                 <div className="flex-1 max-w-4xl mx-auto w-full">
                     {cartItems.length === 0 ? (
                         <div className="text-center py-20">
-                            <div className="text-slate-500 mb-4">
+                            <div className="text-gray-500 mb-4">
                                 {t.cart.empty}
                             </div>
                             <Button onClick={() => setView(AppView.LANDING)}>
@@ -2513,17 +2513,17 @@ const App: React.FC = () => {
                             {cartItems.map((item, index) => (
                                 <div
                                     key={index}
-                                    className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex gap-4 items-center"
+                                    className="bg-gray-200 p-4 rounded-xl border border-gray-300 flex gap-4 items-center"
                                 >
                                     <img
                                         src={item.material.imageUrl}
                                         className="w-16 h-16 rounded object-cover"
                                     />
                                     <div className="flex-1">
-                                        <div className="font-bold text-white">
+                                        <div className="font-bold text-gray-700">
                                             {item.material.name}
                                         </div>
-                                        <div className="text-sm text-slate-400">
+                                        <div className="text-sm text-gray-500">
                                             {item.quantity}{" "}
                                             {item.material.pricing.unitLabel} •{" "}
                                             {item.dimensions.width}x
@@ -2554,11 +2554,11 @@ const App: React.FC = () => {
                                 </div>
                             ))}
 
-                            <div className="mt-8 bg-slate-950 p-6 rounded-xl border border-slate-800 flex justify-between items-center">
-                                <span className="text-slate-400 uppercase tracking-widest font-bold">
+                            <div className="mt-8 bg-slate-950 p-6 rounded-xl border border-gray-300 flex justify-between items-center">
+                                <span className="text-gray-500 uppercase tracking-widest font-bold">
                                     {t.cart.total}
                                 </span>
-                                <span className="text-3xl font-black text-white">
+                                <span className="text-3xl font-black text-gray-700">
                                     ${Math.round(total)}
                                 </span>
                             </div>
@@ -2599,7 +2599,7 @@ const App: React.FC = () => {
                             <h3 className="text-2xl font-black mb-4 uppercase">
                                 {t.cart.confirmOrder}
                             </h3>
-                            <p className="text-sm text-slate-600 mb-6">
+                            <p className="text-sm text-gray-600 mb-6">
                                 You will be redirected to your email client to
                                 send this order request to our sales team.
                             </p>
@@ -2610,7 +2610,7 @@ const App: React.FC = () => {
                                 <Button
                                     variant="secondary"
                                     onClick={() => setShowCheckoutModal(false)}
-                                    className="flex-1 border-slate-300 text-slate-600 hover:bg-slate-200"
+                                    className="flex-1 border-gray-300 text-gray-600 hover:bg-gray-200"
                                 >
                                     {t.common.cancel}
                                 </Button>
@@ -2642,13 +2642,13 @@ const App: React.FC = () => {
                 onClick={() => setShowProbeModal(false)}
             >
                 <div
-                    className="relative max-w-lg w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700 flex flex-col max-h-[90vh]"
+                    className="relative max-w-lg w-full bg-white rounded-2xl overflow-hidden shadow-2xl border border-gray-300 flex flex-col max-h-[90vh]"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="absolute top-4 right-4 z-10">
                         <button
                             onClick={() => setShowProbeModal(false)}
-                            className="bg-black/50 text-white rounded-full p-2 hover:bg-white hover:text-black transition-colors"
+                            className="bg-black/50 text-gray-700 rounded-full p-2 hover:bg-white hover:text-black transition-colors"
                         >
                             <svg
                                 className="w-5 h-5"
@@ -2679,15 +2679,15 @@ const App: React.FC = () => {
                         )}
                     </div>
 
-                    <div className="p-6 bg-slate-900 space-y-6">
+                    <div className="p-6 bg-white space-y-6">
                         <div className="text-center">
                             <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">
                                 {selectedMaterial?.category}
                             </div>
-                            <h3 className="text-2xl font-black text-white mb-2">
+                            <h3 className="text-2xl font-black text-gray-700 mb-2">
                                 {selectedMaterial?.name}
                             </h3>
-                            <p className="text-slate-400 text-sm line-clamp-2">
+                            <p className="text-gray-500 text-sm line-clamp-2">
                                 {selectedMaterial?.description}
                             </p>
                         </div>
@@ -2720,7 +2720,7 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 text-slate-50 font-sans selection:bg-blue-500 selection:text-white">
+        <div className="min-h-screen bg-gray-100 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700">
             {view === AppView.LOGIN && renderLogin()}
             {view === AppView.LANDING && renderLanding()}
             {view === AppView.ADMIN && renderAdmin()}
@@ -2731,7 +2731,7 @@ const App: React.FC = () => {
                         <Button
                             variant="ghost"
                             onClick={() => setView(AppView.GALLERY)}
-                            className="text-white"
+                            className="text-gray-700"
                         >
                             ← {t.common.back}
                         </Button>
@@ -2748,7 +2748,7 @@ const App: React.FC = () => {
             )}
             {view === AppView.EDITOR && renderEditor()}
             {view === AppView.ESTIMATION && selectedMaterial && (
-                <div className="h-screen bg-slate-900 p-4 md:p-8 overflow-y-auto flex justify-center">
+                <div className="h-screen bg-gray-100 p-4 md:p-8 overflow-y-auto flex justify-center">
                     <div className="w-full max-w-4xl h-full">
                         <EstimationPanel
                             material={selectedMaterial}
