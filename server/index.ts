@@ -106,6 +106,27 @@ async function initDatabase() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'user',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create default admin user if not exists
+    const adminExists = await pool.query("SELECT id FROM users WHERE email = 'admin@gmail.com'");
+    if (adminExists.rows.length === 0) {
+      await pool.query(
+        "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4)",
+        ["Admin", "admin@gmail.com", "admin@@@1", "admin"]
+      );
+      console.log("✅ Default admin user created");
+    }
+
     console.log("✅ Database tables initialized");
   } catch (error) {
     console.warn(
@@ -167,6 +188,56 @@ app.get("/api/health", async (req, res) => {
         database: "disconnected",
         error: String(error),
       });
+  }
+});
+
+// Authentication endpoints
+app.post("/api/auth/signup", async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: "Name, email, and password are required" });
+  }
+  if (useMock) {
+    return res.status(500).json({ error: "Database not available" });
+  }
+  try {
+    // Check if email already exists
+    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
+    // Create new user
+    const result = await pool.query(
+      "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role",
+      [name, email, password, "user"]
+    );
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error("Signup error:", error);
+    res.status(500).json({ error: "Failed to create account" });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+  if (useMock) {
+    return res.status(500).json({ error: "Database not available" });
+  }
+  try {
+    const result = await pool.query(
+      "SELECT id, name, email, role FROM users WHERE email = $1 AND password = $2",
+      [email, password]
+    );
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Login failed" });
   }
 });
 

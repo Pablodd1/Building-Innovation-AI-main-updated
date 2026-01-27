@@ -40,12 +40,26 @@ const BrandLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
     />
 );
 
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+}
+
 const App: React.FC = () => {
     const [view, setView] = useState<AppView>(AppView.LOGIN);
     const [categoryUsage, setCategoryUsage] = useState<
         "Interior" | "Exterior" | "All"
     >("Interior");
     const [lang, setLang] = useState<Language>("en");
+
+    // Authentication State
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+    const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
+    const [authError, setAuthError] = useState("");
+    const [authLoading, setAuthLoading] = useState(false);
 
     // Dynamic Data State
     const [materials, setMaterials] = useState<Material[]>([]);
@@ -782,6 +796,40 @@ const App: React.FC = () => {
         </div>
     );
 
+    const handleAuth = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setAuthError("");
+        setAuthLoading(true);
+
+        try {
+            const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/signup";
+            const body = authMode === "login" 
+                ? { email: authForm.email, password: authForm.password }
+                : { name: authForm.name, email: authForm.email, password: authForm.password };
+
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                setAuthError(data.error || "Authentication failed");
+                return;
+            }
+
+            setCurrentUser(data.user);
+            setView(AppView.LANDING);
+            setAuthForm({ name: "", email: "", password: "" });
+        } catch (error) {
+            setAuthError("Connection error. Please try again.");
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
     const renderLogin = () => (
         <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-gray-100">
             <div
@@ -798,46 +846,77 @@ const App: React.FC = () => {
                 <BrandLogo className="w-32 h-32" />
             </div>
             <div className="relative z-10 w-full max-w-sm bg-gray-200/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg">
-                <form
-                    className="space-y-4"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        setView(AppView.LANDING);
-                    }}
-                >
+                <form className="space-y-4" onSubmit={handleAuth}>
+                    {authMode === "signup" && (
+                        <input
+                            type="text"
+                            value={authForm.name}
+                            onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
+                            className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
+                            placeholder={lang === "es" ? "Nombre" : "Name"}
+                            required
+                        />
+                    )}
                     <input
                         type="email"
+                        value={authForm.email}
+                        onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
                         className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
                         placeholder={t.login.email}
+                        required
                     />
                     <input
                         type="password"
+                        value={authForm.password}
+                        onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
                         className="w-full bg-gray-300 border-0 rounded-lg p-4 text-slate-700 placeholder-slate-500"
                         placeholder={t.login.password}
+                        required
                     />
+
+                    {authError && (
+                        <div className="text-red-600 text-sm text-center bg-red-100 p-2 rounded">
+                            {authError}
+                        </div>
+                    )}
+
                     <button
                         type="submit"
-                        className="w-full bg-gray-400 hover:bg-gray-500 text-slate-700 py-4 rounded-lg text-base font-semibold transition-colors"
-                        onClick={() => setView(AppView.LANDING)}
+                        disabled={authLoading}
+                        className="w-full bg-gray-400 hover:bg-gray-500 text-slate-700 py-4 rounded-lg text-base font-semibold transition-colors disabled:opacity-50"
                     >
-                        {t.login.signIn}
+                        {authLoading 
+                            ? "..." 
+                            : authMode === "login" 
+                                ? t.login.signIn 
+                                : (lang === "es" ? "Registrarse" : "Sign Up")}
                     </button>
 
-                    <div className="relative flex py-2 items-center">
-                        <div className="flex-grow border-t border-gray-400"></div>
-                        <span className="flex-shrink-0 mx-4 text-slate-500 text-xs font-bold uppercase">
-                            OR
-                        </span>
-                        <div className="flex-grow border-t border-gray-400"></div>
+                    <div className="text-center text-sm text-slate-600">
+                        {authMode === "login" ? (
+                            <span>
+                                {lang === "es" ? "¿No tienes cuenta? " : "Don't have an account? "}
+                                <button
+                                    type="button"
+                                    onClick={() => { setAuthMode("signup"); setAuthError(""); }}
+                                    className="text-blue-600 hover:underline font-semibold"
+                                >
+                                    {lang === "es" ? "Regístrate" : "Sign Up"}
+                                </button>
+                            </span>
+                        ) : (
+                            <span>
+                                {lang === "es" ? "¿Ya tienes cuenta? " : "Already have an account? "}
+                                <button
+                                    type="button"
+                                    onClick={() => { setAuthMode("login"); setAuthError(""); }}
+                                    className="text-blue-600 hover:underline font-semibold"
+                                >
+                                    {lang === "es" ? "Inicia sesión" : "Sign In"}
+                                </button>
+                            </span>
+                        )}
                     </div>
-
-                    <button
-                        type="button"
-                        className="w-full py-3 text-slate-600 hover:text-slate-800 text-sm"
-                        onClick={() => setView(AppView.LANDING)}
-                    >
-                        {t.login.skip} →
-                    </button>
                 </form>
             </div>
         </div>
@@ -852,7 +931,12 @@ const App: React.FC = () => {
                         "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/APP_Horizontal_-07_ydmd3m.jpg')",
                 }}
             />
-            <header className="relative z-10 flex justify-end items-center mb-4">
+            <header className="relative z-10 flex justify-between items-center mb-4">
+                <div className="text-slate-700 text-sm">
+                    {currentUser && (
+                        <span className="font-medium">{currentUser.name}</span>
+                    )}
+                </div>
                 <div className="flex items-center gap-4">
                     <LanguageToggle />
                     <button
@@ -878,28 +962,42 @@ const App: React.FC = () => {
                             </span>
                         )}
                     </button>
-                    <button
-                        onClick={() => setView(AppView.ADMIN)}
-                        className="p-2 text-slate-600 hover:text-slate-900"
-                    >
-                        <svg
-                            className="w-6 h-6"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
+                    {currentUser?.role === "admin" && (
+                        <button
+                            onClick={() => setView(AppView.ADMIN)}
+                            className="p-2 text-slate-600 hover:text-slate-900"
                         >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                            />
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                            />
+                            <svg
+                                className="w-6 h-6"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                                />
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                            </svg>
+                        </button>
+                    )}
+                    <button
+                        onClick={() => {
+                            setCurrentUser(null);
+                            setView(AppView.LOGIN);
+                        }}
+                        className="p-2 text-slate-600 hover:text-slate-900"
+                        title={lang === "es" ? "Cerrar sesión" : "Logout"}
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                         </svg>
                     </button>
                 </div>
