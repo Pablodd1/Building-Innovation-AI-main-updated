@@ -70,6 +70,29 @@ const App: React.FC = () => {
     const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">(
         "USD",
     );
+    
+    // Currency conversion rate (1 USD = ~4100 COP approximately)
+    const USD_TO_COP_RATE = 4100;
+    
+    // Helper function to convert and format price
+    const formatPrice = (pricePerUnit: number, materialCurrency: string, targetCurrency: "USD" | "COP"): string => {
+        let convertedPrice = pricePerUnit;
+        
+        if (materialCurrency === "USD" && targetCurrency === "COP") {
+            convertedPrice = Math.round(pricePerUnit * USD_TO_COP_RATE);
+        } else if ((materialCurrency === "COP" || materialCurrency === "MXN") && targetCurrency === "USD") {
+            convertedPrice = Math.round((pricePerUnit / USD_TO_COP_RATE) * 100) / 100;
+        } else if (materialCurrency === "MXN" && targetCurrency === "COP") {
+            // MXN is treated same as COP for display
+            convertedPrice = pricePerUnit;
+        }
+        
+        if (targetCurrency === "USD") {
+            return `$${convertedPrice.toLocaleString()}`;
+        } else {
+            return `${Math.round(convertedPrice).toLocaleString()} COP`;
+        }
+    };
 
     // Search State
     const [searchQuery, setSearchQuery] = useState("");
@@ -1908,30 +1931,7 @@ const App: React.FC = () => {
                                                             </span>
                                                         </td>
                                                         <td className="p-4 text-gray-700 font-bold">
-                                                            {m.pricing
-                                                                .currency ===
-                                                            displayCurrency ? (
-                                                                <>
-                                                                    {displayCurrency ===
-                                                                    "USD"
-                                                                        ? "$"
-                                                                        : ""}
-                                                                    {m.pricing.pricePerUnit.toLocaleString()}
-                                                                    {displayCurrency ===
-                                                                    "COP"
-                                                                        ? " COP"
-                                                                        : ""}
-                                                                </>
-                                                            ) : (
-                                                                <span className="text-gray-500">
-                                                                    {m.pricing.pricePerUnit.toLocaleString()}{" "}
-                                                                    {
-                                                                        m
-                                                                            .pricing
-                                                                            .currency
-                                                                    }
-                                                                </span>
-                                                            )}
+                                                            {formatPrice(m.pricing.pricePerUnit, m.pricing.currency, displayCurrency)}
                                                             <span className="text-xs text-gray-500 font-normal ml-1">
                                                                 /{" "}
                                                                 {
