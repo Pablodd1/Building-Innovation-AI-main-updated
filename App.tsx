@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from "react";
 import {
     AppView,
     Material,
@@ -37,7 +37,31 @@ const BrandLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
         src={LOGO_URL}
         alt="Building Innovation Logo"
         className={`${className} object-contain`}
+        loading="eager"
     />
+);
+
+const LazyImage = ({ src, alt, className, fallback }: { src: string; alt: string; className?: string; fallback?: string }) => {
+    const [loaded, setLoaded] = useState(false);
+    const [error, setError] = useState(false);
+    const placeholderSrc = fallback || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23e5e7eb' width='100' height='100'/%3E%3C/svg%3E";
+    
+    return (
+        <img
+            src={error ? placeholderSrc : src}
+            alt={alt}
+            className={`${className} ${loaded ? 'opacity-100' : 'opacity-70'} transition-opacity duration-200`}
+            loading="lazy"
+            onLoad={() => setLoaded(true)}
+            onError={() => setError(true)}
+        />
+    );
+};
+
+const LoadingSpinner = () => (
+    <div className="flex items-center justify-center p-8">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
 );
 
 interface User {
@@ -63,6 +87,7 @@ const App: React.FC = () => {
 
     // Dynamic Data State
     const [materials, setMaterials] = useState<Material[]>([]);
+    const [materialsLoading, setMaterialsLoading] = useState(true);
     const [contractors, setContractors] = useState<Contractor[]>([]);
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
         null,
@@ -151,24 +176,29 @@ const App: React.FC = () => {
 
     const t = TRANSLATIONS[lang];
 
-    const loadMaterialsFromDB = async () => {
+    // Memoized filtered materials for admin panel
+    const adminFilteredMaterials = useMemo(() => {
+        if (adminCollectionFilter === "All") return materials;
+        return materials.filter((m) => m.usage === adminCollectionFilter);
+    }, [materials, adminCollectionFilter]);
+
+    // Memoized categories for faster rendering
+    const materialCategories = useMemo(() => {
+        const categories = new Set(materials.map((m) => m.category));
+        return Array.from(categories).sort();
+    }, [materials]);
+
+    const loadMaterialsFromDB = useCallback(async () => {
+        setMaterialsLoading(true);
         try {
             const res = await fetch("/api/materials");
             if (!res.ok) {
-                console.error(
-                    "Failed to load materials:",
-                    res.status,
-                    res.statusText,
-                );
+                console.error("Failed to load materials:", res.status, res.statusText);
                 return;
             }
             const dbMaterials = await res.json();
             console.log("Loaded materials from DB:", dbMaterials?.length || 0);
-            if (
-                dbMaterials &&
-                Array.isArray(dbMaterials) &&
-                dbMaterials.length > 0
-            ) {
+            if (dbMaterials && Array.isArray(dbMaterials) && dbMaterials.length > 0) {
                 const converted = dbMaterials.map((m: any) => ({
                     id: String(m.id),
                     refCode: m.ref_code || "",
@@ -198,8 +228,10 @@ const App: React.FC = () => {
         } catch (e) {
             console.error("Failed to load materials from DB:", e);
             setMaterials([]);
+        } finally {
+            setMaterialsLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         loadMaterialsFromDB();
