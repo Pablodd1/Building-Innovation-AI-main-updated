@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
           }
         }
       },
+      publicDir: 'public',
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(apiKey),
@@ -27,6 +28,10 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        outDir: 'dist',
+        assetsDir: 'assets'
       }
     };
 });
