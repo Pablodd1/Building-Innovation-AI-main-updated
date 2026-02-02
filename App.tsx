@@ -60,6 +60,11 @@ const App: React.FC = () => {
     const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
     const [authError, setAuthError] = useState("");
     const [authLoading, setAuthLoading] = useState(false);
+    
+    // PWA Install State
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const [showInstallButton, setShowInstallButton] = useState(false);
+    const [isAppInstalled, setIsAppInstalled] = useState(false);
 
     // Dynamic Data State
     const [materials, setMaterials] = useState<Material[]>([]);
@@ -236,6 +241,47 @@ const App: React.FC = () => {
             setCurrentPage(maxPage);
         }
     }, [materials.length, currentPage, itemsPerPage]);
+
+    // PWA Install Prompt Handler
+    useEffect(() => {
+        // Check if already installed
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            setIsAppInstalled(true);
+            return;
+        }
+
+        const handleBeforeInstallPrompt = (e: Event) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+            setShowInstallButton(true);
+        };
+
+        const handleAppInstalled = () => {
+            setIsAppInstalled(true);
+            setShowInstallButton(false);
+            setDeferredPrompt(null);
+        };
+
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.addEventListener('appinstalled', handleAppInstalled);
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.removeEventListener('appinstalled', handleAppInstalled);
+        };
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+            setShowInstallButton(false);
+        }
+        setDeferredPrompt(null);
+    };
 
     const updateCartCount = () => {
         try {
@@ -1009,6 +1055,18 @@ const App: React.FC = () => {
                                     d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                                 />
                             </svg>
+                        </button>
+                    )}
+                    {showInstallButton && !isAppInstalled && (
+                        <button
+                            onClick={handleInstallClick}
+                            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                            title={lang === "es" ? "Instalar App" : "Install App"}
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            <span className="hidden sm:inline">{lang === "es" ? "Instalar" : "Install"}</span>
                         </button>
                     )}
                     <button
