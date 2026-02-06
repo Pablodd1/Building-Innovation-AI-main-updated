@@ -1,528 +1,77 @@
-import express from "express";
+// ConstructViz AI - Express Backend Server
+// Handles materials database and purchase requests
+
+import express, { Request, Response } from "express";
 import cors from "cors";
 import pg from "pg";
-import path from "path";
-import { fileURLToPath } from "url";
-import fs from "fs";
+import { sendPurchaseNotifications } from "./emailService.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+const { Pool } = pg;
 const app = express();
-const distPath = path.join(__dirname, "..", "dist");
-const isProduction = fs.existsSync(distPath);
-const PORT = isProduction ? 5000 : 3001;
+const PORT = process.env.PORT || 5173;
 
+// Database connection
+const pool = new Pool({
+  connectionString:
+    process.env.DATABASE_URL || "postgresql://localhost:5432/constructviz_db",
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
+});
+
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+// Health check
+app.get("/api/health", (req: Request, res: Response) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Mock Storage for Development Fallback
-let useMock = false;
-let mockSettings: Record<string, string> = {};
+// ===== MATERIALS ENDPOINTS (existing) =====
 
-// Default Materials Seed Data
-const DEFAULT_MATERIALS = [
-  {
-    id: 1,
-    ref_code: "WAL-MAR-GRY",
-    name: "Pared Mármol Gris",
-    description:
-      "Self-adhesive grey marble wall covering with classic white stone veining.",
-    image_url:
-      "https://images.unsplash.com/photo-1615800098779-1be32e60cca3?auto=format&fit=crop&w=800&q=80",
-    prompt_modifier:
-      "grey marble wall covering, continuous seamless stone texture, high gloss finish",
-    category: "Rollos Adhesivos",
-    subcategory: "Mármol",
-    usage: "Interior",
-    width_cm: 120,
-    length_cm: 300,
-    thickness_m: 2,
-    price: 85.0,
-    unit: "Roll",
-    items_per_box: 1,
-  },
-  {
-    id: 2,
-    ref_code: "SPC-OAK-LGT",
-    name: "Roble Claro SPC",
-    description:
-      "Light Oak SPC Flooring (Rigid Core). Water resistant and durable wood-look planks.",
-    image_url:
-      "https://images.unsplash.com/photo-1589578228447-e1a4e481c6c8?auto=format&fit=crop&w=800&q=80",
-    prompt_modifier: "light oak spc flooring planks, clean modern wood floor",
-    category: "Pisos SPC",
-    subcategory: "Madera",
-    usage: "Interior",
-    width_cm: 18.3,
-    length_cm: 122,
-    thickness_m: 0.4,
-    price: 35.0,
-    unit: "Box",
-    items_per_box: 10,
-  },
-];
-
-let mockMaterials: any[] = [...DEFAULT_MATERIALS];
-
-// Initialize database tables
-async function initDatabase() {
-  try {
-    // Attempt a simple query to check connection
-    await pool.query("SELECT NOW()");
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        id SERIAL PRIMARY KEY,
-        setting_key VARCHAR(255) UNIQUE NOT NULL,
-        setting_value TEXT,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS materials (
-        id SERIAL PRIMARY KEY,
-        ref_code VARCHAR(100) UNIQUE NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        category VARCHAR(100),
-        subcategory VARCHAR(100),
-        price DECIMAL(10,2) DEFAULT 0,
-        unit VARCHAR(50) DEFAULT 'Piece',
-        items_per_box INTEGER DEFAULT 1,
-        width_cm DECIMAL(10,2) DEFAULT 0,
-        length_cm DECIMAL(10,2) DEFAULT 0,
-        thickness_m DECIMAL(10,4) DEFAULT 0,
-        description TEXT,
-        image_url TEXT,
-        usage VARCHAR(50) DEFAULT 'Interior',
-        prompt_modifier TEXT,
-        currency VARCHAR(10) DEFAULT 'USD',
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        role VARCHAR(50) DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Create default admin user if not exists
-    const adminExists = await pool.query("SELECT id FROM users WHERE email = 'admin@gmail.com'");
-    if (adminExists.rows.length === 0) {
-      await pool.query(
-        "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4)",
-        ["Admin", "admin@gmail.com", "admin@@@1", "admin"]
-      );
-      console.log("✅ Default admin user created");
-    }
-
-    console.log("✅ Database tables initialized");
-  } catch (error) {
-    console.warn(
-      "⚠️ Postgres connection failed. Switching to IN-MEMORY MOCK MODE for development.",
-    );
-    useMock = true;
-  }
-}
-
-initDatabase();
-
-// Image proxy endpoint for CORS-blocked images
-app.get("/api/image-proxy", async (req, res) => {
-  const imageUrl = req.query.url as string;
-  if (!imageUrl) {
-    return res.status(400).json({ error: "URL parameter required" });
-  }
-  
-  try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) {
-      return res.status(response.status).json({ error: "Failed to fetch image" });
-    }
-    
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    const buffer = await response.arrayBuffer();
-    
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    res.send(Buffer.from(buffer));
-  } catch (error) {
-    console.error("Image proxy error:", error);
-    res.status(500).json({ error: "Failed to proxy image" });
-  }
-});
-
-// Health check endpoint
-app.get("/api/health", async (req, res) => {
-  if (useMock) {
-    return res.json({
-      status: "ok",
-      database: "mock_mode_active",
-      materialsCount: mockMaterials.length,
-    });
-  }
-  try {
-    const result = await pool.query("SELECT COUNT(*) as count FROM materials");
-    res.json({
-      status: "ok",
-      database: "connected",
-      materialsCount: parseInt(result.rows[0].count),
-    });
-  } catch (error) {
-    console.error("Health check failed:", error);
-    res
-      .status(500)
-      .json({
-        status: "error",
-        database: "disconnected",
-        error: String(error),
-      });
-  }
-});
-
-// Authentication endpoints
-app.post("/api/auth/signup", async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "Name, email, and password are required" });
-  }
-  if (useMock) {
-    return res.status(500).json({ error: "Database not available" });
-  }
-  try {
-    // Check if email already exists
-    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
-    if (existing.rows.length > 0) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
-    // Create new user
-    const result = await pool.query(
-      "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role",
-      [name, email, password, "user"]
-    );
-    res.json({ success: true, user: result.rows[0] });
-  } catch (error) {
-    console.error("Signup error:", error);
-    res.status(500).json({ error: "Failed to create account" });
-  }
-});
-
-app.post("/api/auth/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required" });
-  }
-  if (useMock) {
-    return res.status(500).json({ error: "Database not available" });
-  }
+// Get all materials
+app.get("/api/materials", async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      "SELECT id, name, email, role FROM users WHERE email = $1 AND password = $2",
-      [email, password]
+      "SELECT * FROM materials ORDER BY created_at DESC",
     );
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-    res.json({ success: true, user: result.rows[0] });
-  } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ error: "Login failed" });
-  }
-});
-
-app.get("/api/settings/:key", async (req, res) => {
-  const { key } = req.params;
-  if (useMock) {
-    return res.json({ value: mockSettings[key] || null });
-  }
-  try {
-    const result = await pool.query(
-      "SELECT setting_value FROM app_settings WHERE setting_key = $1",
-      [key],
-    );
-    res.json({
-      value: result.rows.length > 0 ? result.rows[0].setting_value : null,
-    });
-  } catch (error) {
-    console.error("Error fetching setting:", error);
-    res.status(500).json({ error: "Failed to fetch setting" });
-  }
-});
-
-app.post("/api/settings", async (req, res) => {
-  const { key, value } = req.body;
-  if (useMock) {
-    mockSettings[key] = value;
-    return res.json({ success: true });
-  }
-  try {
-    await pool.query(
-      `INSERT INTO app_settings (setting_key, setting_value, updated_at) 
-       VALUES ($1, $2, CURRENT_TIMESTAMP) 
-       ON CONFLICT (setting_key) 
-       DO UPDATE SET setting_value = $2, updated_at = CURRENT_TIMESTAMP`,
-      [key, value],
-    );
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error saving setting:", error);
-    res.status(500).json({ error: "Failed to save setting" });
-  }
-});
-
-app.delete("/api/settings/:key", async (req, res) => {
-  const { key } = req.params;
-  if (useMock) {
-    delete mockSettings[key];
-    return res.json({ success: true });
-  }
-  try {
-    await pool.query("DELETE FROM app_settings WHERE setting_key = $1", [key]);
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error deleting setting:", error);
-    res.status(500).json({ error: "Failed to delete setting" });
-  }
-});
-
-app.get("/api/materials", async (req, res) => {
-  if (useMock) {
-    return res.json(mockMaterials);
-  }
-  try {
-    const result = await pool.query("SELECT * FROM materials ORDER BY id");
     res.json(result.rows);
-  } catch (error) {
-    console.error("Error fetching materials:", error);
-    res.status(500).json({ error: "Failed to fetch materials" });
+  } catch (error: any) {
+    console.error("Get materials error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.post("/api/materials", async (req, res) => {
-  const {
-    ref_code,
-    name,
-    category,
-    subcategory,
-    price,
-    currency,
-    unit,
-    items_per_box,
-    width_cm,
-    length_cm,
-    thickness_m,
-    description,
-    image_url,
-    usage,
-    prompt_modifier,
-  } = req.body;
-
-  if (useMock) {
-    const newMat = {
-      id:
-        mockMaterials.length > 0
-          ? Math.max(...mockMaterials.map((m) => m.id)) + 1
-          : 1,
+// Create material
+app.post("/api/materials", async (req: Request, res: Response) => {
+  try {
+    const {
       ref_code,
       name,
       category,
       subcategory,
-      price: price || 0,
-      unit: unit || "Piece",
-      items_per_box: items_per_box || 1,
-      currency: currency || "USD",
-      width_cm: width_cm || 0,
-      length_cm: length_cm || 0,
-      thickness_m: thickness_m || 0,
+      price,
+      currency,
+      unit,
+      items_per_box,
+      width_cm,
+      length_cm,
+      thickness_m,
       description,
       image_url,
-      usage: usage || "Interior",
+      usage,
       prompt_modifier,
-      updated_at: new Date().toISOString(),
-    };
-    mockMaterials.push(newMat);
-    return res.json(newMat);
-  }
+    } = req.body;
 
-  try {
     const result = await pool.query(
-      `INSERT INTO materials (ref_code, name, category, subcategory, price, currency, unit, items_per_box, width_cm, length_cm, thickness_m, description, image_url, usage, prompt_modifier, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP)
-       RETURNING *`,
-      [
-        ref_code,
-        name,
-        category,
-        subcategory,
-        price || 0,
-        currency || "USD",
-        unit || "Piece",
-        items_per_box || 1,
-        width_cm || 0,
-        length_cm || 0,
-        thickness_m || 0,
-        description,
-        image_url,
-        usage || "Interior",
-        prompt_modifier,
-      ],
-    );
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Error creating material:", error);
-    res.status(500).json({ error: "Failed to create material" });
-  }
-});
-
-app.post("/api/materials/bulk", async (req, res) => {
-  const { materials } = req.body;
-  if (!materials || !Array.isArray(materials)) {
-    return res.status(400).json({ error: "Materials array required" });
-  }
-
-  if (useMock) {
-    let imported = 0;
-    materials.forEach((mat) => {
-      const idx = mockMaterials.findIndex((m) => m.ref_code === mat.ref_code);
-      const newMat = {
-        ...mat,
-        id:
-          idx >= 0
-            ? mockMaterials[idx].id
-            : mockMaterials.length > 0
-              ? Math.max(...mockMaterials.map((m) => m.id)) + 1
-              : 1,
-        price: mat.price || 0,
-        unit: mat.unit || "Piece",
-        items_per_box: mat.items_per_box || 1,
-        currency: mat.currency || "USD",
-        width_cm: mat.width_cm || 0,
-        length_cm: mat.length_cm || 0,
-        thickness_m: mat.thickness_m || 0,
-        usage: mat.usage || "Interior",
-        updated_at: new Date().toISOString(),
-      };
-      if (idx >= 0) {
-        mockMaterials[idx] = newMat;
-      } else {
-        mockMaterials.push(newMat);
-      }
-      imported++;
-    });
-    return res.json({ success: true, imported: materials.length });
-  }
-
-  try {
-    let imported = 0;
-    for (const mat of materials) {
-      await pool.query(
-        `INSERT INTO materials (ref_code, name, category, subcategory, price, currency, unit, items_per_box, width_cm, length_cm, thickness_m, description, image_url, usage, prompt_modifier, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP)
-         ON CONFLICT (ref_code) DO UPDATE SET
-           name = EXCLUDED.name,
-           category = EXCLUDED.category,
-           subcategory = EXCLUDED.subcategory,
-           price = EXCLUDED.price,
-           currency = EXCLUDED.currency,
-           unit = EXCLUDED.unit,
-           items_per_box = EXCLUDED.items_per_box,
-           width_cm = EXCLUDED.width_cm,
-           length_cm = EXCLUDED.length_cm,
-           thickness_m = EXCLUDED.thickness_m,
-           description = EXCLUDED.description,
-           image_url = EXCLUDED.image_url,
-           usage = EXCLUDED.usage,
-           prompt_modifier = EXCLUDED.prompt_modifier,
-           updated_at = CURRENT_TIMESTAMP`,
-        [
-          mat.ref_code,
-          mat.name,
-          mat.category,
-          mat.subcategory,
-          mat.price || 0,
-          mat.currency || "USD",
-          mat.unit || "Piece",
-          mat.items_per_box || 1,
-          mat.width_cm || 0,
-          mat.length_cm || 0,
-          mat.thickness_m || 0,
-          mat.description,
-          mat.image_url,
-          mat.usage || "Interior",
-          mat.prompt_modifier,
-        ],
-      );
-      imported++;
-    }
-    res.json({ success: true, imported });
-  } catch (error) {
-    console.error("Error bulk importing materials:", error);
-    res.status(500).json({ error: "Failed to import materials" });
-  }
-});
-
-app.put("/api/materials/:id", async (req, res) => {
-  const { id } = req.params;
-  const {
-    ref_code,
-    name,
-    category,
-    subcategory,
-    price,
-    currency,
-    unit,
-    items_per_box,
-    width_cm,
-    length_cm,
-    thickness_m,
-    description,
-    image_url,
-    usage,
-    prompt_modifier,
-  } = req.body;
-
-  if (useMock) {
-    const idx = mockMaterials.findIndex((m) => String(m.id) === String(id));
-    if (idx >= 0) {
-      mockMaterials[idx] = {
-        ...mockMaterials[idx],
-        ref_code,
-        name,
-        category,
-        subcategory,
-        price: price || 0,
-        unit: unit || "Piece",
-        items_per_box: items_per_box || 1,
-        currency: currency || "USD",
-        width_cm: width_cm || 0,
-        length_cm: length_cm || 0,
-        thickness_m: thickness_m || 0,
-        description,
-        image_url,
-        usage: usage || "Interior",
-        prompt_modifier,
-        updated_at: new Date().toISOString(),
-      };
-      return res.json(mockMaterials[idx]);
-    }
-    return res.status(404).json({ error: "Not found" });
-  }
-
-  try {
-    const result = await pool.query(
-      `UPDATE materials SET ref_code=$1, name=$2, category=$3, subcategory=$4, price=$5, currency=$6, unit=$7, items_per_box=$8, width_cm=$9, length_cm=$10, thickness_m=$11, description=$12, image_url=$13, usage=$14, prompt_modifier=$15, updated_at=CURRENT_TIMESTAMP
-       WHERE id=$16 RETURNING *`,
+      `INSERT INTO materials (
+        ref_code, name, category, subcategory, price, currency, unit,
+        items_per_box, width_cm, length_cm, thickness_m,
+        description, image_url, usage, prompt_modifier
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING *`,
       [
         ref_code,
         name,
@@ -530,6 +79,64 @@ app.put("/api/materials/:id", async (req, res) => {
         subcategory,
         price,
         currency || "USD",
+        unit,
+        items_per_box || 1,
+        width_cm,
+        length_cm,
+        thickness_m,
+        description,
+        image_url,
+        usage,
+        prompt_modifier,
+      ],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error: any) {
+    console.error("Create material error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update material
+app.put("/api/materials/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      ref_code,
+      name,
+      category,
+      subcategory,
+      price,
+      currency,
+      unit,
+      items_per_box,
+      width_cm,
+      length_cm,
+      thickness_m,
+      description,
+      image_url,
+      usage,
+      prompt_modifier,
+    } = req.body;
+
+    const result = await pool.query(
+      `UPDATE materials SET
+        ref_code = $2, name = $3, category = $4, subcategory = $5,
+        price = $6, currency = $7, unit = $8, items_per_box = $9,
+        width_cm = $10, length_cm = $11, thickness_m = $12,
+        description = $13, image_url = $14, usage = $15, prompt_modifier = $16,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *`,
+      [
+        id,
+        ref_code,
+        name,
+        category,
+        subcategory,
+        price,
+        currency,
         unit,
         items_per_box,
         width_cm,
@@ -539,58 +146,392 @@ app.put("/api/materials/:id", async (req, res) => {
         image_url,
         usage,
         prompt_modifier,
-        id,
       ],
     );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Material not found" });
+    }
+
     res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Error updating material:", error);
-    res.status(500).json({ error: "Failed to update material" });
+  } catch (error: any) {
+    console.error("Update material error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.delete("/api/materials/:id", async (req, res) => {
-  const { id } = req.params;
-  if (useMock) {
-    mockMaterials = mockMaterials.filter((m) => String(m.id) !== String(id));
-    return res.json({ success: true });
-  }
+// Delete material
+app.delete("/api/materials/:id", async (req: Request, res: Response) => {
   try {
-    await pool.query("DELETE FROM materials WHERE id = $1", [id]);
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error deleting material:", error);
-    res.status(500).json({ error: "Failed to delete material" });
+    const { id } = req.params;
+    const result = await pool.query(
+      "DELETE FROM materials WHERE id = $1 RETURNING id",
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Material not found" });
+    }
+
+    res.json({ success: true, id: result.rows[0].id });
+  } catch (error: any) {
+    console.error("Delete material error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.delete("/api/materials", async (req, res) => {
-  if (useMock) {
-    mockMaterials = [];
-    return res.json({ success: true });
+// Bulk import materials
+app.post("/api/materials/bulk", async (req: Request, res: Response) => {
+  try {
+    const { materials } = req.body;
+
+    if (!Array.isArray(materials) || materials.length === 0) {
+      return res.status(400).json({ error: "Invalid materials array" });
+    }
+
+    const values = materials.map((m) => [
+      m.ref_code,
+      m.name,
+      m.category,
+      m.subcategory,
+      m.price,
+      m.currency || "USD",
+      m.unit,
+      m.items_per_box || 1,
+      m.width_cm,
+      m.length_cm,
+      m.thickness_m,
+      m.description,
+      m.image_url,
+      m.usage,
+      m.prompt_modifier,
+    ]);
+
+    let imported = 0;
+    for (const vals of values) {
+      await pool.query(
+        `INSERT INTO materials (
+          ref_code, name, category, subcategory, price, currency, unit,
+          items_per_box, width_cm, length_cm, thickness_m,
+          description, image_url, usage, prompt_modifier
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        vals,
+      );
+      imported++;
+    }
+
+    res.json({ success: true, imported });
+  } catch (error: any) {
+    console.error("Bulk import error:", error);
+    res.status(500).json({ error: error.message });
   }
+});
+
+// Delete all materials (factory reset)
+app.delete("/api/materials", async (req: Request, res: Response) => {
   try {
     await pool.query("DELETE FROM materials");
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error clearing materials:", error);
-    res.status(500).json({ error: "Failed to clear materials" });
+    res.json({ success: true, message: "All materials deleted" });
+  } catch (error: any) {
+    console.error("Delete all materials error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-if (isProduction) {
-  app.use(express.static(distPath));
+// ===== PURCHASE REQUESTS API (new) =====
 
-  app.use((req, res, next) => {
-    if (req.method === "GET" && !req.path.startsWith("/api")) {
-      return res.sendFile(path.join(distPath, "index.html"));
+// Create purchase request
+app.post("/api/purchase-requests", async (req: Request, res: Response) => {
+  try {
+    const {
+      user_id,
+      customer_name,
+      customer_email,
+      customer_phone,
+      customer_address,
+      cart_items,
+      total_estimate,
+      currency,
+      project_notes,
+      room_image_url,
+    } = req.body;
+
+    // Validation
+    if (
+      !customer_name ||
+      !customer_email ||
+      !customer_phone ||
+      !customer_address ||
+      !cart_items ||
+      !total_estimate
+    ) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
-    next();
-  });
-}
 
-app.listen(PORT, "0.0.0.0", () => {
+    if (!Array.isArray(cart_items) || cart_items.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "Cart must contain at least one item" });
+    }
+
+    // Insert purchase request
+    const result = await pool.query(
+      `INSERT INTO purchase_requests (
+        user_id, customer_name, customer_email, customer_phone, customer_address,
+        cart_items, total_estimate, currency, project_notes, room_image_url, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *`,
+      [
+        user_id || null,
+        customer_name,
+        customer_email,
+        customer_phone,
+        customer_address,
+        JSON.stringify(cart_items),
+        total_estimate,
+        currency || "USD",
+        project_notes || null,
+        room_image_url || null,
+        "pending",
+      ],
+    );
+
+    const purchaseRequest = result.rows[0];
+
+    // Send email notifications
+    try {
+      const notifications = await sendPurchaseNotifications({
+        ...purchaseRequest,
+        cart_items: JSON.parse(purchaseRequest.cart_items),
+      });
+
+      // Log email delivery
+      if (notifications.customer.success) {
+        await pool.query(
+          `INSERT INTO email_logs (purchase_request_id, recipient_email, email_type, status)
+           VALUES ($1, $2, $3, $4)`,
+          [purchaseRequest.id, customer_email, "customer_confirmation", "sent"],
+        );
+      }
+
+      if (notifications.admin.success) {
+        await pool.query(
+          `INSERT INTO email_logs (purchase_request_id, recipient_email, email_type, status)
+           VALUES ($1, $2, $3, $4)`,
+          [
+            purchaseRequest.id,
+            process.env.ADMIN_EMAIL || "admin@constructviz.com",
+            "admin_alert",
+            "sent",
+          ],
+        );
+      }
+
+      res.status(201).json({
+        success: true,
+        request: purchaseRequest,
+        notifications: {
+          customerEmailSent: notifications.customer.success,
+          adminEmailSent: notifications.admin.success,
+        },
+      });
+    } catch (emailError: any) {
+      console.error("Email notification failed:", emailError);
+      // Still return success since DB insert worked
+      res.status(201).json({
+        success: true,
+        request: purchaseRequest,
+        notifications: {
+          customerEmailSent: false,
+          adminEmailSent: false,
+          error: "Email notifications failed",
+        },
+      });
+    }
+  } catch (error: any) {
+    console.error("Create purchase request error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all purchase requests (admin)
+app.get("/api/purchase-requests", async (req: Request, res: Response) => {
+  try {
+    const { status } = req.query;
+
+    let query = "SELECT * FROM purchase_requests";
+    const params: any[] = [];
+
+    if (status) {
+      query += " WHERE status = $1";
+      params.push(status);
+    }
+
+    query += " ORDER BY created_at DESC";
+
+    const result = await pool.query(query, params);
+
+    // Parse cart_items JSON
+    const requests = result.rows.map((row) => ({
+      ...row,
+      cart_items: JSON.parse(row.cart_items),
+    }));
+
+    res.json(requests);
+  } catch (error: any) {
+    console.error("Get purchase requests error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get single purchase request
+app.get("/api/purchase-requests/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "SELECT * FROM purchase_requests WHERE id = $1",
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Purchase request not found" });
+    }
+
+    const request = {
+      ...result.rows[0],
+      cart_items: JSON.parse(result.rows[0].cart_items),
+    };
+
+    res.json(request);
+  } catch (error: any) {
+    console.error("Get purchase request error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update purchase request status
+app.patch("/api/purchase-requests/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status, contacted_by } = req.body;
+
+    const updateFields: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 2;
+
+    if (status) {
+      updateFields.push(`status = $${paramIndex}`);
+      values.push(status);
+      paramIndex++;
+
+      if (status === "contacted" || status === "quote_sent") {
+        updateFields.push(`contacted_at = CURRENT_TIMESTAMP`);
+        if (contacted_by) {
+          updateFields.push(`contacted_by = $${paramIndex}`);
+          values.push(contacted_by);
+          paramIndex++;
+        }
+      }
+    }
+
+    updateFields.push("updated_at = CURRENT_TIMESTAMP");
+
+    const result = await pool.query(
+      `UPDATE purchase_requests 
+       SET ${updateFields.join(", ")}
+       WHERE id = $1
+       RETURNING *`,
+      [id, ...values],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Purchase request not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error("Update purchase request error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== USER AUTHENTICATION API (new) =====
+
+// Simple user signup (production would use bcrypt for password hashing)
+app.post("/api/auth/signup", async (req: Request, res: Response) => {
+  try {
+    const { name, email, phone, address, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res
+        .status(400)
+        .json({ error: "Name, email, and password required" });
+    }
+
+    // Check if email already exists
+    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [
+      email,
+    ]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
+
+    // In production, use bcrypt.hash(password, 10)
+    const result = await pool.query(
+      `INSERT INTO users (name, email, phone, address, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, email, phone, address, role, created_at`,
+      [name, email, phone || null, address || null, password, "customer"],
+    );
+
+    res.status(201).json({ user: result.rows[0] });
+  } catch (error: any) {
+    console.error("Signup error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Simple user login
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password required" });
+    }
+
+    const result = await pool.query(
+      "SELECT id, name, email, phone, address, role, password_hash FROM users WHERE email = $1",
+      [email],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = result.rows[0];
+
+    // In production, use bcrypt.compare(password, user.password_hash)
+    if (password !== user.password_hash) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Return user without password
+    const { password_hash, ...userData } = user;
+    res.json({ user: userData });
+  } catch (error: any) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
   console.log(
-    `Server running on port ${PORT}${isProduction ? " (production)" : " (development)"}`,
+    `📊 Database: ${process.env.DATABASE_URL?.split("@")[1] || "localhost"}`,
+  );
+  console.log(
+    `📧 Email service: ${process.env.RESEND_API_KEY ? "✓ Configured" : "✗ Not configured"}`,
   );
 });

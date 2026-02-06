@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from "react";
+import React, {
+    useState,
+    useEffect,
+    useMemo,
+    useCallback,
+    Suspense,
+    lazy,
+} from "react";
 import {
     AppView,
     Material,
@@ -41,16 +48,28 @@ const BrandLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
     />
 );
 
-const LazyImage = ({ src, alt, className, fallback }: { src: string; alt: string; className?: string; fallback?: string }) => {
+const LazyImage = ({
+    src,
+    alt,
+    className,
+    fallback,
+}: {
+    src: string;
+    alt: string;
+    className?: string;
+    fallback?: string;
+}) => {
     const [loaded, setLoaded] = useState(false);
     const [error, setError] = useState(false);
-    const placeholderSrc = fallback || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23e5e7eb' width='100' height='100'/%3E%3C/svg%3E";
-    
+    const placeholderSrc =
+        fallback ||
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23e5e7eb' width='100' height='100'/%3E%3C/svg%3E";
+
     return (
         <img
             src={error ? placeholderSrc : src}
             alt={alt}
-            className={`${className} ${loaded ? 'opacity-100' : 'opacity-70'} transition-opacity duration-200`}
+            className={`${className} ${loaded ? "opacity-100" : "opacity-70"} transition-opacity duration-200`}
             loading="lazy"
             onLoad={() => setLoaded(true)}
             onError={() => setError(true)}
@@ -81,7 +100,13 @@ const App: React.FC = () => {
     // Authentication State
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-    const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
+    const [authForm, setAuthForm] = useState({
+        name: "",
+        email: "",
+        email_phone: "",
+        address: "",
+        password: "",
+    });
     const [authError, setAuthError] = useState("");
     const [authLoading, setAuthLoading] = useState(false);
 
@@ -95,23 +120,31 @@ const App: React.FC = () => {
     const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">(
         "USD",
     );
-    
+
     // Currency conversion rate (1 USD = ~4100 COP approximately)
     const USD_TO_COP_RATE = 4100;
-    
+
     // Helper function to convert and format price
-    const formatPrice = (pricePerUnit: number, materialCurrency: string, targetCurrency: "USD" | "COP"): string => {
+    const formatPrice = (
+        pricePerUnit: number,
+        materialCurrency: string,
+        targetCurrency: "USD" | "COP",
+    ): string => {
         let convertedPrice = pricePerUnit;
-        
+
         if (materialCurrency === "USD" && targetCurrency === "COP") {
             convertedPrice = Math.round(pricePerUnit * USD_TO_COP_RATE);
-        } else if ((materialCurrency === "COP" || materialCurrency === "MXN") && targetCurrency === "USD") {
-            convertedPrice = Math.round((pricePerUnit / USD_TO_COP_RATE) * 100) / 100;
+        } else if (
+            (materialCurrency === "COP" || materialCurrency === "MXN") &&
+            targetCurrency === "USD"
+        ) {
+            convertedPrice =
+                Math.round((pricePerUnit / USD_TO_COP_RATE) * 100) / 100;
         } else if (materialCurrency === "MXN" && targetCurrency === "COP") {
             // MXN is treated same as COP for display
             convertedPrice = pricePerUnit;
         }
-        
+
         if (targetCurrency === "USD") {
             return `$${convertedPrice.toLocaleString()}`;
         } else {
@@ -193,12 +226,20 @@ const App: React.FC = () => {
         try {
             const res = await fetch("/api/materials");
             if (!res.ok) {
-                console.error("Failed to load materials:", res.status, res.statusText);
+                console.error(
+                    "Failed to load materials:",
+                    res.status,
+                    res.statusText,
+                );
                 return;
             }
             const dbMaterials = await res.json();
             console.log("Loaded materials from DB:", dbMaterials?.length || 0);
-            if (dbMaterials && Array.isArray(dbMaterials) && dbMaterials.length > 0) {
+            if (
+                dbMaterials &&
+                Array.isArray(dbMaterials) &&
+                dbMaterials.length > 0
+            ) {
                 const converted = dbMaterials.map((m: any) => ({
                     id: String(m.id),
                     refCode: m.ref_code || "",
@@ -857,10 +898,18 @@ const App: React.FC = () => {
         setAuthLoading(true);
 
         try {
-            const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/signup";
-            const body = authMode === "login" 
-                ? { email: authForm.email, password: authForm.password }
-                : { name: authForm.name, email: authForm.email, password: authForm.password };
+            const endpoint =
+                authMode === "login" ? "/api/auth/login" : "/api/auth/signup";
+            const body =
+                authMode === "login"
+                    ? { email: authForm.email, password: authForm.password }
+                    : {
+                          name: authForm.name,
+                          email: authForm.email,
+                          phone: authForm.email_phone,
+                          address: authForm.address,
+                          password: authForm.password,
+                      };
 
             const response = await fetch(endpoint, {
                 method: "POST",
@@ -877,7 +926,13 @@ const App: React.FC = () => {
 
             setCurrentUser(data.user);
             setView(AppView.LANDING);
-            setAuthForm({ name: "", email: "", password: "" });
+            setAuthForm({
+                name: "",
+                email: "",
+                email_phone: "",
+                address: "",
+                password: "",
+            });
         } catch (error) {
             setAuthError("Connection error. Please try again.");
         } finally {
@@ -903,19 +958,62 @@ const App: React.FC = () => {
             <div className="relative z-10 w-full max-w-sm bg-gray-200/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg">
                 <form className="space-y-4" onSubmit={handleAuth}>
                     {authMode === "signup" && (
-                        <input
-                            type="text"
-                            value={authForm.name}
-                            onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
-                            className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
-                            placeholder={lang === "es" ? "Nombre" : "Name"}
-                            required
-                        />
+                        <>
+                            <input
+                                type="text"
+                                value={authForm.name}
+                                onChange={(e) =>
+                                    setAuthForm({
+                                        ...authForm,
+                                        name: e.target.value,
+                                    })
+                                }
+                                className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
+                                placeholder={
+                                    lang === "es"
+                                        ? "Nombre Completo"
+                                        : "Full Name"
+                                }
+                                required
+                            />
+                            <input
+                                type="tel"
+                                value={authForm.email_phone}
+                                onChange={(e) =>
+                                    setAuthForm({
+                                        ...authForm,
+                                        email_phone: e.target.value,
+                                    })
+                                }
+                                className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
+                                placeholder={
+                                    lang === "es" ? "Teléfono" : "Phone Number"
+                                }
+                                required
+                            />
+                            <input
+                                type="text"
+                                value={authForm.address}
+                                onChange={(e) =>
+                                    setAuthForm({
+                                        ...authForm,
+                                        address: e.target.value,
+                                    })
+                                }
+                                className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
+                                placeholder={
+                                    lang === "es" ? "Dirección" : "Address"
+                                }
+                                required
+                            />
+                        </>
                     )}
                     <input
                         type="email"
                         value={authForm.email}
-                        onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                        onChange={(e) =>
+                            setAuthForm({ ...authForm, email: e.target.value })
+                        }
                         className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
                         placeholder={t.login.email}
                         required
@@ -923,7 +1021,12 @@ const App: React.FC = () => {
                     <input
                         type="password"
                         value={authForm.password}
-                        onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                        onChange={(e) =>
+                            setAuthForm({
+                                ...authForm,
+                                password: e.target.value,
+                            })
+                        }
                         className="w-full bg-gray-300 border-0 rounded-lg p-4 text-gray-700 placeholder-gray-500"
                         placeholder={t.login.password}
                         required
@@ -940,20 +1043,27 @@ const App: React.FC = () => {
                         disabled={authLoading}
                         className="w-full bg-gray-400 hover:bg-gray-500 text-gray-700 py-4 rounded-lg text-base font-semibold transition-colors disabled:opacity-50"
                     >
-                        {authLoading 
-                            ? "..." 
-                            : authMode === "login" 
-                                ? t.login.signIn 
-                                : (lang === "es" ? "Registrarse" : "Sign Up")}
+                        {authLoading
+                            ? "..."
+                            : authMode === "login"
+                              ? t.login.signIn
+                              : lang === "es"
+                                ? "Registrarse"
+                                : "Sign Up"}
                     </button>
 
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>
-                                {lang === "es" ? "¿No tienes cuenta? " : "Don't have an account? "}
+                                {lang === "es"
+                                    ? "¿No tienes cuenta? "
+                                    : "Don't have an account? "}
                                 <button
                                     type="button"
-                                    onClick={() => { setAuthMode("signup"); setAuthError(""); }}
+                                    onClick={() => {
+                                        setAuthMode("signup");
+                                        setAuthError("");
+                                    }}
                                     className="text-blue-600 hover:underline font-semibold"
                                 >
                                     {lang === "es" ? "Regístrate" : "Sign Up"}
@@ -961,13 +1071,20 @@ const App: React.FC = () => {
                             </span>
                         ) : (
                             <span>
-                                {lang === "es" ? "¿Ya tienes cuenta? " : "Already have an account? "}
+                                {lang === "es"
+                                    ? "¿Ya tienes cuenta? "
+                                    : "Already have an account? "}
                                 <button
                                     type="button"
-                                    onClick={() => { setAuthMode("login"); setAuthError(""); }}
+                                    onClick={() => {
+                                        setAuthMode("login");
+                                        setAuthError("");
+                                    }}
                                     className="text-blue-600 hover:underline font-semibold"
                                 >
-                                    {lang === "es" ? "Inicia sesión" : "Sign In"}
+                                    {lang === "es"
+                                        ? "Inicia sesión"
+                                        : "Sign In"}
                                 </button>
                             </span>
                         )}
@@ -1051,8 +1168,18 @@ const App: React.FC = () => {
                         className="p-2 text-gray-600 hover:text-gray-900"
                         title={lang === "es" ? "Cerrar sesión" : "Logout"}
                     >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        <svg
+                            className="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                            />
                         </svg>
                     </button>
                 </div>
@@ -1064,14 +1191,18 @@ const App: React.FC = () => {
                 </div>
 
                 <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">
-                    {t.landing.title === "Visualize " ? "¡Bienvenido!" : t.landing.title}
+                    {t.landing.title === "Visualize "
+                        ? "¡Bienvenido!"
+                        : t.landing.title}
                 </h2>
                 <p className="text-gray-600 text-sm md:text-base mb-8">
                     {t.landing.subtitle}
                 </p>
 
                 <p className="text-gray-700 font-semibold uppercase tracking-wider text-xs mb-6">
-                    {lang === "es" ? "SELECCIONA EL TIPO DE ESPACIO" : "SELECT SPACE TYPE"}
+                    {lang === "es"
+                        ? "SELECCIONA EL TIPO DE ESPACIO"
+                        : "SELECT SPACE TYPE"}
                 </p>
 
                 <div className="grid grid-cols-2 gap-4 w-full">
@@ -1086,7 +1217,9 @@ const App: React.FC = () => {
                             />
                         </div>
                         <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
-                            {lang === "es" ? "Espacio interior" : "Interior Space"}
+                            {lang === "es"
+                                ? "Espacio interior"
+                                : "Interior Space"}
                         </span>
                     </button>
                     <button
@@ -1100,7 +1233,9 @@ const App: React.FC = () => {
                             />
                         </div>
                         <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
-                            {lang === "es" ? "Espacio exterior" : "Exterior Space"}
+                            {lang === "es"
+                                ? "Espacio exterior"
+                                : "Exterior Space"}
                         </span>
                     </button>
                 </div>
@@ -1772,7 +1907,10 @@ const App: React.FC = () => {
                                             />
                                             {editForm.imageUrl && (
                                                 <img
-                                                    src={editForm.imageUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"}
+                                                    src={
+                                                        editForm.imageUrl ||
+                                                        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"
+                                                    }
                                                     className="w-10 h-10 rounded border border-gray-300 object-cover"
                                                 />
                                             )}
@@ -1895,7 +2033,10 @@ const App: React.FC = () => {
                                                         </td>
                                                         <td className="p-4">
                                                             <img
-                                                                src={m.imageUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"}
+                                                                src={
+                                                                    m.imageUrl ||
+                                                                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"
+                                                                }
                                                                 alt={m.name}
                                                                 className="w-12 h-12 rounded object-cover border border-gray-300 bg-gray-200"
                                                             />
@@ -1963,7 +2104,13 @@ const App: React.FC = () => {
                                                             </span>
                                                         </td>
                                                         <td className="p-4 text-gray-700 font-bold">
-                                                            {formatPrice(m.pricing.pricePerUnit, m.pricing.currency, displayCurrency)}
+                                                            {formatPrice(
+                                                                m.pricing
+                                                                    .pricePerUnit,
+                                                                m.pricing
+                                                                    .currency,
+                                                                displayCurrency,
+                                                            )}
                                                             <span className="text-xs text-gray-500 font-normal ml-1">
                                                                 /{" "}
                                                                 {
