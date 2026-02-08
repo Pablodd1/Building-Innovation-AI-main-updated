@@ -4,11 +4,16 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import pg from "pg";
+import path from "path";
+import { fileURLToPath } from "url";
 import { sendPurchaseNotifications } from "./emailService.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const { Pool } = pg;
 const app = express();
-const PORT = process.env.PORT || 5173;
+const PORT = Number(process.env.PORT) || 3001;
 
 // Database connection
 const pool = new Pool({
@@ -525,8 +530,19 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
   }
 });
 
+// Serve static files in production
+const distPath = path.join(__dirname, "..", "dist");
+app.use(express.static(distPath));
+
+// Serve index.html for all non-API routes (SPA fallback)
+app.get("/{*path}", (req: Request, res: Response) => {
+  if (!req.path.startsWith("/api")) {
+    res.sendFile(path.join(distPath, "index.html"));
+  }
+});
+
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
   console.log(
     `📊 Database: ${process.env.DATABASE_URL?.split("@")[1] || "localhost"}`,

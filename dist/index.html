@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Building Innovation</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="AI-powered material visualization tool for construction and design" />
+    <meta name="theme-color" content="#3b82f6" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Building Innovation" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- App Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96x96.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      /* Custom scrollbar for gallery */
+      .hide-scroll::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scroll {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* Print Styles for PDF Generation */
+      @media print {
+        @page { margin: 0.5cm; size: A4 portrait; }
+        body { 
+          background-color: white !important; 
+          color: black !important; 
+          -webkit-print-color-adjust: exact !important; 
+          print-color-adjust: exact !important;
+        }
+        
+        /* Hide everything by default */
+        body * {
+          visibility: hidden;
+        }
+        
+        /* Only show the print area */
+        #print-area, #print-area * {
+          visibility: visible;
+        }
+        
+        #print-area {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          margin: 0;
+          padding: 20px;
+          background-color: white !important;
+          color: black !important;
+          border: none !important;
+          box-shadow: none !important;
+        }
+
+        /* Hide buttons and interactive elements in print view */
+        .no-print {
+          display: none !important;
+        }
+        
+        /* Force text colors for print */
+        .print\:text-black { color: #000 !important; }
+        .print\:text-slate-600 { color: #475569 !important; }
+        .print\:border-black { border-color: #000 !important; }
+        .print\:bg-white { background-color: #fff !important; }
+      }
+    </style>
+
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+  <script type="module" crossorigin src="/assets/index-BUJAWzXr.js"></script>
+</head>
+  <body class="bg-gray-100 text-gray-700">
+    <div id="root"></div>
+    
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered:', registration.scope);
+            })
+            .catch((error) => {
+              console.log('SW registration failed:', error);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>
