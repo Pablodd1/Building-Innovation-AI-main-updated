@@ -483,7 +483,7 @@ app.post("/api/auth/signup", async (req: Request, res: Response) => {
 
     // In production, use bcrypt.hash(password, 10)
     const result = await pool.query(
-      `INSERT INTO users (name, email, phone, address, password_hash, role)
+      `INSERT INTO users (name, email, phone, address, password, role)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, name, email, phone, address, role, created_at`,
       [name, email, phone || null, address || null, password, "customer"],
@@ -506,7 +506,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     }
 
     const result = await pool.query(
-      "SELECT id, name, email, phone, address, role, password_hash FROM users WHERE email = $1",
+      "SELECT id, name, email, phone, address, role, password FROM users WHERE email = $1",
       [email],
     );
 
@@ -516,13 +516,11 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
 
     const user = result.rows[0];
 
-    // In production, use bcrypt.compare(password, user.password_hash)
-    if (password !== user.password_hash) {
+    if (password !== user.password) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Return user without password
-    const { password_hash, ...userData } = user;
+    const { password: _, ...userData } = user;
     res.json({ user: userData });
   } catch (error: any) {
     console.error("Login error:", error);
