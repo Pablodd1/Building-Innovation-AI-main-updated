@@ -761,7 +761,20 @@ const App: React.FC = () => {
     };
 
     const handleGenerate = async () => {
-        if (!originalImage || !selectedMaterial) return;
+        if (!originalImage) {
+            setGenerationState((prev) => ({
+                ...prev,
+                error: lang === "es" ? "Por favor sube o toma una foto primero." : "Please upload or take a photo first.",
+            }));
+            return;
+        }
+        if (!selectedMaterial) {
+            setGenerationState((prev) => ({
+                ...prev,
+                error: lang === "es" ? "Por favor selecciona un material primero." : "Please select a material first.",
+            }));
+            return;
+        }
         setGenerationState((prev) => ({
             ...prev,
             isGenerating: true,
@@ -2620,6 +2633,11 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="p-6 bg-white border-t border-gray-300 space-y-3">
+                        {generationState.error && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center">
+                                {generationState.error}
+                            </div>
+                        )}
                         <Button
                             onClick={handleGenerate}
                             isLoading={generationState.isGenerating}

@@ -128,8 +128,10 @@ const extractImage = (response: any): string => {
 const getApiKey = (): string => {
     const customKey = localStorage.getItem("custom_api_key");
     if (customKey && customKey.trim().length > 0) return customKey.trim();
-    if (process.env.API_KEY) return process.env.API_KEY;
-    return "AIzaSyAenMod0hhqrp25lxYIXbXVIL87zu_Fo5A";
+    const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (envKey && envKey.trim().length > 0) return envKey.trim();
+    console.error("No Gemini API key found. Please set your API key in Settings.");
+    return "";
 };
 
 export const generateRoomAnalysis = async (
@@ -255,6 +257,9 @@ export const generateMaterialOverlay = async (
     lang: string = "en",
 ): Promise<string> => {
     const apiKey = getApiKey();
+    if (!apiKey) {
+        throw new Error("No API key configured. Please add your Gemini API key in Settings.");
+    }
     const ai = new GoogleGenAI({ apiKey });
     const base64Data = cleanBase64(originalImageBase64);
     const mimeType = getMimeType(originalImageBase64);
