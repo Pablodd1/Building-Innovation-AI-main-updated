@@ -2956,6 +2956,8 @@ const App: React.FC = () => {
                             onNewQuote={() => setView(AppView.GALLERY)}
                             contractors={contractors}
                             lang={lang}
+                            userEmail={currentUser?.email || ''}
+                            userName={currentUser?.name || ''}
                         />
                     </div>
                 </div>

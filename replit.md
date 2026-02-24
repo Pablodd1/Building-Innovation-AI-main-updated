@@ -61,6 +61,12 @@ Materials and contractors are defined with rich schemas supporting:
 
 ## External Dependencies
 
+### Email Service
+- **Nodemailer**: Gmail SMTP for sending quote request emails
+- Sender: configured via `SMTP_USER` and `SMTP_PASS` environment variables
+- Receiver: configured via `QUOTE_RECEIVER_EMAIL` environment variable
+- Endpoint: `POST /api/send-quote-email` sends formatted quote emails with material details
+
 ### AI Services
 - **Google Generative AI**: Primary AI service for image generation, analysis, and video creation
 - Requires API key with permissions for Gemini 2.5/3.0 and Veo models

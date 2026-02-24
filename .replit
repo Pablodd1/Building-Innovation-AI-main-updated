@@ -56,3 +56,8 @@ run = ["bash", "-c", "PORT=5000 node --import tsx server/index.ts"]
 
 [userenv.production]
 NODE_ENV = "production"
+
+[userenv.shared]
+SMTP_USER = "alihamzanasir306@gmail.com"
+SMTP_PASS = "yvkx wnwe gkks epjr"
+QUOTE_RECEIVER_EMAIL = "comercial.buildinginnovation@gmail.com"

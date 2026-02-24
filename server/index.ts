@@ -6,7 +6,7 @@ import cors from "cors";
 import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
-import { sendPurchaseNotifications } from "./emailService.js";
+import { sendQuoteEmail } from "./emailService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -303,58 +303,43 @@ app.post("/api/purchase-requests", async (req: Request, res: Response) => {
 
     const purchaseRequest = result.rows[0];
 
-    // Send email notifications
-    try {
-      const notifications = await sendPurchaseNotifications({
-        ...purchaseRequest,
-        cart_items: JSON.parse(purchaseRequest.cart_items),
-      });
-
-      // Log email delivery
-      if (notifications.customer.success) {
-        await pool.query(
-          `INSERT INTO email_logs (purchase_request_id, recipient_email, email_type, status)
-           VALUES ($1, $2, $3, $4)`,
-          [purchaseRequest.id, customer_email, "customer_confirmation", "sent"],
-        );
-      }
-
-      if (notifications.admin.success) {
-        await pool.query(
-          `INSERT INTO email_logs (purchase_request_id, recipient_email, email_type, status)
-           VALUES ($1, $2, $3, $4)`,
-          [
-            purchaseRequest.id,
-            process.env.ADMIN_EMAIL || "admin@constructviz.com",
-            "admin_alert",
-            "sent",
-          ],
-        );
-      }
-
-      res.status(201).json({
-        success: true,
-        request: purchaseRequest,
-        notifications: {
-          customerEmailSent: notifications.customer.success,
-          adminEmailSent: notifications.admin.success,
-        },
-      });
-    } catch (emailError: any) {
-      console.error("Email notification failed:", emailError);
-      // Still return success since DB insert worked
-      res.status(201).json({
-        success: true,
-        request: purchaseRequest,
-        notifications: {
-          customerEmailSent: false,
-          adminEmailSent: false,
-          error: "Email notifications failed",
-        },
-      });
-    }
+    res.status(201).json({
+      success: true,
+      request: purchaseRequest,
+    });
   } catch (error: any) {
     console.error("Create purchase request error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/send-quote-email", async (req: Request, res: Response) => {
+  try {
+    const { materialName, refCode, quantity, unitLabel, width, height, estimatedCost, userEmail, userName } = req.body;
+
+    if (!materialName || !userEmail) {
+      return res.status(400).json({ error: "Material name and user email are required" });
+    }
+
+    const result = await sendQuoteEmail({
+      materialName,
+      refCode: refCode || "",
+      quantity: quantity || 0,
+      unitLabel: unitLabel || "Unit",
+      width: width || 0,
+      height: height || 0,
+      estimatedCost: estimatedCost || 0,
+      userEmail,
+      userName,
+    });
+
+    if (result.success) {
+      res.json({ success: true, messageId: result.messageId });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error: any) {
+    console.error("Send quote email error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -546,6 +531,6 @@ app.listen(PORT, "0.0.0.0", () => {
     `📊 Database: ${process.env.DATABASE_URL?.split("@")[1] || "localhost"}`,
   );
   console.log(
-    `📧 Email service: ${process.env.RESEND_API_KEY ? "✓ Configured" : "✗ Not configured"}`,
+    `📧 Email service: ${process.env.SMTP_USER ? "✓ Configured" : "✗ Not configured"}`,
   );
 });

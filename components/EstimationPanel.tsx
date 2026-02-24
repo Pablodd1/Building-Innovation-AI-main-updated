@@ -11,6 +11,8 @@ interface EstimationPanelProps {
   onNewQuote?: () => void;
   contractors?: Contractor[];
   lang?: 'en' | 'es';
+  userEmail?: string;
+  userName?: string;
 }
 
 // Logo Component
@@ -23,7 +25,7 @@ const BrandLogoSmall = ({ className = "stroke-white print:stroke-black" }: { cla
   </svg>
 );
 
-export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en' }) => {
+export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en', userEmail = '', userName = '' }) => {
   const [width, setWidth] = useState<number>(3);
   const [height, setHeight] = useState<number>(2.5);
 
@@ -38,6 +40,8 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
   const [addedToCart, setAddedToCart] = useState<boolean>(false);
   const [selectedContractor, setSelectedContractor] = useState<string>('');
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [emailError, setEmailError] = useState<string>('');
 
   const t = TRANSLATIONS[lang];
 
@@ -170,10 +174,42 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
   const handleDownloadPDF = () => window.print();
 
-  const handleSendEmail = () => {
-      const subject = `${t.quote.emailSubject} ${material.name} (Ref: ${material.refCode})`;
-      const body = `${t.quote.emailBody}:\n\n${t.quote.material}: ${material.name}\n${t.quote.quantity}: ${quantity} ${material.pricing.unitLabel}(s)\n${t.quote.dimensions}: ${width}m x ${height}m\n\n${t.quote.cost}: $${Math.round(totalCost)}`;
-      window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+  const handleSendEmail = async () => {
+      if (!userEmail) {
+          setEmailStatus('error');
+          setEmailError(lang === 'es' ? 'No se encontró email de usuario. Inicie sesión primero.' : 'User email not found. Please log in first.');
+          return;
+      }
+      setEmailStatus('sending');
+      setEmailError('');
+      try {
+          const response = await fetch('/api/send-quote-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  materialName: material.name,
+                  refCode: material.refCode,
+                  quantity,
+                  unitLabel: material.pricing.unitLabel,
+                  width,
+                  height,
+                  estimatedCost: totalCost,
+                  userEmail,
+                  userName,
+              }),
+          });
+          const data = await response.json();
+          if (data.success) {
+              setEmailStatus('sent');
+              setTimeout(() => setEmailStatus('idle'), 4000);
+          } else {
+              setEmailStatus('error');
+              setEmailError(data.error || (lang === 'es' ? 'Error al enviar email' : 'Failed to send email'));
+          }
+      } catch (err: any) {
+          setEmailStatus('error');
+          setEmailError(err.message || (lang === 'es' ? 'Error de conexión' : 'Connection error'));
+      }
   };
 
   const selectedContractorData = contractors.find(c => c.id === selectedContractor);
@@ -369,7 +405,17 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
       {/* Action Footer - Stacked on Mobile */}
       <div className="p-4 md:p-6 bg-black border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 no-print">
         <Button variant="secondary" onClick={onBack} className="uppercase text-xs tracking-wider py-3 md:py-2">{t.common.back}</Button>
-        <Button variant="secondary" onClick={handleSendEmail} className="uppercase text-xs tracking-wider py-3 md:py-2">{t.common.email}</Button>
+        <Button 
+            variant="secondary" 
+            onClick={handleSendEmail} 
+            isLoading={emailStatus === 'sending'}
+            className={`uppercase text-xs tracking-wider py-3 md:py-2 ${emailStatus === 'sent' ? 'bg-green-600 border-green-500 text-white' : emailStatus === 'error' ? 'bg-red-600 border-red-500 text-white' : ''}`}
+        >
+            {emailStatus === 'sending' ? (lang === 'es' ? 'Enviando...' : 'Sending...') : 
+             emailStatus === 'sent' ? (lang === 'es' ? 'Enviado!' : 'Sent!') : 
+             emailStatus === 'error' ? (lang === 'es' ? 'Error' : 'Error') : 
+             t.common.email}
+        </Button>
         <Button 
             onClick={handleAddToCart}
             className={`uppercase text-xs tracking-wider font-bold py-3 md:py-2 ${addedToCart ? "bg-green-600" : "bg-blue-600"}`}
