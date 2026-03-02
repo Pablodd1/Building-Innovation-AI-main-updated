@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Button } from "./Button";
+import { jsPDF } from "jspdf";
 
 interface PurchaseRequest {
     id: number;
@@ -87,6 +88,76 @@ export const AdminPurchaseQueue: React.FC = () => {
             cancelled: "bg-gray-100 text-gray-800 border-gray-200",
         };
         return colors[status as keyof typeof colors] || colors.pending;
+    };
+
+    const generateRequestPDF = (request: PurchaseRequest) => {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 15;
+        let y = 20;
+
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Building Innovation - Quote Request', margin, y);
+        
+        y += 15;
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Customer: ${request.customer_name}`, margin, y);
+        
+        y += 8;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Email: ${request.customer_email}`, margin, y);
+        y += 5;
+        doc.text(`Phone: ${request.customer_phone}`, margin, y);
+        y += 5;
+        doc.text(`Address: ${request.customer_address}`, margin, y);
+        
+        y += 10;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Status: ${request.status.toUpperCase()}`, margin, y);
+        y += 5;
+        doc.text(`Date: ${new Date(request.created_at).toLocaleString()}`, margin, y);
+        
+        y += 15;
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Order Details:', margin, y);
+        
+        y += 10;
+        doc.setFontSize(10);
+        let subtotal = 0;
+        request.cart_items.forEach((item, idx) => {
+            const itemTotal = item.quantity * item.unitCost;
+            subtotal += itemTotal;
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${idx + 1}. ${item.materialName}`, margin, y);
+            doc.text(`Qty: ${item.quantity} x $${item.unitCost} = $${itemTotal.toFixed(2)}`, margin + 80, y);
+            y += 6;
+        });
+        
+        y += 10;
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Total Estimate: $${request.total_estimate.toFixed(2)} ${request.currency}`, margin, y);
+        
+        if (request.project_notes) {
+            y += 15;
+            doc.setFont('helvetica', 'bold');
+            doc.text('Project Notes:', margin, y);
+            y += 6;
+            doc.setFont('helvetica', 'normal');
+            const splitNotes = doc.splitTextToSize(request.project_notes, pageWidth - 2 * margin);
+            doc.text(splitNotes, margin, y);
+        }
+        
+        y += 20;
+        doc.setFontSize(8);
+        doc.setTextColor(128);
+        doc.text('Building Innovation - We design the future!', pageWidth / 2, y, { align: 'center' });
+        
+        doc.save(`Quote_Request_${request.id}_${request.customer_name.replace(/\s+/g, '_')}.pdf`);
     };
 
     const filteredRequests = requests;
@@ -533,6 +604,15 @@ export const AdminPurchaseQueue: React.FC = () => {
 
                             {/* Actions */}
                             <div className="flex gap-3 pt-4">
+                                <button
+                                    onClick={() => generateRequestPDF(selectedRequest)}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center gap-2"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    PDF
+                                </button>
                                 <select
                                     value={selectedRequest.status}
                                     onChange={(e) => {

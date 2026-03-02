@@ -124,9 +124,9 @@ export const MATERIALS: Material[] = [
 ];
 
 export const CONTRACTORS: Contractor[] = [
-    { id: 'c1', name: 'Elite Installers Inc.', phone: '(555) 123-4567', email: 'contact@eliteinstallers.com', region: 'North' },
-    { id: 'c2', name: 'Modern Spaces LLC', phone: '(555) 987-6543', email: 'info@modernspaces.com', region: 'South' },
-    { id: 'c3', name: 'Precision Floors & Walls', phone: '(555) 555-5555', email: 'quotes@precisionfw.com', region: 'East' }
+    { id: 'c1', name: 'Elite Installers Inc.', phone: '(555) 123-4567', email: 'contact@eliteinstallers.com', region: 'North', laborRatePerSqm: 25, laborRatePerLinear: 15, laborRatePerPiece: 20 },
+    { id: 'c2', name: 'Modern Spaces LLC', phone: '(555) 987-6543', email: 'info@modernspaces.com', region: 'South', laborRatePerSqm: 22, laborRatePerLinear: 12, laborRatePerPiece: 18 },
+    { id: 'c3', name: 'Precision Floors & Walls', phone: '(555) 555-5555', email: 'quotes@precisionfw.com', region: 'East', laborRatePerSqm: 28, laborRatePerLinear: 18, laborRatePerPiece: 25 }
 ];
 
 export const TRANSLATIONS: Record<Language, any> = {
@@ -235,8 +235,13 @@ export const TRANSLATIONS: Record<Language, any> = {
             breakdown: "Calculation Logic",
             summary: "Quote Summary",
             dimensions: "Input Dimensions",
+            dimensionsCM: "Dimensions (cm/m)",
+            dimensionsUSA: "Dimensions (ft/in)",
             quantity: "Required Quantity",
             cost: "Estimated Cost",
+            materialCost: "Material Cost",
+            laborCost: "Installation Cost",
+            wasteEstimate: "Waste/Cut Estimate",
             assignContractor: "Assign Contractor",
             selectContractor: "Select a contractor...",
             addToCart: "Add to Cart",
@@ -267,7 +272,21 @@ export const TRANSLATIONS: Record<Language, any> = {
             back: "Back",
             cancel: "Cancel",
             email: "Email",
-            optional: "Optional"
+            optional: "Optional",
+            unitSystem: "Unit System",
+            latam: "LATAM (cm, m)",
+            usa: "USA (ft, in)",
+            cm: "cm",
+            m: "m",
+            m2: "m²",
+            ft: "ft",
+            inch: "in",
+            ft2: "ft²",
+            laborCost: "Labor Cost",
+            materialCost: "Material Cost",
+            wasteCost: "Waste/Cut Estimate",
+            totalCost: "Total Cost",
+            downloadPDF: "Download PDF"
         }
     },
     es: {
@@ -375,8 +394,13 @@ export const TRANSLATIONS: Record<Language, any> = {
             breakdown: "Lógica de Cálculo",
             summary: "Resumen de Cotización",
             dimensions: "Dimensiones Ingresadas",
+            dimensionsCM: "Dimensiones (cm/m)",
+            dimensionsUSA: "Dimensiones (pies/pulg)",
             quantity: "Cantidad Requerida",
             cost: "Costo Estimado",
+            materialCost: "Costo de Material",
+            laborCost: "Costo de Instalación",
+            wasteEstimate: "Estimación de Corte",
             assignContractor: "Asignar Contratista",
             selectContractor: "Seleccionar contratista...",
             addToCart: "Añadir al Carrito",
@@ -407,7 +431,21 @@ export const TRANSLATIONS: Record<Language, any> = {
             back: "Volver",
             cancel: "Cancelar",
             email: "Enviar Email",
-            optional: "Opcional"
+            optional: "Opcional",
+            unitSystem: "Sistema de Unidades",
+            latam: "LATAM (cm, m)",
+            usa: "USA (ft, in)",
+            cm: "cm",
+            m: "m",
+            m2: "m²",
+            ft: "pies",
+            inch: "pulg",
+            ft2: "pies²",
+            laborCost: "Costo de Instalación",
+            materialCost: "Costo de Material",
+            wasteCost: "Estimación de Corte",
+            totalCost: "Costo Total",
+            downloadPDF: "Descargar PDF"
         }
     }
 };

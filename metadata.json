@@ -1,7 +1,0 @@
-{
-  "name": "ConstructViz AI",
-  "description": "A professional material visualization tool for construction and design, featuring real-time AI overlays.",
-  "requestFramePermissions": [
-    "camera"
-  ]
-}

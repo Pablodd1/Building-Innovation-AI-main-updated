@@ -69,9 +69,13 @@ export interface Contractor {
   phone: string;
   email: string;
   region: string;
+  laborRatePerSqm?: number; // Labor cost per square meter
+  laborRatePerLinear?: number; // Labor cost per linear meter
+  laborRatePerPiece?: number; // Labor cost per piece (for rolls)
 }
 
 export type Language = "en" | "es";
+export type RegionUnit = "latam" | "usa";
 
 export type LightingCondition = "NATURAL" | "SUNSET" | "NIGHT_LUXURY";
 export type ViewAngle = "PERSPECTIVE" | "TOP_DOWN" | "WIDE_ANGLE" | "ISOMETRIC";

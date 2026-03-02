@@ -3,6 +3,46 @@ import React, { useState, useEffect } from 'react';
 import { Material, CartItem, Contractor } from '../types';
 import { Button } from './Button';
 import { TRANSLATIONS } from '../constants';
+import { jsPDF } from 'jspdf';
+
+const CM_TO_INCH = 0.393701;
+const CM_TO_FOOT = 0.0328084;
+
+function cmToFeetInches(cm: number): { feet: number; inches: number } {
+  const totalInches = cm * CM_TO_INCH;
+  const feet = Math.floor(totalInches * (1/12));
+  const inches = Math.round((totalInches - feet * 12) * 10) / 10;
+  return { feet, inches };
+}
+
+function formatDimensionCM(cm: number): string {
+  return `${cm.toFixed(1)} cm`;
+}
+
+function formatDimensionUSA(cm: number): string {
+  const { feet, inches } = cmToFeetInches(cm);
+  if (inches === 0) {
+    return `${feet}'`;
+  }
+  return `${feet}' ${inches}"`;
+}
+
+function metersToFeetInches(meters: number): { feet: number; inches: number } {
+  return cmToFeetInches(meters * 100);
+}
+
+function formatMetersUSA(meters: number): string {
+  const { feet, inches } = metersToFeetInches(meters);
+  if (inches === 0) {
+    return `${feet}'`;
+  }
+  return `${feet}' ${inches}"`;
+}
+
+function formatAreaUSA(sqMeters: number): string {
+  const sqFt = sqMeters * 10.7639;
+  return `${sqFt.toFixed(2)} ft²`;
+}
 
 interface EstimationPanelProps {
   material: Material;
@@ -40,10 +80,13 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
   const [addedToCart, setAddedToCart] = useState<boolean>(false);
   const [selectedContractor, setSelectedContractor] = useState<string>('');
+  const [laborCost, setLaborCost] = useState<number>(0);
+  const [manualLaborOverride, setManualLaborOverride] = useState<boolean>(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [emailError, setEmailError] = useState<string>('');
 
   const t = TRANSLATIONS[lang];
+  const isLatam = lang === 'es';
 
   useEffect(() => {
     // Determine Calculation Mode based on Material Specs or Category fallback
@@ -147,10 +190,37 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     }
 
     setQuantity(calculatedQty);
-    setTotalCost(calculatedQty * material.pricing.pricePerUnit);
+    const materialCost = calculatedQty * material.pricing.pricePerUnit;
+    setTotalCost(materialCost);
     setBreakdown(log);
 
-  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang]);
+  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang, selectedContractor, manualLaborOverride, laborCost, contractors]);
+
+  useEffect(() => {
+    if (selectedContractor && !manualLaborOverride) {
+      const contractor = contractors.find(c => c.id === selectedContractor);
+      if (contractor) {
+        const mode = material.specs?.installationType || 
+          (material.category === 'Zocalos' ? 'LINEAR' : 
+           material.category === 'Rollos Adhesivos' ? 'ROLL' : 'TILE');
+        
+        let calculatedLabor = 0;
+        const area = width * height;
+        
+        if (mode === 'TILE' && contractor.laborRatePerSqm) {
+          calculatedLabor = area * contractor.laborRatePerSqm * (1 + wasteFactor);
+        } else if (mode === 'LINEAR' && contractor.laborRatePerLinear) {
+          calculatedLabor = width * contractor.laborRatePerLinear * (1 + wasteFactor);
+        } else if (mode === 'ROLL' && contractor.laborRatePerPiece) {
+          calculatedLabor = quantity * (contractor.laborRatePerPiece || 0);
+        }
+        
+        setLaborCost(Math.round(calculatedLabor));
+      }
+    }
+  }, [selectedContractor, contractors, material, width, height, wasteFactor, quantity, manualLaborOverride]);
+
+  const totalWithLabor = totalCost + laborCost;
 
   const handleAddToCart = () => {
     const newItem: CartItem = {
@@ -172,7 +242,107 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     } catch (e) {}
   };
 
-  const handleDownloadPDF = () => window.print();
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    let y = 20;
+
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Building Innovation', margin, y);
+    
+    y += 10;
+    doc.setFontSize(16);
+    doc.text('Quote / Cotización', margin, y);
+    
+    y += 15;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, y);
+    
+    y += 15;
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageWidth - margin, y);
+    
+    y += 10;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Material: ${material.name}`, margin, y);
+    
+    y += 7;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Ref: ${material.refCode}`, margin, y);
+    
+    y += 10;
+    const dimCM = `${material.dimensions.width} x ${material.dimensions.length} cm`;
+    const dimUSA = `${formatDimensionUSA(material.dimensions.width)} x ${formatDimensionUSA(material.dimensions.length)}"`;
+    doc.text(`Dimensions: ${dimCM} | ${dimUSA}`, margin, y);
+    
+    y += 15;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Project Details:', margin, y);
+    
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const unitLabel = isLatam ? 'm' : 'ft';
+    const areaLabel = isLatam ? 'm²' : 'ft²';
+    const areaValue = isLatam ? (width * height).toFixed(2) : formatAreaUSA(width * height).replace(' ft²', '');
+    doc.text(`${isLinear ? 'Linear / Perimeter' : 'Area'}: ${isLinear ? `${width}m / ${formatMetersUSA(width)}` : `${(width * height).toFixed(2)} ${areaLabel} / ${formatAreaUSA(width * height)}`}`, margin, y);
+    
+    y += 6;
+    doc.text(`Quantity: ${quantity} ${material.pricing.unitLabel}`, margin, y);
+    
+    y += 15;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Cost Breakdown:', margin, y);
+    
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Material Cost: $${Math.round(totalCost)}`, margin, y);
+    
+    if (laborCost > 0) {
+        y += 6;
+        doc.text(`Installation Cost: $${laborCost}`, margin, y);
+    }
+    
+    y += 10;
+    doc.setFont('helvetica', 'bold');
+    const totalLabel = laborCost > 0 ? 'TOTAL' : 'Estimated Cost';
+    doc.text(`${totalLabel}: $${Math.round(laborCost > 0 ? totalWithLabor : totalCost)}`, margin, y);
+    
+    if (selectedContractorData) {
+        y += 20;
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Assigned Contractor:', margin, y);
+        
+        y += 8;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Name: ${selectedContractorData.name}`, margin, y);
+        y += 5;
+        doc.text(`Region: ${selectedContractorData.region}`, margin, y);
+        y += 5;
+        doc.text(`Phone: ${selectedContractorData.phone}`, margin, y);
+        y += 5;
+        doc.text(`Email: ${selectedContractorData.email}`, margin, y);
+    }
+    
+    y += 20;
+    doc.setFontSize(8);
+    doc.setTextColor(128);
+    doc.text('Building Innovation - We design the future!', pageWidth / 2, y, { align: 'center' });
+    
+    doc.save(`Quote_${material.refCode}_${Date.now()}.pdf`);
+  };
+
+  const handleDownloadPDF = generatePDF;
 
   const handleSendEmail = async () => {
       if (!userEmail) {
@@ -234,7 +404,9 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                 <h2 className="text-xl md:text-2xl font-black text-white print:text-black uppercase leading-none">{material.name}</h2>
                 <div className="text-blue-500 print:text-black font-bold text-sm tracking-wider mt-1">REF: {material.refCode}</div>
                 <div className="text-xs text-slate-500 mt-1">
-                    {material.dimensions.width}x{material.dimensions.length}cm • {material.dimensions.thickness}mm
+                    {formatDimensionCM(material.dimensions.width)} x {formatDimensionCM(material.dimensions.length)}cm • {material.dimensions.thickness}mm
+                    <span className="text-slate-600"> | </span>
+                    <span className="text-blue-400">{formatDimensionUSA(material.dimensions.width)} x {formatDimensionUSA(material.dimensions.length)}"</span>
                 </div>
             </div>
         </div>
@@ -353,8 +525,9 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                     <span className="text-slate-400 print:text-slate-600 text-sm uppercase tracking-wide">
                          {t.quote.dimensions}
                     </span>
-                    <span className="text-white print:text-black font-mono font-bold">
-                         {isLinear ? `${width}m (Linear)` : `${width}m (W) x ${height}m (H)`}
+                    <span className="text-white print:text-black font-mono font-bold text-right">
+                         <div className="text-sm">{isLinear ? `${width}m` : `${width}m x ${height}m`}</div>
+                         <div className="text-xs text-blue-400">{isLinear ? formatMetersUSA(width) : `${formatMetersUSA(width)} x ${formatMetersUSA(height)}`}</div>
                     </span>
                 </div>
 
@@ -363,24 +536,74 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                     <span className="text-3xl font-black text-blue-500 print:text-black">{quantity} <span className="text-lg text-slate-400 print:text-slate-600 font-medium">{material.pricing.unitLabel}</span></span>
                 </div>
 
+                {/* Cost Breakdown */}
+                <div className="mt-4 pt-4 border-t border-slate-700/50 space-y-2">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-slate-400">{t.quote.materialCost || 'Material Cost'}</span>
+                        <span className="text-white">${Math.round(totalCost)}</span>
+                    </div>
+                    {laborCost > 0 && (
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-400">{t.quote.laborCost || 'Installation'}</span>
+                            <span className="text-white">${laborCost}</span>
+                        </div>
+                    )}
+                    {laborCost > 0 && (
+                        <div className="flex justify-between text-sm text-slate-500">
+                            <span>{t.quote.wasteEstimate || 'Waste/Cut'}</span>
+                            <span>${Math.round(totalCost * wasteFactor)}</span>
+                        </div>
+                    )}
+                </div>
+
                 <div className="mt-6 pt-6 border-t-2 border-slate-800 print:border-black flex justify-between items-center bg-slate-900/50 print:bg-slate-100 -mx-6 -mb-6 p-6 rounded-b-lg">
-                    <span className="font-bold text-slate-300 print:text-black uppercase tracking-widest">{t.quote.cost}</span>
-                    <span className="text-3xl font-black text-green-500 print:text-black">${Math.round(totalCost)}</span>
+                    <span className="font-bold text-slate-300 print:text-black uppercase tracking-widest">{laborCost > 0 ? t.quote.totalCost || 'Total Cost' : t.quote.cost}</span>
+                    <span className="text-3xl font-black text-green-500 print:text-black">${Math.round(laborCost > 0 ? totalWithLabor : totalCost)}</span>
                 </div>
             </div>
         </section>
 
         {/* Contractor (No Print) */}
-        <div className="no-print">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{t.quote.assignContractor}</label>
-            <select 
-                value={selectedContractor}
-                onChange={(e) => setSelectedContractor(e.target.value)}
-                className="w-full bg-black border border-slate-700 p-3 text-white rounded text-base md:text-sm"
-            >
-                <option value="">{t.quote.selectContractor}</option>
-                {contractors.map(c => <option key={c.id} value={c.id}>{c.name} - {c.region}</option>)}
-            </select>
+        <div className="no-print space-y-4">
+            <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{t.quote.assignContractor}</label>
+                <select 
+                    value={selectedContractor}
+                    onChange={(e) => { setSelectedContractor(e.target.value); setManualLaborOverride(false); }}
+                    className="w-full bg-black border border-slate-700 p-3 text-white rounded text-base md:text-sm"
+                >
+                    <option value="">{t.quote.selectContractor}</option>
+                    {contractors.map(c => <option key={c.id} value={c.id}>{c.name} - {c.region} {c.laborRatePerSqm ? `($${c.laborRatePerSqm}/m²)` : ''}</option>)}
+                </select>
+            </div>
+            
+            {selectedContractor && (
+                <div className="bg-slate-800 p-4 rounded border border-slate-700">
+                    <div className="flex items-center justify-between mb-3">
+                        <label className="text-xs font-bold text-slate-400 uppercase">{t.quote.laborCost || 'Installation Cost'}</label>
+                        <label className="flex items-center gap-2 text-xs text-slate-400">
+                            <input 
+                                type="checkbox" 
+                                checked={manualLaborOverride}
+                                onChange={(e) => setManualLaborOverride(e.target.checked)}
+                                className="rounded"
+                            />
+                            {lang === 'es' ? 'Ingresar manualmente' : 'Manual input'}
+                        </label>
+                    </div>
+                    {manualLaborOverride ? (
+                        <input 
+                            type="number"
+                            value={laborCost}
+                            onChange={(e) => setLaborCost(parseFloat(e.target.value) || 0)}
+                            className="w-full bg-black border border-slate-600 p-2 text-white rounded"
+                            placeholder={lang === 'es' ? 'Costo de instalación...' : 'Installation cost...'}
+                        />
+                    ) : (
+                        <div className="text-2xl font-black text-green-400">${laborCost}</div>
+                    )}
+                </div>
+            )}
         </div>
 
         {/* Print Only Footer */}

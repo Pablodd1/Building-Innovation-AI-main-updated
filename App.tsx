@@ -2649,16 +2649,7 @@ const App: React.FC = () => {
                         </Button>
 
                         {generationState.resultImage && (
-                            <div className="grid grid-cols-2 gap-3">
-                                <Button
-                                    onClick={handleAnimateVideo}
-                                    variant="secondary"
-                                    className="text-xs uppercase"
-                                    disabled={generationState.isGenerating}
-                                >
-                                    {t.editor.videoPan || "Video Pan"} (
-                                    {t.common.comingSoon})
-                                </Button>
+                            <div className="grid grid-cols-1 gap-3">
                                 <Button
                                     onClick={() => setView(AppView.ESTIMATION)}
                                     variant="secondary"
