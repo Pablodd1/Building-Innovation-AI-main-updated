@@ -71,6 +71,8 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
   const [quantity, setQuantity] = useState<number>(0);
   const [totalCost, setTotalCost] = useState<number>(0);
+  const [useManualPrice, setUseManualPrice] = useState<boolean>(false);
+  const [manualUnitPrice, setManualUnitPrice] = useState<number>(0);
 
   const [patternRepeat, setPatternRepeat] = useState<number>(material.specs?.patternRepeat || 0);
   const [wasteFactor, setWasteFactor] = useState<number>(material.specs?.recommendedWaste || 0.10);
@@ -190,11 +192,13 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     }
 
     setQuantity(calculatedQty);
-    const materialCost = calculatedQty * material.pricing.pricePerUnit;
+    const materialCost = useManualPrice 
+      ? calculatedQty * manualUnitPrice 
+      : calculatedQty * material.pricing.pricePerUnit;
     setTotalCost(materialCost);
     setBreakdown(log);
 
-  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang, selectedContractor, manualLaborOverride, laborCost, contractors]);
+  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang, selectedContractor, manualLaborOverride, laborCost, contractors, useManualPrice, manualUnitPrice]);
 
   useEffect(() => {
     if (selectedContractor && !manualLaborOverride) {
@@ -534,6 +538,44 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                 <div className="flex justify-between items-end mb-2">
                     <span className="text-white print:text-black font-bold text-base md:text-lg uppercase">{t.quote.quantity}</span>
                     <span className="text-3xl font-black text-blue-500 print:text-black">{quantity} <span className="text-lg text-slate-400 print:text-slate-600 font-medium">{material.pricing.unitLabel}</span></span>
+                </div>
+
+                {/* Manual Price Input */}
+                <div className="mt-4 mb-4 no-print">
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                            {lang === 'es' ? 'Precio Unitario' : 'Unit Price'}
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={useManualPrice}
+                                onChange={(e) => setUseManualPrice(e.target.checked)}
+                                className="rounded"
+                            />
+                            {lang === 'es' ? 'Ingresar manualmente' : 'Manual input'}
+                        </label>
+                    </div>
+                    {useManualPrice ? (
+                        <div className="flex items-center gap-2">
+                            <span className="text-slate-400 text-lg">$</span>
+                            <input 
+                                type="number"
+                                value={manualUnitPrice}
+                                onChange={(e) => setManualUnitPrice(parseFloat(e.target.value) || 0)}
+                                className="bg-black border border-slate-600 p-3 text-white rounded flex-1 text-2xl font-bold focus:outline-none focus:border-blue-500"
+                                placeholder={lang === 'es' ? 'Ingrese precio unitario...' : 'Enter unit price...'}
+                                step="0.01"
+                            />
+                            <span className="text-slate-500 text-sm">x {quantity}</span>
+                        </div>
+                    ) : (
+                        <div className="text-sm text-slate-500">
+                            {lang === 'es' 
+                                ? `Precio base: $${material.pricing.pricePerUnit?.toFixed(2) || 'N/A'} por ${material.pricing.unitLabel}`
+                                : `Base price: $${material.pricing.pricePerUnit?.toFixed(2) || 'N/A'} per ${material.pricing.unitLabel}`}
+                        </div>
+                    )}
                 </div>
 
                 {/* Cost Breakdown */}
