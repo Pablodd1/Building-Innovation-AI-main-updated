@@ -2908,7 +2908,7 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-100 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700">
+        <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700">
             {view === AppView.LOGIN && renderLogin()}
             {view === AppView.LANDING && renderLanding()}
             {view === AppView.ADMIN && renderAdmin()}
@@ -2936,7 +2936,7 @@ const App: React.FC = () => {
             )}
             {view === AppView.EDITOR && renderEditor()}
             {view === AppView.ESTIMATION && selectedMaterial && (
-                <div className="h-screen bg-gray-100 p-4 md:p-8 overflow-y-auto flex justify-center">
+                <div className="h-screen bg-slate-900 p-4 md:p-8 overflow-y-auto flex justify-center">
                     <div className="w-full max-w-4xl h-full">
                         <EstimationPanel
                             material={selectedMaterial}

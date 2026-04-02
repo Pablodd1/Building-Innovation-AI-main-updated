@@ -71,8 +71,8 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
   const [quantity, setQuantity] = useState<number>(0);
   const [totalCost, setTotalCost] = useState<number>(0);
-  const [useManualPrice, setUseManualPrice] = useState<boolean>(false);
-  const [manualUnitPrice, setManualUnitPrice] = useState<number>(0);
+  const [useManualCost, setUseManualCost] = useState<boolean>(false);
+  const [manualTotalCost, setManualTotalCost] = useState<number>(0);
 
   const [patternRepeat, setPatternRepeat] = useState<number>(material.specs?.patternRepeat || 0);
   const [wasteFactor, setWasteFactor] = useState<number>(material.specs?.recommendedWaste || 0.10);
@@ -192,13 +192,11 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     }
 
     setQuantity(calculatedQty);
-    const materialCost = useManualPrice 
-      ? calculatedQty * manualUnitPrice 
-      : calculatedQty * material.pricing.pricePerUnit;
+    const materialCost = calculatedQty * material.pricing.pricePerUnit;
     setTotalCost(materialCost);
     setBreakdown(log);
 
-  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang, selectedContractor, manualLaborOverride, laborCost, contractors, useManualPrice, manualUnitPrice]);
+  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang, selectedContractor, manualLaborOverride, laborCost, contractors]);
 
   useEffect(() => {
     if (selectedContractor && !manualLaborOverride) {
@@ -225,13 +223,14 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
   }, [selectedContractor, contractors, material, width, height, wasteFactor, quantity, manualLaborOverride]);
 
   const totalWithLabor = totalCost + laborCost;
+  const displayCost = useManualCost ? manualTotalCost : (laborCost > 0 ? totalWithLabor : totalCost);
 
   const handleAddToCart = () => {
     const newItem: CartItem = {
         id: `${material.id}-${Date.now()}`,
         material: material,
         quantity: quantity,
-        totalCost: totalCost,
+        totalCost: displayCost,
         dimensions: { width, height },
         timestamp: Date.now()
     };
@@ -308,7 +307,7 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     y += 8;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Material Cost: $${Math.round(totalCost)}`, margin, y);
+    doc.text(`Material Cost: $${Math.round(displayCost)}`, margin, y);
     
     if (laborCost > 0) {
         y += 6;
@@ -318,7 +317,7 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     y += 10;
     doc.setFont('helvetica', 'bold');
     const totalLabel = laborCost > 0 ? 'TOTAL' : 'Estimated Cost';
-    doc.text(`${totalLabel}: $${Math.round(laborCost > 0 ? totalWithLabor : totalCost)}`, margin, y);
+    doc.text(`${totalLabel}: $${Math.round(displayCost)}`, margin, y);
     
     if (selectedContractorData) {
         y += 20;
@@ -367,7 +366,7 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                   unitLabel: material.pricing.unitLabel,
                   width,
                   height,
-                  estimatedCost: totalCost,
+                  estimatedCost: displayCost,
                   userEmail,
                   userName,
               }),
@@ -540,44 +539,6 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                     <span className="text-3xl font-black text-blue-500 print:text-black">{quantity} <span className="text-lg text-slate-400 print:text-slate-600 font-medium">{material.pricing.unitLabel}</span></span>
                 </div>
 
-                {/* Manual Price Input */}
-                <div className="mt-4 mb-4 no-print">
-                    <div className="flex items-center justify-between mb-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                            {lang === 'es' ? 'Precio Unitario' : 'Unit Price'}
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={useManualPrice}
-                                onChange={(e) => setUseManualPrice(e.target.checked)}
-                                className="rounded"
-                            />
-                            {lang === 'es' ? 'Ingresar manualmente' : 'Manual input'}
-                        </label>
-                    </div>
-                    {useManualPrice ? (
-                        <div className="flex items-center gap-2">
-                            <span className="text-slate-400 text-lg">$</span>
-                            <input 
-                                type="number"
-                                value={manualUnitPrice}
-                                onChange={(e) => setManualUnitPrice(parseFloat(e.target.value) || 0)}
-                                className="bg-black border border-slate-600 p-3 text-white rounded flex-1 text-2xl font-bold focus:outline-none focus:border-blue-500"
-                                placeholder={lang === 'es' ? 'Ingrese precio unitario...' : 'Enter unit price...'}
-                                step="0.01"
-                            />
-                            <span className="text-slate-500 text-sm">x {quantity}</span>
-                        </div>
-                    ) : (
-                        <div className="text-sm text-slate-500">
-                            {lang === 'es' 
-                                ? `Precio base: $${material.pricing.pricePerUnit?.toFixed(2) || 'N/A'} por ${material.pricing.unitLabel}`
-                                : `Base price: $${material.pricing.pricePerUnit?.toFixed(2) || 'N/A'} per ${material.pricing.unitLabel}`}
-                        </div>
-                    )}
-                </div>
-
                 {/* Cost Breakdown */}
                 <div className="mt-4 pt-4 border-t border-slate-700/50 space-y-2">
                     <div className="flex justify-between text-sm">
@@ -598,9 +559,38 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                     )}
                 </div>
 
+                {/* Manual Cost Toggle */}
+                <div className="mt-4 no-print">
+                    <div className="flex items-center gap-2 mb-2">
+                        <input 
+                            type="checkbox" 
+                            checked={useManualCost}
+                            onChange={(e) => setUseManualCost(e.target.checked)}
+                            className="rounded"
+                        />
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest cursor-pointer">
+                            {lang === 'es' ? 'Ingresar manualmente' : 'Manual input'}
+                        </label>
+                    </div>
+                </div>
+
                 <div className="mt-6 pt-6 border-t-2 border-slate-800 print:border-black flex justify-between items-center bg-slate-900/50 print:bg-slate-100 -mx-6 -mb-6 p-6 rounded-b-lg">
                     <span className="font-bold text-slate-300 print:text-black uppercase tracking-widest">{laborCost > 0 ? t.quote.totalCost || 'Total Cost' : t.quote.cost}</span>
-                    <span className="text-3xl font-black text-green-500 print:text-black">${Math.round(laborCost > 0 ? totalWithLabor : totalCost)}</span>
+                    {useManualCost ? (
+                        <div className="flex items-center gap-2">
+                            <span className="text-2xl font-black text-slate-400">$</span>
+                            <input 
+                                type="number"
+                                value={manualTotalCost}
+                                onChange={(e) => setManualTotalCost(parseFloat(e.target.value) || 0)}
+                                className="bg-transparent text-3xl font-black text-green-500 print:text-black w-40 text-right focus:outline-none border-b border-slate-600 print:border-none focus:border-green-400"
+                                placeholder={lang === 'es' ? 'Ingrese costo...' : 'Enter cost...'}
+                                step="0.01"
+                            />
+                        </div>
+                    ) : (
+                        <span className="text-3xl font-black text-green-500 print:text-black">${Math.round(displayCost)}</span>
+                    )}
                 </div>
             </div>
         </section>
