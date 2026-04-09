@@ -20,6 +20,7 @@ import { Button } from "./components/Button";
 import { CameraCapture } from "./components/CameraCapture";
 import { ImageComparator } from "./components/ImageComparator";
 import { EstimationPanel } from "./components/EstimationPanel";
+import { AdminPurchaseQueue } from "./components/AdminPurchaseQueue";
 import {
     generateMaterialOverlay,
     generateRoomAnalysis,
@@ -157,8 +158,46 @@ const App: React.FC = () => {
 
     // Admin Form State
     const [adminTab, setAdminTab] = useState<
-        "MATERIALS" | "CONTRACTORS" | "SETTINGS"
+        "MATERIALS" | "CONTRACTORS" | "PURCHASES" | "SETTINGS"
     >("MATERIALS");
+
+    // Download result image with watermark
+    const handleDownloadResult = async () => {
+        const imgSrc = generationState.resultImage;
+        if (!imgSrc) return;
+        const canvas = document.createElement("canvas");
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d")!;
+            ctx.drawImage(img, 0, 0);
+            // Bottom watermark bar
+            const barH = Math.max(40, img.height * 0.06);
+            ctx.fillStyle = "rgba(0,0,0,0.72)";
+            ctx.fillRect(0, img.height - barH, img.width, barH);
+            // Logo text
+            const fontSize = Math.max(14, barH * 0.45);
+            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+            ctx.fillStyle = "#FFFFFF";
+            ctx.textBaseline = "middle";
+            ctx.fillText("Building Innovation", 16, img.height - barH / 2);
+            // Copyright
+            const year = new Date().getFullYear();
+            const copyText = `© ${year} Building Innovation. All rights reserved.`;
+            ctx.font = `${Math.max(10, fontSize * 0.6)}px Arial, sans-serif`;
+            ctx.fillStyle = "rgba(255,255,255,0.7)";
+            ctx.textAlign = "right";
+            ctx.fillText(copyText, img.width - 16, img.height - barH / 2);
+            // Trigger download
+            const link = document.createElement("a");
+            link.href = canvas.toDataURL("image/jpeg", 0.95);
+            link.download = `BuildingInnovation_AI_${Date.now()}.jpg`;
+            link.click();
+        };
+        img.src = imgSrc;
+    };
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Material>>({});
     const [contractorForm, setContractorForm] = useState<Partial<Contractor>>(
@@ -1290,6 +1329,14 @@ const App: React.FC = () => {
                         </Button>
                         <Button
                             variant={
+                                adminTab === "PURCHASES" ? "primary" : "ghost"
+                            }
+                            onClick={() => setAdminTab("PURCHASES")}
+                        >
+                            {lang === "es" ? "Pedidos/Solicitudes" : "Purchases/Requests"}
+                        </Button>
+                        <Button
+                            variant={
                                 adminTab === "SETTINGS" ? "primary" : "ghost"
                             }
                             onClick={() => setAdminTab("SETTINGS")}
@@ -2298,6 +2345,8 @@ const App: React.FC = () => {
                     </div>
                 )}
 
+                {adminTab === "PURCHASES" && <AdminPurchaseQueue />}
+
                 {adminTab === "SETTINGS" && (
                     <div className="max-w-xl">
                         <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
@@ -2650,6 +2699,13 @@ const App: React.FC = () => {
 
                         {generationState.resultImage && (
                             <div className="grid grid-cols-1 gap-3">
+                                <Button
+                                    onClick={handleDownloadResult}
+                                    variant="secondary"
+                                    className="bg-blue-600 border-blue-500 hover:bg-blue-500 text-gray-700 text-xs uppercase"
+                                >
+                                    {t.editor.download}
+                                </Button>
                                 <Button
                                     onClick={() => setView(AppView.ESTIMATION)}
                                     variant="secondary"
