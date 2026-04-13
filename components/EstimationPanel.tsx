@@ -5,43 +5,16 @@ import { Button } from './Button';
 import { TRANSLATIONS } from '../constants';
 import { jsPDF } from 'jspdf';
 
-const CM_TO_INCH = 0.393701;
-const CM_TO_FOOT = 0.0328084;
-
-function cmToFeetInches(cm: number): { feet: number; inches: number } {
-  const totalInches = cm * CM_TO_INCH;
-  const feet = Math.floor(totalInches * (1/12));
-  const inches = Math.round((totalInches - feet * 12) * 10) / 10;
-  return { feet, inches };
-}
+import { 
+  formatDimensionUSA, 
+  formatMetersUSA, 
+  formatAreaUSA, 
+  feetInchesToMeters, 
+  metersToFeetInches 
+} from '../services/unitUtils';
 
 function formatDimensionCM(cm: number): string {
   return `${cm.toFixed(1)} cm`;
-}
-
-function formatDimensionUSA(cm: number): string {
-  const { feet, inches } = cmToFeetInches(cm);
-  if (inches === 0) {
-    return `${feet}'`;
-  }
-  return `${feet}' ${inches}"`;
-}
-
-function metersToFeetInches(meters: number): { feet: number; inches: number } {
-  return cmToFeetInches(meters * 100);
-}
-
-function formatMetersUSA(meters: number): string {
-  const { feet, inches } = metersToFeetInches(meters);
-  if (inches === 0) {
-    return `${feet}'`;
-  }
-  return `${feet}' ${inches}"`;
-}
-
-function formatAreaUSA(sqMeters: number): string {
-  const sqFt = sqMeters * 10.7639;
-  return `${sqFt.toFixed(2)} ft²`;
 }
 
 interface EstimationPanelProps {
@@ -51,6 +24,7 @@ interface EstimationPanelProps {
   onNewQuote?: () => void;
   contractors?: Contractor[];
   lang?: 'en' | 'es';
+  unitSystem?: 'latam' | 'usa';
   userEmail?: string;
   userName?: string;
 }
@@ -65,9 +39,15 @@ const BrandLogoSmall = ({ className = "stroke-white print:stroke-black" }: { cla
   </svg>
 );
 
-export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en', userEmail = '', userName = '' }) => {
+export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en', unitSystem = 'usa', userEmail = '', userName = '' }) => {
   const [width, setWidth] = useState<number>(3);
   const [height, setHeight] = useState<number>(2.5);
+
+  // USA System States
+  const [widthFeet, setWidthFeet] = useState<number>(9);
+  const [widthInches, setWidthInches] = useState<number>(10);
+  const [heightFeet, setHeightFeet] = useState<number>(8);
+  const [heightInches, setHeightInches] = useState<number>(2);
 
   const [quantity, setQuantity] = useState<number>(0);
   const [totalCost, setTotalCost] = useState<number>(0);
@@ -88,7 +68,30 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
   const [emailError, setEmailError] = useState<string>('');
 
   const t = TRANSLATIONS[lang];
-  const isLatam = lang === 'es';
+  const isUSA = unitSystem === 'usa';
+
+  // Sync Meters with Feet/Inches for USA mode
+  useEffect(() => {
+    if (isUSA) {
+      const w = feetInchesToMeters(widthFeet, widthInches);
+      const h = feetInchesToMeters(heightFeet, heightInches);
+      setWidth(w);
+      setHeight(h);
+    }
+  }, [widthFeet, widthInches, heightFeet, heightInches, isUSA]);
+
+  // Reverse sync when switching TO USA mode to initialize fields
+  useEffect(() => {
+    if (isUSA) {
+       const wInfo = metersToFeetInches(width);
+       setWidthFeet(wInfo.feet);
+       setWidthInches(Math.round(wInfo.inches));
+       
+       const hInfo = metersToFeetInches(height);
+       setHeightFeet(hInfo.feet);
+       setHeightInches(Math.round(hInfo.inches));
+    }
+  }, [isUSA]);
 
   useEffect(() => {
     // Determine Calculation Mode based on Material Specs or Category fallback
@@ -98,6 +101,10 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
     let calculatedQty = 0;
     const log: string[] = [];
+    const u = isUSA ? 'ft' : 'm';
+    const a = isUSA ? 'ft²' : 'm²';
+    const fmt = (val: number) => isUSA ? formatMetersUSA(val) : `${val.toFixed(2)}m`;
+    const fmtArea = (val: number) => isUSA ? formatAreaUSA(val) : `${val.toFixed(2)}m²`;
 
     // Basic Product Specs
     const matWidthM = material.dimensions.width / 100; // cm -> m
@@ -115,17 +122,17 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
         const wasteStrips = Math.ceil(strips * wasteFactor);
         const totalStrips = strips + wasteStrips;
 
-        log.push(`${lang === 'es' ? 'Cobertura' : 'Coverage'}: ${width}m / ${matWidthM}m (${lang === 'es' ? 'ancho rollo' : 'roll width'}) = ${strips} ${lang === 'es' ? 'tiras' : 'strips'}.`);
+        log.push(`${lang === 'es' ? 'Cobertura' : 'Coverage'}: ${fmt(width)} / ${fmt(matWidthM)} (${lang === 'es' ? 'ancho rollo' : 'roll width'}) = ${strips} ${lang === 'es' ? 'tiras' : 'strips'}.`);
         log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} ${(wasteFactor*100).toFixed(0)}%: +${wasteStrips} ${lang === 'es' ? 'tiras' : 'strips'}.`);
 
         // 3. Calculate working length per strip (including pattern match)
         let workingLength = height;
         if (repeatM > 0) {
             workingLength = Math.ceil(height / repeatM) * repeatM;
-            log.push(`${lang === 'es' ? 'Patrón' : 'Pattern'} (${patternRepeat}cm): ${lang === 'es' ? 'Alto ajustado' : 'Height adjusted'} ${height}m -> ${workingLength.toFixed(2)}m.`);
+            log.push(`${lang === 'es' ? 'Patrón' : 'Pattern'} (${patternRepeat}cm): ${lang === 'es' ? 'Alto ajustado' : 'Height adjusted'} ${fmt(height)} -> ${fmt(workingLength)}.`);
         } else {
             workingLength = height + 0.10; // 10cm trim
-            log.push(lang === 'es' ? "Sin patrón: +10cm margen." : "Trim: Added 10cm safety.");
+            log.push(lang === 'es' ? `Sin patrón: +${isUSA ? '4"' : '10cm'} margen.` : `Trim: Added ${isUSA ? '4"' : '10cm'} safety.`);
         }
 
         // 4. Calculate Rolls Needed
@@ -133,32 +140,32 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
         if (stripsPerRoll >= 1) {
             calculatedQty = Math.ceil(totalStrips / stripsPerRoll);
-            log.push(`1 ${lang === 'es' ? 'Rollo' : 'Roll'} (${matLengthM}m) = ${stripsPerRoll} ${lang === 'es' ? 'tiras útiles' : 'usable strips'}.`);
+            log.push(`1 ${lang === 'es' ? 'Rollo' : 'Roll'} (${fmt(matLengthM)}) = ${stripsPerRoll} ${lang === 'es' ? 'tiras útiles' : 'usable strips'}.`);
             log.push(`Total: ${totalStrips} ${lang === 'es' ? 'tiras' : 'strips'} -> ${calculatedQty} ${lang === 'es' ? 'Rollos' : 'Rolls'}.`);
         } else {
             // Wall is taller than roll length (rare for wallpaper, possible for other rolls)
             const totalMetersNeeded = totalStrips * workingLength;
             calculatedQty = Math.ceil(totalMetersNeeded / matLengthM);
-            log.push(`${lang === 'es' ? 'Alto > Largo Rollo. Total metros' : 'Wall height > Roll length. Total meters'}: ${totalMetersNeeded.toFixed(2)}m.`);
+            log.push(`${lang === 'es' ? 'Alto > Largo Rollo. Total metros' : 'Wall height > Roll length. Total units'}: ${fmt(totalMetersNeeded)}.`);
         }
     } 
     // --- ALGORITHM B: FLOORING & TILES (By Piece/Box) ---
     else if (mode === 'TILE') {
         // 1. Calculate Real Area
         const area = width * height;
-        log.push(`${lang === 'es' ? 'Área Superficie' : 'Surface Area'}: ${area.toFixed(2)}m²`);
+        log.push(`${lang === 'es' ? 'Área Superficie' : 'Surface Area'}: ${fmtArea(area)}`);
 
         // 2. Apply Waste
         const effectiveWaste = layoutStyle === 'DIAGONAL' ? 0.15 : wasteFactor;
         const totalAreaWithWaste = area * (1 + effectiveWaste);
-        log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} (${(effectiveWaste*100).toFixed(0)}%): Total ${totalAreaWithWaste.toFixed(2)}m²`);
+        log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} (${(effectiveWaste*100).toFixed(0)}%): Total ${fmtArea(totalAreaWithWaste)}`);
 
         // 3. Calculate Single Piece Area
         const pieceArea = matWidthM * matLengthM;
 
         // 4. Calculate Total Pieces
         const totalPieces = Math.ceil(totalAreaWithWaste / pieceArea);
-        log.push(`${lang === 'es' ? 'Tamaño Ítem' : 'Item Size'}: ${material.dimensions.width}x${material.dimensions.length}cm (${pieceArea.toFixed(4)}m²)`);
+        log.push(`${lang === 'es' ? 'Tamaño Ítem' : 'Item Size'}: ${material.dimensions.width}x${material.dimensions.length}cm (${fmtArea(pieceArea)})`);
         log.push(`${lang === 'es' ? 'Piezas Necesarias' : 'Pieces Needed'}: ${totalPieces}.`);
 
         // 5. Convert to Purchasing Unit (Boxes vs Pieces)
@@ -181,12 +188,12 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
         // Check if sold by box
         if (itemsPerBox > 1) {
             calculatedQty = Math.ceil(pieces / itemsPerBox);
-            log.push(`${lang === 'es' ? 'Total Lineal' : 'Linear Total'}: ${totalLen.toFixed(2)}m.`);
-            log.push(`${lang === 'es' ? 'Piezas' : 'Pieces'}: ${pieces} (${matWidthM}m ${lang === 'es' ? 'c/u' : 'each'}).`);
+            log.push(`${lang === 'es' ? 'Total Lineal' : 'Linear Total'}: ${fmt(totalLen)}.`);
+            log.push(`${lang === 'es' ? 'Piezas' : 'Pieces'}: ${pieces} (${fmt(matWidthM)} ${lang === 'es' ? 'c/u' : 'each'}).`);
             log.push(`${lang === 'es' ? 'Empaque' : 'Packaging'}: ${pieces} / ${itemsPerBox} = ${calculatedQty} ${lang === 'es' ? 'Cajas' : 'Boxes'}.`);
         } else {
             calculatedQty = pieces;
-            log.push(`${lang === 'es' ? 'Largo Total' : 'Total Length'}: ${totalLen.toFixed(2)}m.`);
+            log.push(`${lang === 'es' ? 'Largo Total' : 'Total Length'}: ${fmt(totalLen)}.`);
             log.push(`${lang === 'es' ? 'Total Unidades' : 'Total Units'}: ${pieces}.`);
         }
     }
@@ -291,10 +298,8 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     y += 8;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    const unitLabel = isLatam ? 'm' : 'ft';
-    const areaLabel = isLatam ? 'm²' : 'ft²';
-    const areaValue = isLatam ? (width * height).toFixed(2) : formatAreaUSA(width * height).replace(' ft²', '');
-    doc.text(`${isLinear ? 'Linear / Perimeter' : 'Area'}: ${isLinear ? `${width}m / ${formatMetersUSA(width)}` : `${(width * height).toFixed(2)} ${areaLabel} / ${formatAreaUSA(width * height)}`}`, margin, y);
+    const areaValue = !isUSA ? (width * height).toFixed(2) : formatAreaUSA(width * height).replace(' ft²', '');
+    doc.text(`${isLinear ? 'Linear / Perimeter' : 'Area'}: ${isLinear ? (!isUSA ? `${width}m` : formatMetersUSA(width)) : (!isUSA ? `${(width * height).toFixed(2)} m²` : formatAreaUSA(width * height))}`, margin, y);
     
     y += 6;
     doc.text(`Quantity: ${quantity} ${material.pricing.unitLabel}`, margin, y);
@@ -407,9 +412,13 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                 <h2 className="text-xl md:text-2xl font-black text-white print:text-black uppercase leading-none">{material.name}</h2>
                 <div className="text-blue-500 print:text-black font-bold text-sm tracking-wider mt-1">REF: {material.refCode}</div>
                 <div className="text-xs text-slate-500 mt-1">
-                    {formatDimensionCM(material.dimensions.width)} x {formatDimensionCM(material.dimensions.length)}cm • {material.dimensions.thickness}mm
-                    <span className="text-slate-600"> | </span>
-                    <span className="text-blue-400">{formatDimensionUSA(material.dimensions.width)} x {formatDimensionUSA(material.dimensions.length)}"</span>
+                    {!isUSA ? (
+                        <>
+                            {formatDimensionCM(material.dimensions.width)} x {formatDimensionCM(material.dimensions.length)}cm • {material.dimensions.thickness}mm
+                        </>
+                    ) : (
+                        <span className="text-blue-400">{formatDimensionUSA(material.dimensions.width)} x {formatDimensionUSA(material.dimensions.length)}" • {material.dimensions.thickness}mm</span>
+                    )}
                 </div>
             </div>
         </div>
@@ -433,32 +442,83 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-
+                {/* Width Input Block */}
                 <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
                     <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">
-                            {isLinear ? `${t.quote.perimeter} (m)` : `${t.quote.width} (m)`}
+                            {isLinear ? t.quote.perimeter : t.quote.width} {!isUSA ? '(m)' : '(USA)'}
                     </label>
-                    <input 
-                        type="number" 
-                        value={width}
-                        onChange={(e) => setWidth(parseFloat(e.target.value) || 0)}
-                        step="0.1"
-                        className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                    />
-                </div>
-                {!isLinear && (
-                    <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
-                        <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">{t.quote.height} (m)</label>
+                    {!isUSA ? (
                         <input 
                             type="number" 
-                            value={height}
-                            onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
+                            value={width}
+                            onChange={(e) => setWidth(parseFloat(e.target.value) || 0)}
                             step="0.1"
                             className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
                         />
+                    ) : (
+                        <div className="flex items-end gap-2">
+                             <div className="flex-1">
+                                <input 
+                                    type="number" 
+                                    value={widthFeet}
+                                    onChange={(e) => setWidthFeet(parseInt(e.target.value) || 0)}
+                                    className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
+                                />
+                                <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.ft || 'ft'}</span>
+                             </div>
+                             <div className="flex-1 border-l border-slate-800 pl-2">
+                                <input 
+                                    type="number" 
+                                    value={widthInches}
+                                    onChange={(e) => setWidthInches(parseInt(e.target.value) || 0)}
+                                    max="11"
+                                    className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
+                                />
+                                <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.inch || 'in'}</span>
+                             </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Height Input Block */}
+                {!isLinear && (
+                    <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
+                        <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">
+                            {t.quote.height} {!isUSA ? '(m)' : '(USA)'}
+                        </label>
+                        {!isUSA ? (
+                            <input 
+                                type="number" 
+                                value={height}
+                                onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
+                                step="0.1"
+                                className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
+                            />
+                        ) : (
+                            <div className="flex items-end gap-2">
+                                <div className="flex-1">
+                                    <input 
+                                        type="number" 
+                                        value={heightFeet}
+                                        onChange={(e) => setHeightFeet(parseInt(e.target.value) || 0)}
+                                        className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
+                                    />
+                                    <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.ft || 'ft'}</span>
+                                </div>
+                                <div className="flex-1 border-l border-slate-800 pl-2">
+                                    <input 
+                                        type="number" 
+                                        value={heightInches}
+                                        onChange={(e) => setHeightInches(parseInt(e.target.value) || 0)}
+                                        max="11"
+                                        className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
+                                    />
+                                    <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.inch || 'in'}</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
-
             </div>
 
             {/* ADVANCED SETTINGS */}
@@ -529,8 +589,8 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                          {t.quote.dimensions}
                     </span>
                     <span className="text-white print:text-black font-mono font-bold text-right">
-                         <div className="text-sm">{isLinear ? `${width}m` : `${width}m x ${height}m`}</div>
-                         <div className="text-xs text-blue-400">{isLinear ? formatMetersUSA(width) : `${formatMetersUSA(width)} x ${formatMetersUSA(height)}`}</div>
+                         <div className="text-sm">{!isUSA ? (isLinear ? `${width.toFixed(2)}m` : `${width.toFixed(2)}m x ${height.toFixed(2)}m`) : (isLinear ? formatMetersUSA(width) : `${formatMetersUSA(width)} x ${formatMetersUSA(height)}`)}</div>
+                         {isUSA && <div className="text-xs text-blue-400">({isLinear ? `${width.toFixed(2)}m` : `${width.toFixed(2)}m x ${height.toFixed(2)}m`})</div>}
                     </span>
                 </div>
 

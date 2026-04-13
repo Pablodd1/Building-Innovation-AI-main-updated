@@ -27,6 +27,7 @@ import {
     generateCinematicVideo,
     generateMaterialProbe,
 } from "./services/geminiService";
+import { formatMetersUSA } from "./services/unitUtils";
 
 interface HistoryItem {
     resultImage: string | null;
@@ -97,6 +98,12 @@ const App: React.FC = () => {
         "Interior" | "Exterior" | "All"
     >("Interior");
     const [lang, setLang] = useState<Language>("en");
+    const [unitSystem, setUnitSystem] = useState<"latam" | "usa">("usa");
+
+    // Sync unit system with language
+    useEffect(() => {
+        setUnitSystem(lang === "es" ? "latam" : "usa");
+    }, [lang]);
 
     // Authentication State
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -930,16 +937,20 @@ const App: React.FC = () => {
     const LanguageToggle = () => (
         <div className="flex bg-gray-200 rounded-lg p-1 border border-gray-300">
             <button
-                onClick={() => setLang("en")}
+                onClick={() => {
+                    setLang("en");
+                }}
                 className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
-                EN
+                EN {unitSystem === "usa" && " (ft/in)"}
             </button>
             <button
-                onClick={() => setLang("es")}
+                onClick={() => {
+                    setLang("es");
+                }}
                 className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
-                ES
+                ES {unitSystem === "latam" && " (m/cm)"}
             </button>
         </div>
     );
@@ -2770,8 +2781,11 @@ const App: React.FC = () => {
                                         <div className="text-sm text-gray-500">
                                             {item.quantity}{" "}
                                             {item.material.pricing.unitLabel} •{" "}
-                                            {item.dimensions.width}x
-                                            {item.dimensions.height}m
+                                            {unitSystem === "latam" ? (
+                                                <>{item.dimensions.width}m x {item.dimensions.height}m</>
+                                            ) : (
+                                                <>{formatMetersUSA(item.dimensions.width)} x {formatMetersUSA(item.dimensions.height)}</>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="text-right">
@@ -3003,6 +3017,7 @@ const App: React.FC = () => {
                             onNewQuote={() => setView(AppView.GALLERY)}
                             contractors={contractors}
                             lang={lang}
+                            unitSystem={unitSystem}
                             userEmail={currentUser?.email || ''}
                             userName={currentUser?.name || ''}
                         />
