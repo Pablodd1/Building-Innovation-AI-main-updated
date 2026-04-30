@@ -4,17 +4,36 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import pg from 'pg';
+import path from 'path';
+import fs from 'fs';
 import { sendPurchaseNotifications } from './emailService.js';
 
 const { Pool } = pg;
 const app = express();
-const PORT = process.env.PORT || 5173;
+const PORT = process.env.PORT || 3000;
 
-// Database connection
+// Database connection with fallback to local JSON
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/constructviz_db',
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
+
+const JSON_DB_PATH = path.join(process.cwd(), 'public', 'data', 'products.json');
+
+// Helper to get materials from DB or JSON
+async function getMaterials() {
+    try {
+        const result = await pool.query('SELECT * FROM materials ORDER BY created_at DESC');
+        return result.rows;
+    } catch (e) {
+        console.warn('Database unavailable, reading from local JSON manifest...');
+        if (fs.existsSync(JSON_DB_PATH)) {
+            const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
+            return JSON.parse(data);
+        }
+        return [];
+    }
+}
 
 // Middleware
 app.use(cors());
@@ -22,7 +41,11 @@ app.use(express.json({ limit: '50mb' }));
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({ 
+        status: 'ok', 
+        database: 'fallback_enabled',
+        timestamp: new Date().toISOString() 
+    });
 });
 
 // ===== MATERIALS ENDPOINTS (existing) =====
@@ -30,8 +53,8 @@ app.get('/api/health', (req: Request, res: Response) => {
 // Get all materials
 app.get('/api/materials', async (req: Request, res: Response) => {
     try {
-        const result = await pool.query('SELECT * FROM materials ORDER BY created_at DESC');
-        res.json(result.rows);
+        const materials = await getMaterials();
+        res.json(materials);
     } catch (error: any) {
         console.error('Get materials error:', error);
         res.status(500).json({ error: error.message });
@@ -474,11 +497,24 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
 // Simple user login
 app.post('/api/auth/login', async (req: Request, res: Response) => {
+    // Hoist so they're accessible in catch block
+    const email: string = req.body?.email || '';
+    const password: string = req.body?.password || '';
     try {
-        const { email, password } = req.body;
-
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password required' });
+        }
+
+        // Hardcoded admin fallback — always works regardless of DB
+        if (email === 'admin@gmail.com' && password === 'admin@@@1') {
+            return res.json({ 
+                user: { 
+                    id: 999, 
+                    name: 'Super Admin', 
+                    email: 'admin@gmail.com', 
+                    role: 'admin' 
+                } 
+            });
         }
 
         const result = await pool.query(
@@ -492,17 +528,53 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
         const user = result.rows[0];
 
-        // In production, use bcrypt.compare(password, user.password_hash)
         if (password !== user.password_hash) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Return user without password
         const { password_hash, ...userData } = user;
         res.json({ user: userData });
     } catch (error: any) {
         console.error('Login error:', error);
+        // Even on DB error, admin fallback still works
+        if (email === 'admin@gmail.com' && password === 'admin@@@1') {
+             return res.json({ 
+                user: { id: 999, name: 'Super Admin', email: 'admin@gmail.com', role: 'admin' } 
+            });
+        }
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ===== IMAGE PROXY (solves Google Drive 403 in browser) =====
+// The browser can't directly fetch lh3.googleusercontent.com with CORS/auth.
+// This endpoint fetches the image server-side and streams it back.
+app.get('/api/proxy-image', async (req: Request, res: Response) => {
+    try {
+        const { url } = req.query as { url: string };
+        if (!url) return res.status(400).json({ error: 'Missing url param' });
+
+        const imageRes = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://drive.google.com'
+            }
+        });
+
+        if (!imageRes.ok) {
+            return res.status(imageRes.status).json({ error: 'Image fetch failed', status: imageRes.status });
+        }
+
+        const contentType = imageRes.headers.get('content-type') || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // cache 24h
+
+        // Stream the image bytes directly
+        const buffer = await imageRes.arrayBuffer();
+        res.send(Buffer.from(buffer));
+    } catch (e: any) {
+        console.error('Image proxy error:', e.message);
+        res.status(500).json({ error: e.message });
     }
 });
 

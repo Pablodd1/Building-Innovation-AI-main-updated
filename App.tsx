@@ -267,6 +267,15 @@ const App: React.FC = () => {
         return Array.from(categories).sort();
     }, [materials]);
 
+    // Rewrite Google Drive URLs through the local server proxy to avoid 403/CORS
+    const proxyImageUrl = (url: string): string => {
+        if (!url) return url;
+        if (url.includes('lh3.googleusercontent.com') || url.includes('drive.google.com')) {
+            return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+        }
+        return url;
+    };
+
     const loadMaterialsFromDB = useCallback(async () => {
         setMaterialsLoading(true);
         try {
@@ -277,14 +286,14 @@ const App: React.FC = () => {
                 if (Array.isArray(dbMaterials) && dbMaterials.length > 0) {
                     const converted = dbMaterials.map((m: any) => ({
                         id: String(m.id),
-                        refCode: m.ref_code || "",
+                        refCode: m.ref_code || m.refCode || "",
                         name: m.name || "",
                         category: m.category || "General",
                         subcategory: m.subcategory || "",
                         description: m.description || "",
-                        imageUrl: m.image_url || "",
+                        imageUrl: proxyImageUrl(m.image_url || m.imageUrl || ""),
                         usage: m.usage || "Interior",
-                        promptModifier: m.prompt_modifier || "",
+                        promptModifier: m.prompt_modifier || m.promptModifier || "",
                         dimensions: {
                             width: parseFloat(m.width_cm) || 100,
                             length: parseFloat(m.length_cm) || 100,
@@ -292,9 +301,9 @@ const App: React.FC = () => {
                         },
                         pricing: {
                             pricePerUnit: parseFloat(m.price) || 0,
-                            currency: m.currency || "USD",
-                            unitLabel: m.unit || "Piece",
-                            itemsPerBox: m.items_per_box || 1,
+                            currency: m.currency || "COP",
+                            unitLabel: m.unit || m.unitLabel || "Unidad",
+                            itemsPerBox: m.items_per_box || m.itemsPerBox || 1,
                         },
                     }));
                     setMaterials(converted);
@@ -307,12 +316,16 @@ const App: React.FC = () => {
         }
 
         try {
-            // Tier 2: Try the local embedded manifest (full catalog)
+            // Tier 2: Local embedded manifest — proxy image URLs
             const localRes = await fetch("/data/products.json");
             if (localRes.ok) {
                 const localData = await localRes.json();
                 if (Array.isArray(localData) && localData.length > 0) {
-                    setMaterials(localData);
+                    const proxied = localData.map((m: any) => ({
+                        ...m,
+                        imageUrl: proxyImageUrl(m.imageUrl || ""),
+                    }));
+                    setMaterials(proxied);
                     setMaterialsLoading(false);
                     return;
                 }
