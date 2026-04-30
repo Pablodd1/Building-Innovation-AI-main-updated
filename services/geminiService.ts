@@ -141,13 +141,50 @@ export const generateMaterialOverlay = async (
                 ? "dramatic night luxury lighting with warm interior glow"
                 : "natural ambient lighting";
 
-    // Build a CONCISE prompt
+    // ─── Try to fetch the material swatch image ───
+    let materialSwatchPart: any = null;
+    let hasSwatchImage = false;
+    try {
+        if (material.imageUrl) {
+            let fetchUrl = material.imageUrl;
+            if (fetchUrl.startsWith("/")) {
+                fetchUrl = window.location.origin + fetchUrl;
+            }
+            const swatchRes = await fetch(fetchUrl);
+            if (swatchRes.ok) {
+                const swatchBlob = await swatchRes.blob();
+                if (swatchBlob.size > 500 && swatchBlob.type.startsWith("image")) {
+                    const swatchBase64 = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(swatchBlob);
+                    });
+                    const swatchData = cleanBase64(swatchBase64);
+                    const swatchMime = swatchBlob.type || "image/jpeg";
+                    materialSwatchPart = { inlineData: { data: swatchData, mimeType: swatchMime } };
+                    hasSwatchImage = true;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Swatch image unavailable, using description fallback:", e);
+    }
+
+    // ─── Build prompt — adapts based on whether swatch image was loaded ───
+    const materialIdentity = `"${material.name}" — Category: ${material.category}${material.subcategory ? `, Sub: ${material.subcategory}` : ""}`;
+    const visualGuide = hasSwatchImage
+        ? `Use the provided swatch image (second image) as the EXACT color, pattern, and texture reference.`
+        : `VISUAL DESCRIPTION (no swatch image available — replicate this precisely):
+${material.description}
+Texture/pattern keywords: ${material.promptModifier || material.name}`;
+
     let finalPrompt: string;
 
     if (isFurniture) {
         finalPrompt = `You are a professional virtual stager.
-Place "${material.name}" (${material.description}) into this room.
+Place ${materialIdentity} into this room.
 Style: ${material.promptModifier || "modern"}.
+${visualGuide}
 ${userInstruction ? `User request: "${userInstruction}"` : ""}
 
 Rules:
@@ -158,12 +195,12 @@ Rules:
 - Output ONLY the final image`;
     } else {
         finalPrompt = `You are an architectural visualization specialist.
-Apply "${material.category}" material ("${material.description}") to the correct surfaces in this image.
-Texture style: ${material.promptModifier || "realistic"}.
+Apply ${materialIdentity} to the correct surfaces in this image.
+${visualGuide}
 ${userInstruction ? `User request: "${userInstruction}"` : ""}
 
 Rules:
-- Apply material ONLY to matching surfaces (floors for flooring, walls for wall covering, etc.)
+- Apply material ONLY to matching surfaces (floors for flooring, walls for wall covering, ceilings for ceiling panels, etc.)
 - Preserve all objects IN FRONT of the surface — do NOT paint over furniture, people, plants
 - Match room perspective for texture mapping (grout lines, wood grain direction)
 - Re-apply original shadows/highlights onto the new material
@@ -174,6 +211,7 @@ Rules:
     const contents = {
         parts: [
             { inlineData: { data: base64Data, mimeType } },
+            ...(hasSwatchImage ? [materialSwatchPart] : []),
             { text: finalPrompt },
         ],
     };

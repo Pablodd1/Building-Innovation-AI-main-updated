@@ -98,9 +98,8 @@ export const ImageComparator: React.FC<ImageComparatorProps> = ({
         </div>
       </div>
 
-      {/* Material Reference Overlay */}
       {materialThumbnail && (
-        <div className="absolute bottom-4 left-4 z-20 flex items-center bg-black/70 backdrop-blur-md border border-slate-600 rounded-lg p-2 shadow-xl animate-fadeIn max-w-[150px]">
+        <div className="absolute bottom-4 right-4 z-20 flex items-center bg-black/70 backdrop-blur-md border border-slate-600 rounded-lg p-2 shadow-xl animate-fadeIn max-w-[150px]">
           <img 
             src={materialThumbnail} 
             alt="Reference" 

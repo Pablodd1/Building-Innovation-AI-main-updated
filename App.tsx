@@ -270,54 +270,60 @@ const App: React.FC = () => {
     const loadMaterialsFromDB = useCallback(async () => {
         setMaterialsLoading(true);
         try {
+            // Tier 1: Try the dynamic API
             const res = await fetch("/api/materials");
-            if (!res.ok) {
-                console.error(
-                    "Failed to load materials:",
-                    res.status,
-                    res.statusText,
-                );
-                return;
-            }
-            const dbMaterials = await res.json();
-            console.log("Loaded materials from DB:", dbMaterials?.length || 0);
-            if (
-                dbMaterials &&
-                Array.isArray(dbMaterials) &&
-                dbMaterials.length > 0
-            ) {
-                const converted = dbMaterials.map((m: any) => ({
-                    id: String(m.id),
-                    refCode: m.ref_code || "",
-                    name: m.name || "",
-                    category: m.category || "General",
-                    subcategory: m.subcategory || "",
-                    description: m.description || "",
-                    imageUrl: m.image_url || "",
-                    usage: m.usage || "Interior",
-                    promptModifier: m.prompt_modifier || "",
-                    dimensions: {
-                        width: parseFloat(m.width_cm) || 100,
-                        length: parseFloat(m.length_cm) || 100,
-                        thickness: parseFloat(m.thickness_m) || 5,
-                    },
-                    pricing: {
-                        pricePerUnit: parseFloat(m.price) || 0,
-                        currency: m.currency || "USD",
-                        unitLabel: m.unit || "Piece",
-                        itemsPerBox: m.items_per_box || 1,
-                    },
-                }));
-                setMaterials(converted);
-            } else {
-                setMaterials([]);
+            if (res.ok) {
+                const dbMaterials = await res.json();
+                if (Array.isArray(dbMaterials) && dbMaterials.length > 0) {
+                    const converted = dbMaterials.map((m: any) => ({
+                        id: String(m.id),
+                        refCode: m.ref_code || "",
+                        name: m.name || "",
+                        category: m.category || "General",
+                        subcategory: m.subcategory || "",
+                        description: m.description || "",
+                        imageUrl: m.image_url || "",
+                        usage: m.usage || "Interior",
+                        promptModifier: m.prompt_modifier || "",
+                        dimensions: {
+                            width: parseFloat(m.width_cm) || 100,
+                            length: parseFloat(m.length_cm) || 100,
+                            thickness: parseFloat(m.thickness_m) || 5,
+                        },
+                        pricing: {
+                            pricePerUnit: parseFloat(m.price) || 0,
+                            currency: m.currency || "USD",
+                            unitLabel: m.unit || "Piece",
+                            itemsPerBox: m.items_per_box || 1,
+                        },
+                    }));
+                    setMaterials(converted);
+                    setMaterialsLoading(false);
+                    return;
+                }
             }
         } catch (e) {
-            console.error("Failed to load materials from DB:", e);
-            setMaterials([]);
-        } finally {
-            setMaterialsLoading(false);
+            console.warn("API materials unavailable, trying local manifest...");
         }
+
+        try {
+            // Tier 2: Try the local embedded manifest (full catalog)
+            const localRes = await fetch("/data/products.json");
+            if (localRes.ok) {
+                const localData = await localRes.json();
+                if (Array.isArray(localData) && localData.length > 0) {
+                    setMaterials(localData);
+                    setMaterialsLoading(false);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn("Local manifest unavailable, falling back to constants...");
+        }
+
+        // Tier 3: Last resort fallback to hardcoded MATERIALS
+        setMaterials(MATERIALS);
+        setMaterialsLoading(false);
     }, []);
 
     useEffect(() => {
@@ -669,32 +675,32 @@ const App: React.FC = () => {
                     // Skip completely empty rows
                     if (cols.every((c) => !c || c.trim() === "")) continue;
 
-                    const name = getCol(2) || "Imported Material";
-                    const category = getCol(3) || "General";
-                    const subcategory = getCol(4) || "";
+                    const name = getCol(1) || "Imported Material";
+                    const category = getCol(2) || "General";
+                    const subcategory = getCol(3) || "";
 
                     const newMat: Material = {
                         id: getCol(0) || `csv-${Date.now()}-${i}`,
-                        refCode: getCol(1) || `REF-${Date.now()}-${i}`,
+                        refCode: getCol(0) || `REF-${Date.now()}-${i}`,
                         name: name,
                         category: category,
                         subcategory: subcategory,
                         pricing: {
                             pricePerUnit: parseNumber(getCol(5)),
-                            currency: getCol(6) || "USD",
-                            unitLabel: getCol(7) || "Unit",
-                            itemsPerBox: parseNumber(getCol(8)) || 1,
+                            currency: "COP", // Data seems to be in COP ($ 31.599)
+                            unitLabel: getCol(6) || "Unidad",
+                            itemsPerBox: parseNumber(getCol(7)) || 1,
                         },
                         dimensions: {
-                            width: parseNumber(getCol(9)) || 100,
-                            length: parseNumber(getCol(10)) || 100,
-                            thickness: parseNumber(getCol(11)) || 5,
+                            width: parseNumber(getCol(10)) || 100,
+                            length: parseNumber(getCol(11)) || 100,
+                            thickness: parseNumber(getCol(12)) || 5,
                         },
-                        description: getCol(12) || "",
-                        imageUrl: convertGoogleDriveUrl(getCol(13)) || "",
+                        description: getCol(19) || "",
+                        imageUrl: convertGoogleDriveUrl(getCol(16)) || "",
                         usage: collectionType,
                         promptModifier:
-                            getCol(15) || `${name}, ${category} ${subcategory}`,
+                            getCol(18) || `${name}, ${category} ${subcategory}`,
                     };
                     newMats.push(newMat);
                 }
@@ -2502,7 +2508,7 @@ const App: React.FC = () => {
                                     />
                                     {/* Video Overlay if available */}
                                     {generationState.resultVideo && (
-                                        <div className="absolute bottom-4 right-4 z-30 w-48 aspect-video rounded-lg overflow-hidden border-2 border-white shadow-2xl animate-fadeIn">
+                                        <div className="absolute bottom-4 left-4 z-30 w-48 aspect-video rounded-lg overflow-hidden border-2 border-white shadow-2xl animate-fadeIn">
                                             <video
                                                 src={
                                                     generationState.resultVideo

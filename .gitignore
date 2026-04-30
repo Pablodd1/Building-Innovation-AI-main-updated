@@ -11,3 +11,10 @@ yarn-error.log*
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Temp build scripts
+*.cjs
+materials.json
+materials_utf8.json
+test.webp
+public/products/*.webp
