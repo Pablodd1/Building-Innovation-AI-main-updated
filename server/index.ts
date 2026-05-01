@@ -584,10 +584,12 @@ const distPath = path.join(__dirname, 'dist');
 
 if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
-    // SPA fallback: redirect all non-API requests to index.html
-    app.get('*', (req: Request, res: Response) => {
+    // SPA fallback: handle all non-API routes
+    app.use((req: Request, res: Response, next) => {
         if (!req.path.startsWith('/api')) {
             res.sendFile(path.join(distPath, 'index.html'));
+        } else {
+            next();
         }
     });
 }
