@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "concurrently \"tsx server/index.ts\" \"vite\"",
     "server": "tsx server/index.ts",
-    "build": "vite build",
-    "start": "tsx server/index.ts",
+    "build:frontend": "vite build",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --target=node22 --outfile=dist-server/index.cjs --external:express --external:pg --external:cors --external:nodemailer",
+    "build": "npm run build:frontend && npm run build:server",
+    "start": "node dist-server/index.cjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "esbuild": "^0.25.0",
     "@google/genai": "^1.30.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -29,5 +32,8 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
   }
 }
