@@ -578,6 +578,20 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
     }
 });
 
+// Serve static files from the frontend build
+const __dirname = path.resolve();
+const distPath = path.join(__dirname, 'dist');
+
+if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    // SPA fallback: redirect all non-API requests to index.html
+    app.get('*', (req: Request, res: Response) => {
+        if (!req.path.startsWith('/api')) {
+            res.sendFile(path.join(distPath, 'index.html'));
+        }
+    });
+}
+
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
