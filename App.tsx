@@ -285,28 +285,32 @@ const App: React.FC = () => {
             if (res.ok) {
                 const dbMaterials = await res.json();
                 if (Array.isArray(dbMaterials) && dbMaterials.length > 0) {
-                    const converted = dbMaterials.map((m: any) => ({
-                        id: String(m.id),
-                        refCode: m.ref_code || m.refCode || "",
-                        name: m.name || "",
-                        category: m.category || "General",
-                        subcategory: m.subcategory || "",
-                        description: m.description || "",
-                        imageUrl: proxyImageUrl(m.image_url || m.imageUrl || ""),
-                        usage: m.usage || "Interior",
-                        promptModifier: m.prompt_modifier || m.promptModifier || "",
-                        dimensions: {
-                            width: parseFloat(m.width_cm) || m.dimensions?.width || 100,
-                            length: parseFloat(m.length_cm) || m.dimensions?.length || 100,
-                            thickness: parseFloat(m.thickness_m) || m.dimensions?.thickness || 5,
-                        },
-                        pricing: {
-                            pricePerUnit: parseFloat(m.price) || m.pricing?.pricePerUnit || 0,
-                            currency: m.currency || m.pricing?.currency || "COP",
-                            unitLabel: m.unit || m.pricing?.unitLabel || "Unidad",
-                            itemsPerBox: m.items_per_box || m.pricing?.itemsPerBox || 1,
-                        },
-                    }));
+                    const converted = dbMaterials.map((m: any) => {
+                        const rawUsage = m.usage || "Interior";
+                        const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
+                        return {
+                            id: String(m.id),
+                            refCode: m.ref_code || m.refCode || "",
+                            name: m.name || "",
+                            category: m.category || "General",
+                            subcategory: m.subcategory || "",
+                            description: m.description || "",
+                            imageUrl: proxyImageUrl(m.image_url || m.imageUrl || ""),
+                            usage: normalizedUsage,
+                            promptModifier: m.prompt_modifier || m.promptModifier || "",
+                            dimensions: {
+                                width: parseFloat(m.width_cm) || m.dimensions?.width || 100,
+                                length: parseFloat(m.length_cm) || m.dimensions?.length || 100,
+                                thickness: parseFloat(m.thickness_m) || m.dimensions?.thickness || 5,
+                            },
+                            pricing: {
+                                pricePerUnit: parseFloat(m.price) || m.pricing?.pricePerUnit || 0,
+                                currency: m.currency || m.pricing?.currency || "COP",
+                                unitLabel: m.unit || m.pricing?.unitLabel || "Unidad",
+                                itemsPerBox: m.items_per_box || m.pricing?.itemsPerBox || 1,
+                            },
+                        };
+                    });
                     setMaterials(converted);
                     setMaterialsLoading(false);
                     return;
@@ -322,10 +326,15 @@ const App: React.FC = () => {
             if (localRes.ok) {
                 const localData = await localRes.json();
                 if (Array.isArray(localData) && localData.length > 0) {
-                    const proxied = localData.map((m: any) => ({
-                        ...m,
-                        imageUrl: proxyImageUrl(m.imageUrl || ""),
-                    }));
+                    const proxied = localData.map((m: any) => {
+                        const rawUsage = m.usage || "Interior";
+                        const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
+                        return {
+                            ...m,
+                            usage: normalizedUsage,
+                            imageUrl: proxyImageUrl(m.imageUrl || ""),
+                        };
+                    });
                     setMaterials(proxied);
                     setMaterialsLoading(false);
                     return;
@@ -2409,7 +2418,7 @@ const App: React.FC = () => {
     const renderGallery = () => {
         const filtered = materials.filter(
             (m) =>
-                (categoryUsage === "All" || m.usage === categoryUsage) &&
+                (categoryUsage === "All" || m.usage?.toLowerCase() === categoryUsage.toLowerCase()) &&
                 (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     m.category
                         .toLowerCase()
