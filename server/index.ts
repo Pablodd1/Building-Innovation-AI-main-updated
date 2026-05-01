@@ -6,7 +6,7 @@ import cors from 'cors';
 import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
-import { sendPurchaseNotifications } from './emailService.js';
+import { sendPurchaseNotifications } from './emailService';
 
 const { Pool } = pg;
 const app = express();
