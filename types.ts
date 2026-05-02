@@ -6,9 +6,19 @@ export interface MaterialDimensions {
 
 export interface MaterialPricing {
   pricePerUnit: number;
+  priceContractor?: number;
   currency: string;
   unitLabel: string; // e.g., "Panel", "Box", "m2", "Roll"
   itemsPerBox?: number; // If sold by box
+}
+
+export interface User {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    tier: string;
+    generations_used: number;
 }
 
 export interface TechnicalSpecs {

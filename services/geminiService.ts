@@ -36,14 +36,34 @@ const getApiKey = (): string => {
     const customKey = localStorage.getItem("custom_api_key");
     if (customKey?.trim().length) return customKey.trim();
     if (process.env.API_KEY || process.env.VITE_GEMINI_API_KEY) return process.env.API_KEY || process.env.VITE_GEMINI_API_KEY!;
-    throw new Error("API Key missing. Please configure it in Settings.");
+    return ""; // Will be handled by the backend if we proxy, or fail here if local
+};
+
+const checkQuota = async (userId: number, type: string) => {
+    try {
+        const res = await fetch("/api/ai/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, type })
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.message || err.error || "Quota exceeded");
+        }
+        return await res.json();
+    } catch (e: any) {
+        throw e;
+    }
 };
 
 // --- Room Analysis (text-only, already fast) ---
 
 export const generateRoomAnalysis = async (
-    imageBase64: string
+    imageBase64: string,
+    userId?: number,
+    lang: string = "en"
 ): Promise<string> => {
+    if (userId) await checkQuota(userId, "analysis");
     const apiKey = getApiKey();
     const ai = new GoogleGenAI({ apiKey });
     const base64Data = cleanBase64(imageBase64);
@@ -68,8 +88,10 @@ export const generateRoomAnalysis = async (
 
 export const generateCinematicVideo = async (
     imageBase64: string,
-    prompt: string
+    prompt: string,
+    userId?: number
 ): Promise<string | null> => {
+    if (userId) await checkQuota(userId, "video");
     const apiKey = getApiKey();
     const ai = new GoogleGenAI({ apiKey });
     const base64Data = cleanBase64(imageBase64);
@@ -122,8 +144,10 @@ export const generateMaterialOverlay = async (
     material: Material,
     userInstruction: string,
     renderOptions?: RenderOptions,
-    lang?: string
+    lang?: string,
+    userId?: number
 ): Promise<string> => {
+    if (userId) await checkQuota(userId, "overlay");
     const apiKey = getApiKey();
     const ai = new GoogleGenAI({ apiKey });
 

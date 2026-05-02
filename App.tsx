@@ -14,6 +14,7 @@ import {
     CartItem,
     Language,
     RenderOptions,
+    User,
 } from "./types";
 import { CONTRACTORS as INITIAL_CONTRACTORS, TRANSLATIONS } from "./constants";
 import { Button } from "./components/Button";
@@ -85,13 +86,7 @@ const LoadingSpinner = () => (
     </div>
 );
 
-interface User {
-    id: number;
-    name: string;
-    email: string;
-    role: string;
-}
-
+// App Component
 const App: React.FC = () => {
     const [view, setView] = useState<AppView>(AppView.LOGIN);
     const [categoryUsage, setCategoryUsage] = useState<
@@ -163,10 +158,49 @@ const App: React.FC = () => {
     // Search State
     const [searchQuery, setSearchQuery] = useState("");
 
+    const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+
     // Admin Form State
     const [adminTab, setAdminTab] = useState<
-        "MATERIALS" | "CONTRACTORS" | "PURCHASES" | "SETTINGS"
+        "MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS"
     >("MATERIALS");
+
+    useEffect(() => {
+        if (view === AppView.ADMIN && adminTab === "USERS") {
+            fetchAllUsers();
+        }
+    }, [view, adminTab]);
+
+    const fetchAllUsers = async () => {
+        setIsLoadingUsers(true);
+        try {
+            const res = await fetch("/api/admin/users");
+            if (res.ok) {
+                const data = await res.json();
+                setAllUsers(data);
+            }
+        } catch (e) {
+            console.error("Fetch users error:", e);
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    };
+
+    const handleUpdateUserTier = async (userId: number, tier: string) => {
+        try {
+            const res = await fetch(`/api/admin/users/${userId}/tier`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tier }),
+            });
+            if (res.ok) {
+                fetchAllUsers();
+            }
+        } catch (e) {
+            console.error("Update tier error:", e);
+        }
+    };
 
     // Download result image with watermark
     const handleDownloadResult = async () => {
@@ -277,6 +311,18 @@ const App: React.FC = () => {
         return url;
     };
 
+    const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+        const target = e.target as HTMLImageElement;
+        // Check if we already tried the proxy or placeholder
+        if (target.src.includes('proxy-image') || target.src.includes('data:image')) {
+            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
+            return;
+        }
+        
+        // If it was a local path that failed, try the proxy if possible, else placeholder
+        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
+    };
+
     const loadMaterialsFromDB = useCallback(async () => {
         setMaterialsLoading(true);
         try {
@@ -288,14 +334,24 @@ const App: React.FC = () => {
                     const converted = dbMaterials.map((m: any) => {
                         const rawUsage = m.usage || "Interior";
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
+                        const refCode = m.ref_code || m.refCode || "";
+                        
+                        // Prioritize local embedded high-fidelity images
+                        let imageUrl = m.image_url || m.imageUrl || "";
+                        if (refCode) {
+                            imageUrl = `/products/${refCode}.webp`;
+                        } else {
+                            imageUrl = proxyImageUrl(imageUrl);
+                        }
+
                         return {
                             id: String(m.id),
-                            refCode: m.ref_code || m.refCode || "",
+                            refCode,
                             name: m.name || "",
                             category: m.category || "General",
                             subcategory: m.subcategory || "",
                             description: m.description || "",
-                            imageUrl: proxyImageUrl(m.image_url || m.imageUrl || ""),
+                            imageUrl,
                             usage: normalizedUsage,
                             promptModifier: m.prompt_modifier || m.promptModifier || "",
                             dimensions: {
@@ -436,6 +492,7 @@ const App: React.FC = () => {
             category: editForm.category || "General",
             subcategory: editForm.subcategory || "",
             price: editForm.pricing?.pricePerUnit || 0,
+            price_contractor: editForm.pricing?.priceContractor || editForm.pricing?.pricePerUnit || 0,
             currency: editForm.pricing?.currency || "USD",
             unitLabel: editForm.pricing?.unitLabel || "Piece",
             items_per_box: editForm.pricing?.itemsPerBox || 1,
@@ -863,6 +920,7 @@ const App: React.FC = () => {
                 customPrompt,
                 renderOptions,
                 lang,
+                currentUser?.id
             );
 
             const newHistoryItem: HistoryItem = {
@@ -908,6 +966,7 @@ const App: React.FC = () => {
         try {
             const analysisText = await generateRoomAnalysis(
                 originalImage,
+                currentUser?.id,
                 lang,
             );
             setGenerationState((prev) => ({
@@ -935,6 +994,7 @@ const App: React.FC = () => {
             const videoUri = await generateCinematicVideo(
                 sourceImage,
                 contextPrompt,
+                currentUser?.id
             );
             if (!videoUri) {
                 alert("Veo Video unavailable for this key.");
@@ -1828,6 +1888,26 @@ const App: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="block text-xs uppercase text-gray-500 mb-1">
+                                            {lang === "es" ? "Precio (Contratista)" : "Price (Contractor)"}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            className="w-full bg-gray-200 border border-gray-300 rounded p-2 text-gray-700"
+                                            placeholder="0.00"
+                                            value={editForm.pricing?.priceContractor || ""}
+                                            onChange={(e) =>
+                                                setEditForm({
+                                                    ...editForm,
+                                                    pricing: {
+                                                        ...(editForm.pricing || { pricePerUnit: 0, currency: 'USD', unitLabel: 'Piece', itemsPerBox: 1 }),
+                                                        priceContractor: parseFloat(e.target.value),
+                                                    },
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs uppercase text-gray-500 mb-1">
                                             {t.admin.unitLabel}
                                         </label>
                                         <input
@@ -2138,6 +2218,7 @@ const App: React.FC = () => {
                                                                     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3C/svg%3E"
                                                                 }
                                                                 alt={m.name}
+                                                                onError={handleImageError}
                                                                 className="w-12 h-12 rounded object-cover border border-gray-300 bg-gray-200"
                                                             />
                                                         </td>
@@ -2387,6 +2468,60 @@ const App: React.FC = () => {
 
                 {adminTab === "PURCHASES" && <AdminPurchaseQueue />}
 
+                {adminTab === "USERS" && (
+                    <div className="space-y-6">
+                        <div className="bg-white rounded-xl border border-gray-300 overflow-hidden">
+                            <table className="w-full text-left text-sm text-gray-600">
+                                <thead className="bg-gray-300 text-gray-700 uppercase text-xs font-bold">
+                                    <tr>
+                                        <th className="p-4">User</th>
+                                        <th className="p-4">Email</th>
+                                        <th className="p-4">Current Tier</th>
+                                        <th className="p-4">Usage</th>
+                                        <th className="p-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-300">
+                                    {allUsers.map((u) => (
+                                        <tr key={u.id} className="hover:bg-gray-100">
+                                            <td className="p-4 font-bold">{u.name}</td>
+                                            <td className="p-4">{u.email}</td>
+                                            <td className="p-4">
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${
+                                                    u.tier === 'Enterprise' ? 'bg-purple-100 text-purple-700' : 
+                                                    u.tier === 'Pro' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                    {u.tier}
+                                                </span>
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="w-24 bg-gray-200 rounded-full h-1.5 mb-1">
+                                                    <div 
+                                                        className="bg-blue-500 h-1.5 rounded-full" 
+                                                        style={{ width: `${Math.min(100, (u.generations_used / (u.tier === 'Free' ? 5 : u.tier === 'Pro' ? 50 : 9999)) * 100)}%` }}
+                                                    ></div>
+                                                </div>
+                                                <span className="text-[10px] text-gray-500">{u.generations_used} gens</span>
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <select 
+                                                    className="bg-gray-200 border border-gray-300 rounded text-xs p-1"
+                                                    value={u.tier}
+                                                    onChange={(e) => handleUpdateUserTier(u.id, e.target.value)}
+                                                >
+                                                    <option value="Free">Free</option>
+                                                    <option value="Pro">Pro</option>
+                                                    <option value="Enterprise">Enterprise</option>
+                                                </select>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
                 {adminTab === "SETTINGS" && (
                     <div className="max-w-xl">
                         <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
@@ -2477,6 +2612,7 @@ const App: React.FC = () => {
                                 <img
                                     src={material.imageUrl}
                                     alt={material.name}
+                                    onError={handleImageError}
                                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-2 flex flex-col justify-end">
@@ -2616,6 +2752,7 @@ const App: React.FC = () => {
                                     >
                                         <img
                                             src={selectedMaterial.imageUrl}
+                                            onError={handleImageError}
                                             className="w-16 h-16 rounded-lg object-cover border border-gray-300"
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
