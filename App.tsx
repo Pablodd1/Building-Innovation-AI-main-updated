@@ -131,12 +131,17 @@ const App: React.FC = () => {
     const formatPrice = (
         pricePerUnit: number,
         materialCurrency: string,
-        targetCurrency: "USD" | "COP",
+        targetCurrency: "USD" | "COP" | "EUR",
     ): string => {
         let convertedPrice = pricePerUnit;
+        const EUR_TO_USD_RATE = 1.1;
 
         if (materialCurrency === "USD" && targetCurrency === "COP") {
             convertedPrice = Math.round(pricePerUnit * USD_TO_COP_RATE);
+        } else if (materialCurrency === "USD" && targetCurrency === "EUR") {
+            convertedPrice = pricePerUnit / EUR_TO_USD_RATE;
+        } else if (materialCurrency === "COP" && targetCurrency === "EUR") {
+            convertedPrice = (pricePerUnit / USD_TO_COP_RATE) / EUR_TO_USD_RATE;
         } else if (
             (materialCurrency === "COP" || materialCurrency === "MXN") &&
             targetCurrency === "USD"
@@ -144,12 +149,13 @@ const App: React.FC = () => {
             convertedPrice =
                 Math.round((pricePerUnit / USD_TO_COP_RATE) * 100) / 100;
         } else if (materialCurrency === "MXN" && targetCurrency === "COP") {
-            // MXN is treated same as COP for display
             convertedPrice = pricePerUnit;
         }
 
         if (targetCurrency === "USD") {
             return `$${convertedPrice.toLocaleString()}`;
+        } else if (targetCurrency === "EUR") {
+            return `€${convertedPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         } else {
             return `${Math.round(convertedPrice).toLocaleString()} COP`;
         }
@@ -160,6 +166,7 @@ const App: React.FC = () => {
 
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
     // Admin Form State
     const [adminTab, setAdminTab] = useState<
@@ -942,12 +949,30 @@ const App: React.FC = () => {
                 isGenerating: false,
                 resultImage: generatedImage,
             }));
+            
+            // Refresh user quota immediately
+            if (currentUser) {
+                setCurrentUser({
+                    ...currentUser,
+                    generations_used: (currentUser.generations_used || 0) + 1
+                });
+            }
         } catch (error: any) {
+            console.error("Generation failed:", error);
+            const isQuotaError = error.message?.includes('403') || error.message?.includes('Quota exceeded');
+            
             setGenerationState((prev) => ({
                 ...prev,
                 isGenerating: false,
-                error: error.message || "Failed.",
             }));
+            
+            if (isQuotaError) {
+                if (confirm(lang === 'es' ? 'Has alcanzado tu límite de renders. ¿Deseas mejorar tu plan ahora?' : 'You have reached your render limit. Would you like to upgrade your plan now?')) {
+                    setShowSubscriptionModal(true);
+                }
+            } else {
+                alert(lang === 'es' ? 'Error al generar la imagen. Por favor intente nuevamente.' : 'Error generating image. Please try again.');
+            }
         }
     };
 
@@ -2588,7 +2613,19 @@ const App: React.FC = () => {
                                 {t.gallery.collection}
                             </h2>
                         </div>
-                        <div className="flex gap-4">
+                        <div className="flex gap-4 items-center">
+                            {currentUser && (
+                                <button 
+                                    onClick={() => setShowSubscriptionModal(true)}
+                                    className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-full transition-all group"
+                                >
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
+                                        {currentUser.tier === 'Enterprise' ? 'Unlimited' : `${(currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999) - (currentUser.generations_used || 0)} Renders`}
+                                    </span>
+                                    <svg className="w-3 h-3 text-blue-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                </button>
+                            )}
                             <LanguageToggle />
                             <input
                                 type="text"
@@ -2738,7 +2775,19 @@ const App: React.FC = () => {
                         >
                             {t.editor.back}
                         </Button>
-                        <LanguageToggle />
+                        <div className="flex items-center gap-2">
+                            {currentUser && (
+                                <button 
+                                    onClick={() => setShowSubscriptionModal(true)}
+                                    className="flex items-center gap-2 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"
+                                >
+                                    <span className="text-[9px] font-black text-blue-600 uppercase">
+                                        {currentUser.tier === 'Enterprise' ? '∞' : (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999) - (currentUser.generations_used || 0)} Renders
+                                    </span>
+                                </button>
+                            )}
+                            <LanguageToggle />
+                        </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-8">
@@ -3143,6 +3192,91 @@ const App: React.FC = () => {
         );
     };
 
+    const renderSubscriptionModal = () => {
+        const tier = currentUser?.tier || 'Free';
+        const used = currentUser?.generations_used || 0;
+        const limit = tier === 'Free' ? 5 : tier === 'Pro' ? 50 : 9999;
+        const remaining = Math.max(0, limit - used);
+
+        return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fadeIn">
+                <div className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col md:flex-row h-full max-h-[80vh]">
+                    <div className="flex-1 p-8 bg-gray-50 overflow-y-auto">
+                        <div className="flex justify-between items-start mb-8">
+                            <div>
+                                <h2 className="text-3xl font-black text-gray-700 uppercase tracking-tighter">Your Plan</h2>
+                                <p className="text-gray-500">Manage your subscription and credits</p>
+                            </div>
+                            <button onClick={() => setShowSubscriptionModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            {[
+                                { name: 'Free', price: '$0', limit: 5, color: 'gray' },
+                                { name: 'Pro', price: '$29', limit: 50, color: 'blue', featured: true },
+                                { name: 'Enterprise', price: '$99', limit: '∞', color: 'purple' },
+                            ].map((p) => (
+                                <div key={p.name} className={`relative p-6 rounded-2xl border-2 transition-all ${p.name === tier ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'} ${p.featured ? 'scale-105 shadow-xl z-10 border-blue-400' : ''}`}>
+                                    {p.featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Most Popular</div>}
+                                    <div className="text-xl font-black text-gray-700 mb-1">{p.name}</div>
+                                    <div className="text-3xl font-black text-blue-600 mb-4">{p.price}<span className="text-xs text-gray-400 font-normal">/mo</span></div>
+                                    <ul className="space-y-2 mb-6">
+                                        <li className="text-xs text-gray-500 flex items-center gap-2">
+                                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
+                                            {p.limit} AI Generations
+                                        </li>
+                                        <li className="text-xs text-gray-500 flex items-center gap-2">
+                                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
+                                            High-Fidelity Export
+                                        </li>
+                                    </ul>
+                                    <button 
+                                        disabled={p.name === tier}
+                                        className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${p.name === tier ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20'}`}
+                                    >
+                                        {p.name === tier ? 'Current Plan' : 'Select Plan'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="w-full md:w-80 bg-white border-l border-gray-200 p-8 flex flex-col">
+                        <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest mb-6">Usage Summary</h3>
+                        <div className="flex-1">
+                            <div className="mb-6">
+                                <div className="flex justify-between text-xs font-bold mb-2">
+                                    <span className="text-gray-500">GENERATIONS</span>
+                                    <span className="text-gray-700">{used} / {limit === 9999 ? '∞' : limit}</span>
+                                </div>
+                                <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                                    <div 
+                                        className="bg-blue-500 h-full transition-all duration-1000" 
+                                        style={{ width: `${Math.min(100, (used / limit) * 100)}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+
+                            <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
+                                <div className="text-[10px] font-bold text-blue-500 mb-1 uppercase">Remaining</div>
+                                <div className="text-4xl font-black text-blue-600">{limit === 9999 ? '∞' : remaining}</div>
+                                <div className="text-[10px] text-blue-400">Renders available this month</div>
+                            </div>
+                        </div>
+
+                        <div className="mt-auto pt-6 border-t border-gray-100">
+                            <p className="text-[10px] text-gray-400 leading-relaxed">
+                                Generations reset on the 1st of every month. Unused credits do not roll over.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700">
             {view === AppView.LOGIN && renderLogin()}
@@ -3191,6 +3325,7 @@ const App: React.FC = () => {
                 </div>
             )}
             {view === AppView.CART && renderCart()}
+            {showSubscriptionModal && renderSubscriptionModal()}
             {renderProbeModal()}
         </div>
     );
