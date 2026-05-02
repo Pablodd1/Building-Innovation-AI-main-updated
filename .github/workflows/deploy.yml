@@ -35,5 +35,9 @@ jobs:
           protocol: ftps
           local-dir: ./dist/
           server-dir: ./
-          state-name: .ftp-deploy-sync-state-new.json
           timeout: 90000
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            products/**
