@@ -559,12 +559,20 @@ const App: React.FC = () => {
     };
 
     const handleDeleteMaterial = async (id: string) => {
-        if (confirm("Delete material?")) {
+        const confirmMsg = lang === "es" ? "¿Eliminar material?" : "Delete material?";
+        if (confirm(confirmMsg)) {
             try {
-                await fetch(`/api/materials/${id}`, { method: "DELETE" });
-                loadMaterialsFromDB();
+                const res = await fetch(`/api/materials/${id}`, { method: "DELETE" });
+                if (res.ok) {
+                    alert(lang === "es" ? "Material eliminado correctamente" : "Material deleted successfully");
+                    loadMaterialsFromDB();
+                } else {
+                    const err = await res.json();
+                    alert((lang === "es" ? "Error: " : "Error: ") + (err.error || "Unknown"));
+                }
             } catch (e) {
                 console.error("Failed to delete:", e);
+                alert(lang === "es" ? "Error de conexión" : "Connection error");
             }
         }
     };
@@ -578,13 +586,17 @@ const App: React.FC = () => {
                 : `Delete ${count} selected product(s)?`;
         if (confirm(confirmMsg)) {
             try {
-                for (const id of selectedMaterialIds) {
-                    await fetch(`/api/materials/${id}`, { method: "DELETE" });
-                }
+                const deletePromises = Array.from(selectedMaterialIds).map(id => 
+                    fetch(`/api/materials/${id}`, { method: "DELETE" })
+                );
+                await Promise.all(deletePromises);
+                
+                alert(lang === "es" ? "Productos eliminados correctamente" : "Products deleted successfully");
                 setSelectedMaterialIds(new Set());
                 loadMaterialsFromDB();
             } catch (e) {
                 console.error("Failed to delete:", e);
+                alert(lang === "es" ? "Error al eliminar algunos productos" : "Error deleting some products");
             }
         }
     };

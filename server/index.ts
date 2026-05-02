@@ -671,15 +671,129 @@ app.post('/api/materials', async (req: Request, res: Response) => {
 
         res.json(result.rows[0]);
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        console.warn('DB update failed, updating JSON directly:', error.message);
+        
+        // Direct JSON fallback update
+        try {
+            let data: any[] = [];
+            if (fs.existsSync(JSON_DB_PATH)) {
+                data = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
+            }
+            
+            const m = req.body;
+            const index = data.findIndex(item => (item.refCode || item.ref_code) === m.ref_code);
+            
+            const newMaterial = {
+                id: m.ref_code,
+                refCode: m.ref_code,
+                name: m.name,
+                category: m.category,
+                subcategory: m.subcategory,
+                usage: m.usage,
+                description: m.description,
+                imageUrl: m.image_url,
+                promptModifier: m.prompt_modifier,
+                pricing: {
+                    pricePerUnit: m.price,
+                    priceContractor: m.price_contractor,
+                    currency: m.currency,
+                    unitLabel: m.unitLabel || m.unit,
+                    itemsPerBox: m.items_per_box
+                },
+                dimensions: {
+                    width: m.width_cm,
+                    length: m.length_cm,
+                    thickness: m.thickness_m
+                }
+            };
+
+            if (index !== -1) {
+                data[index] = { ...data[index], ...newMaterial };
+            } else {
+                data.push(newMaterial);
+            }
+            
+            fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
+            return res.json(newMaterial);
+        } catch (jsonError: any) {
+            return res.status(500).json({ error: 'Failed to update both DB and JSON: ' + jsonError.message });
+        }
     }
 });
+ 
+ // Update material by ID
+ app.put('/api/materials/:id', async (req: Request, res: Response) => {
+     try {
+         const { id } = req.params;
+         const m = req.body;
+         const result = await pool.query(
+             `UPDATE materials SET
+                 name = $1, category = $2, subcategory = $3, price = $4, price_contractor = $5,
+                 currency = $6, unit = $7, items_per_box = $8, width_cm = $9, length_cm = $10,
+                 thickness_m = $11, description = $12, image_url = $13, usage = $14,
+                 prompt_modifier = $15, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $16 RETURNING *`,
+             [
+                 m.name, m.category, m.subcategory, m.price, m.price_contractor,
+                 m.currency, m.unitLabel || m.unit, m.items_per_box, m.width_cm, m.length_cm,
+                 m.thickness_m, m.description, m.image_url, m.usage, m.prompt_modifier, id
+             ]
+         );
+ 
+         // Sync to JSON
+         const all = await pool.query('SELECT * FROM materials ORDER BY category, name');
+         fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
+ 
+         res.json(result.rows[0]);
+     } catch (error: any) {
+         console.warn('DB update failed, updating JSON directly:', error.message);
+         try {
+             let data: any[] = [];
+             if (fs.existsSync(JSON_DB_PATH)) {
+                 data = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
+             }
+             const { id } = req.params;
+             const m = req.body;
+             const index = data.findIndex(item => String(item.id) === String(id) || String(item.refCode) === String(id));
+             
+             if (index !== -1) {
+                 data[index] = {
+                     ...data[index],
+                     name: m.name,
+                     category: m.category,
+                     subcategory: m.subcategory,
+                     usage: m.usage,
+                     description: m.description,
+                     imageUrl: m.image_url,
+                     promptModifier: m.prompt_modifier,
+                     pricing: {
+                         pricePerUnit: m.price,
+                         priceContractor: m.price_contractor,
+                         currency: m.currency,
+                         unitLabel: m.unitLabel || m.unit,
+                         itemsPerBox: m.items_per_box
+                     },
+                     dimensions: {
+                         width: m.width_cm,
+                         length: m.length_cm,
+                         thickness: m.thickness_m
+                     }
+                 };
+                 fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
+                 return res.json(data[index]);
+             }
+             res.status(404).json({ error: 'Material not found in JSON' });
+         } catch (jsonError: any) {
+             res.status(500).json({ error: jsonError.message });
+         }
+     }
+ });
 
 // Delete material
 app.delete('/api/materials/:id', async (req: Request, res: Response) => {
+    const { id } = req.params;
     try {
-        const { id } = req.params;
-        await pool.query('DELETE FROM materials WHERE id = $1', [id]);
+        await pool.query('DELETE FROM materials WHERE id = $1 OR ref_code = $2', [id, id]);
         
         // Sync to JSON fallback
         const all = await pool.query('SELECT * FROM materials ORDER BY category, name');
@@ -687,7 +801,27 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
         
         res.json({ success: true });
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        console.warn('DB delete failed, updating JSON directly:', error.message);
+        
+        try {
+            if (fs.existsSync(JSON_DB_PATH)) {
+                const data = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
+                const filtered = data.filter((item: any) => 
+                    String(item.id) !== String(id) && 
+                    String(item.refCode || item.ref_code) !== String(id)
+                );
+                
+                if (data.length === filtered.length) {
+                    return res.status(404).json({ error: 'Material not found in JSON' });
+                }
+                
+                fs.writeFileSync(JSON_DB_PATH, JSON.stringify(filtered, null, 2));
+                return res.json({ success: true, note: 'Deleted from JSON fallback only' });
+            }
+            res.status(500).json({ error: 'DB down and JSON file missing' });
+        } catch (jsonError: any) {
+            res.status(500).json({ error: 'Failed to delete from JSON: ' + jsonError.message });
+        }
     }
 });
 app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
