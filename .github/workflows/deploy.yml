@@ -25,19 +25,16 @@ jobs:
       - name: Build Project
         run: npm run build
 
-      - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: 157.173.208.16
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 21
-          protocol: ftps
-          local-dir: ./dist/
-          server-dir: ./
-          timeout: 90000
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            products/**
+      - name: Deploy via LFTP
+        env:
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lftp
+          lftp -c "
+          set ssl:verify-certificate no;
+          set ftp:ssl-allow no;
+          open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
+          mirror -Rnv ./dist/ ./ --exclude products/ --parallel=1
+          "
