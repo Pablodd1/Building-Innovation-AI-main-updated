@@ -1,4 +1,5 @@
 import pg from 'pg';
+import bcrypt from 'bcryptjs';
 const { Pool } = pg;
 
 const pool = new Pool({
@@ -43,12 +44,16 @@ async function setup() {
             );
         `);
 
+        // Hash admin password
+        const salt = await bcrypt.genSalt(10);
+        const adminHash = await bcrypt.hash('admin@@@1', salt);
+
         // Insert Admin User
         await pool.query(`
             INSERT INTO users (name, email, password_hash, role)
-            VALUES ('Admin', 'admin@gmail.com', 'admin@@@1', 'admin')
-            ON CONFLICT (email) DO UPDATE SET password_hash = 'admin@@@1', role = 'admin';
-        `);
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (email) DO UPDATE SET password_hash = $3, role = $4;
+        `, ['Admin', 'admin@gmail.com', adminHash, 'admin']);
         console.log('✅ Admin user and tables set up successfully');
     } catch (err) {
         console.error('❌ Setup failed:', err);

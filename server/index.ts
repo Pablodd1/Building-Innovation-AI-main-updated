@@ -6,6 +6,7 @@ import cors from 'cors';
 import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 import { sendPurchaseNotifications } from './emailService';
 
 const { Pool } = pg;
@@ -537,11 +538,15 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
                 return res.status(400).json({ error: 'Email already registered' });
             }
 
+            // Hash password before saving
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(password, salt);
+
             const result = await pool.query(
                 `INSERT INTO users (name, email, phone, address, password_hash, role, tier, generations_used)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id, name, email, phone, address, role, tier, generations_used, created_at`,
-                [name, email, phone || null, address || null, password, 'customer', 'Free', 0]
+                [name, email, phone || null, address || null, hashedPassword, 'customer', 'Free', 0]
             );
 
             res.status(201).json({ user: result.rows[0] });
@@ -589,7 +594,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
         const user = result.rows[0];
 
-        if (password !== user.password_hash) {
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 

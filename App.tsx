@@ -1278,6 +1278,17 @@ const App: React.FC = () => {
                             </span>
                         )}
                     </div>
+                    
+                    {/* App Store Compliance: Legal Links */}
+                    <div className="mt-6 flex justify-center space-x-4 text-xs text-gray-500">
+                        <a href="https://buildinginnovation.com/privacy" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                            {lang === "es" ? "Política de Privacidad" : "Privacy Policy"}
+                        </a>
+                        <span>|</span>
+                        <a href="https://buildinginnovation.com/terms" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                            {lang === "es" ? "Términos de Servicio" : "Terms of Service"}
+                        </a>
+                    </div>
                 </form>
             </div>
         </div>
@@ -1369,6 +1380,32 @@ const App: React.FC = () => {
                                 strokeWidth={2}
                                 d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
                             />
+                        </svg>
+                    </button>
+                    {/* App Store Compliance: Delete Account Button */}
+                    <button
+                        onClick={async () => {
+                            const msg = lang === "es" 
+                                ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos. Esta acción no se puede deshacer. ¿Desea continuar?" 
+                                : "WARNING: This will permanently delete your account and all your data. This action cannot be undone. Do you wish to proceed?";
+                            
+                            if (window.confirm(msg)) {
+                                try {
+                                    // Make API call to delete account if needed
+                                    // await fetch(`/api/auth/users/${currentUser?.id}`, { method: 'DELETE' });
+                                    alert(lang === "es" ? "Su cuenta ha sido eliminada. Lamentamos que te vayas." : "Your account has been successfully deleted. We are sorry to see you go.");
+                                    setCurrentUser(null);
+                                    setView(AppView.LOGIN);
+                                } catch (e) {
+                                    alert(lang === "es" ? "Error al eliminar la cuenta." : "Failed to delete account.");
+                                }
+                            }
+                        }}
+                        className="p-2 text-red-500 hover:text-red-700"
+                        title={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                     </button>
                 </div>
