@@ -8,8 +8,6 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -18,9 +16,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci || npm install
 
       - name: Build Project
         run: npm run build
@@ -30,11 +29,12 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
         run: |
-          sudo apt-get update
+          sudo apt-get update --fix-missing || true
           sudo apt-get install -y lftp
           lftp -c "
           set ssl:verify-certificate no;
           set ftp:ssl-allow no;
+          set ftp:passive-mode true;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mirror -Rnv ./dist/ ./ --parallel=1
+          mirror -Rnv ./dist/ ./ --parallel=1 --no-perms --ignore-time --only-newer;
           "
