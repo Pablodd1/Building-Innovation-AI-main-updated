@@ -194,6 +194,36 @@ const App: React.FC = () => {
         }
     };
 
+    const [newAdminForm, setNewAdminForm] = useState({ name: "", email: "", password: "" });
+    const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
+
+    const handleCreateAdmin = async () => {
+        if (!newAdminForm.name || !newAdminForm.email || !newAdminForm.password) {
+            alert(lang === 'es' ? "Todos los campos son obligatorios" : "All fields are required");
+            return;
+        }
+        setIsCreatingAdmin(true);
+        try {
+            const res = await fetch("/api/admin/users/create-admin", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(newAdminForm),
+            });
+            if (res.ok) {
+                alert(lang === 'es' ? "Admin creado exitosamente" : "Admin created successfully");
+                setNewAdminForm({ name: "", email: "", password: "" });
+                fetchAllUsers();
+            } else {
+                const data = await res.json();
+                alert(data.error || "Failed to create admin");
+            }
+        } catch (e) {
+            console.error("Create admin error:", e);
+        } finally {
+            setIsCreatingAdmin(false);
+        }
+    };
+
     const handleUpdateUserTier = async (userId: number, tier: string) => {
         try {
             const res = await fetch(`/api/admin/users/${userId}/tier`, {
@@ -2554,22 +2584,69 @@ const App: React.FC = () => {
 
                 {adminTab === "USERS" && (
                     <div className="space-y-6">
-                        <div className="bg-white rounded-xl border border-gray-300 overflow-hidden">
+                        {/* Create Admin Form */}
+                        <div className="bg-white p-6 rounded-xl border border-gray-300 shadow-sm">
+                            <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
+                                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                                {lang === 'es' ? 'Crear Nuevo Administrador' : 'Create New Admin User'}
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <input
+                                    className="bg-gray-50 border border-gray-300 rounded p-2 text-sm text-gray-700"
+                                    placeholder={lang === 'es' ? 'Nombre Completo' : 'Full Name'}
+                                    value={newAdminForm.name}
+                                    onChange={(e) => setNewAdminForm({ ...newAdminForm, name: e.target.value })}
+                                />
+                                <input
+                                    className="bg-gray-50 border border-gray-300 rounded p-2 text-sm text-gray-700"
+                                    placeholder={lang === 'es' ? 'Correo Electrónico' : 'Email Address'}
+                                    value={newAdminForm.email}
+                                    onChange={(e) => setNewAdminForm({ ...newAdminForm, email: e.target.value })}
+                                />
+                                <input
+                                    type="password"
+                                    className="bg-gray-50 border border-gray-300 rounded p-2 text-sm text-gray-700"
+                                    placeholder={lang === 'es' ? 'Contraseña' : 'Password'}
+                                    value={newAdminForm.password}
+                                    onChange={(e) => setNewAdminForm({ ...newAdminForm, password: e.target.value })}
+                                />
+                                <Button 
+                                    onClick={handleCreateAdmin} 
+                                    disabled={isCreatingAdmin}
+                                    className="h-full"
+                                >
+                                    {isCreatingAdmin ? (lang === 'es' ? 'Creando...' : 'Creating...') : (lang === 'es' ? 'Registrar Admin' : 'Register Admin')}
+                                </Button>
+                            </div>
+                            <p className="mt-2 text-[10px] text-gray-500 italic">
+                                {lang === 'es' ? '* Los administradores tienen acceso completo y nivel Enterprise ilimitado.' : '* Admin users have full access and unlimited Enterprise tier benefits.'}
+                            </p>
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-gray-300 overflow-hidden shadow-sm">
                             <table className="w-full text-left text-sm text-gray-600">
-                                <thead className="bg-gray-300 text-gray-700 uppercase text-xs font-bold">
+                                <thead className="bg-gray-50 text-gray-700 uppercase text-[10px] font-bold border-b border-gray-200">
                                     <tr>
                                         <th className="p-4">User</th>
-                                        <th className="p-4">Email</th>
+                                        <th className="p-4">Email / Role</th>
                                         <th className="p-4">Current Tier</th>
                                         <th className="p-4">Usage</th>
                                         <th className="p-4 text-right">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-300">
+                                <tbody className="divide-y divide-gray-100">
                                     {allUsers.map((u) => (
-                                        <tr key={u.id} className="hover:bg-gray-100">
-                                            <td className="p-4 font-bold">{u.name}</td>
-                                            <td className="p-4">{u.email}</td>
+                                        <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="p-4">
+                                                <div className="font-bold text-gray-800">{u.name}</div>
+                                                <div className="text-[10px] text-gray-500">UID: {u.id}</div>
+                                            </td>
+                                            <td className="p-4">
+                                                <div>{u.email}</div>
+                                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${u.role === 'admin' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                                                    {u.role}
+                                                </span>
+                                            </td>
                                             <td className="p-4">
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${
                                                     u.tier === 'Enterprise' ? 'bg-purple-100 text-purple-700' : 

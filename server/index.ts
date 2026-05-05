@@ -907,6 +907,66 @@ app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
         res.json(result.rows[0]);
     } catch (error: any) {
         console.error('Update tier error:', error);
+        
+        // Fallback to JSON
+        try {
+            const users = await getUsers();
+            const index = users.findIndex((u: any) => String(u.id) === String(req.params.id));
+            if (index !== -1) {
+                users[index].tier = req.body.tier;
+                saveToJSON(JSON_USERS_PATH, users);
+                return res.json(users[index]);
+            }
+            res.status(404).json({ error: 'User not found in JSON' });
+        } catch (jsonError) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// Create Admin User (Admin only)
+app.post('/api/admin/users/create-admin', async (req: Request, res: Response) => {
+    try {
+        const { name, email, password } = req.body;
+        if (!name || !email || !password) {
+            return res.status(400).json({ error: 'Name, email and password required' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        try {
+            const result = await pool.query(
+                `INSERT INTO users (name, email, password_hash, role, tier)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING id, name, email, role, tier, created_at`,
+                [name, email, hashedPassword, 'admin', 'Enterprise']
+            );
+            res.status(201).json(result.rows[0]);
+        } catch (dbError) {
+            console.warn('DB down, creating Admin in JSON...');
+            const users = await getUsers();
+            if (users.find((u: any) => u.email === email)) {
+                return res.status(400).json({ error: 'Email already exists' });
+            }
+
+            const newAdmin = {
+                id: Date.now(),
+                name,
+                email,
+                password_hash: hashedPassword,
+                role: 'admin',
+                tier: 'Enterprise',
+                generations_used: 0,
+                created_at: new Date().toISOString()
+            };
+            users.push(newAdmin);
+            saveToJSON(JSON_USERS_PATH, users);
+            
+            const { password_hash, ...response } = newAdmin;
+            res.status(201).json(response);
+        }
+    } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
 });
@@ -942,8 +1002,28 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
         await pool.query('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', [userId]);
         return { allowed: true, used: generations_used + 1, limit: tierConfig.limit };
     } catch (e: any) {
-        console.warn('Quota check failed (DB down), allowing for now:', e.message);
-        return { allowed: true }; // Allow if DB is down to avoid blocking users
+        console.warn('Quota check fallback to JSON:', e.message);
+        
+        // JSON fallback quota check
+        try {
+            const users = await getUsers();
+            const user = users.find((u: any) => String(u.id) === String(userId));
+            if (!user) return { allowed: true }; // Allow if user not found to avoid blocking
+
+            const tier = user.tier || 'Free';
+            const tierConfig = TIERS[tier.toUpperCase() as keyof typeof TIERS] || TIERS.FREE;
+            const used = user.generations_used || 0;
+
+            if (used >= tierConfig.limit) {
+                return { allowed: false, limit: tierConfig.limit, used };
+            }
+
+            user.generations_used = used + 1;
+            saveToJSON(JSON_USERS_PATH, users);
+            return { allowed: true, used: used + 1, limit: tierConfig.limit };
+        } catch (jsonErr) {
+            return { allowed: true };
+        }
     }
 }
 
