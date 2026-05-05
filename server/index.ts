@@ -53,8 +53,15 @@ async function runMigrations() {
 }
 runMigrations();
 
-const JSON_DB_PATH = path.join(process.cwd(), 'public', 'data', 'products.json');
-const JSON_USERS_PATH = path.join(process.cwd(), 'public', 'data', 'users.json');
+const JSON_DB_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'products.json'))
+    ? path.join(process.cwd(), 'public', 'data', 'products.json')
+    : path.join(process.cwd(), 'data', 'products.json');
+
+const JSON_USERS_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'users.json'))
+    ? path.join(process.cwd(), 'public', 'data', 'users.json')
+    : path.join(process.cwd(), 'data', 'users.json');
+
+const JSON_PRODUCTS_PATH = JSON_DB_PATH;
 
 // Helper to save to JSON (fallback persistence)
 function saveToJSON(filePath: string, data: any) {
@@ -1146,19 +1153,30 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
 
 // Serve static files from the frontend build
 const __dirname = path.resolve();
-const distPath = path.join(__dirname, 'dist');
+const distPath = fs.existsSync(path.join(__dirname, 'dist')) 
+    ? path.join(__dirname, 'dist') 
+    : __dirname;
 
-if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-    // SPA fallback: handle all non-API routes
-    app.use((req: Request, res: Response, next) => {
-        if (!req.path.startsWith('/api')) {
-            res.sendFile(path.join(distPath, 'index.html'));
-        } else {
-            next();
-        }
-    });
-}
+console.log(`📂 Serving static files from: ${distPath}`);
+
+app.use(express.static(distPath));
+
+// SPA fallback: handle all non-API routes
+app.get('*', (req: Request, res: Response, next) => {
+    // If it's an API route that wasn't matched, continue to error handler
+    if (req.path.startsWith('/api')) {
+        return next();
+    }
+    
+    // If the file exists as a static asset, let express.static handle it
+    const filePath = path.join(distPath, req.path);
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        return next();
+    }
+
+    // Otherwise, serve index.html for SPA routing
+    res.sendFile(path.join(distPath, 'index.html'));
+});
 
 // Start server
 app.listen(PORT, () => {
