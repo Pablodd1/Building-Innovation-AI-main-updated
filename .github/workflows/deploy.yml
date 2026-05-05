@@ -36,5 +36,5 @@ jobs:
           set ssl:verify-certificate no;
           set ftp:ssl-allow no;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mirror -Rnv ./dist/ ./ --exclude products/ --parallel=1
+          mirror -Rnv ./dist/ ./ --parallel=1
           "
