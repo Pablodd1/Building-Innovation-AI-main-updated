@@ -1210,7 +1210,7 @@ console.log(`📂 Serving static files from: ${distPath}`);
 app.use(express.static(distPath));
 
 // SPA fallback: handle all non-API routes
-app.get('*', (req: Request, res: Response, next) => {
+app.get('/{*path}', (req: Request, res: Response, next) => {
     // If it's an API route that wasn't matched, continue to error handler
     if (req.path.startsWith('/api')) {
         return next();

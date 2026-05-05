@@ -1,0 +1,24 @@
+2026-05-05T20:14:37.148Z
+TypeError: Missing parameter name at index 1: *; visit https://git.new/pathToRegexpError for info
+    at consumeUntil (/tmp/building-innovation/dist-server/app.cjs:20050:21)
+    at parse (/tmp/building-innovation/dist-server/app.cjs:20075:28)
+    at process2 (/tmp/building-innovation/dist-server/app.cjs:20186:58)
+    at pathToRegexp (/tmp/building-innovation/dist-server/app.cjs:20197:7)
+    at Object.match (/tmp/building-innovation/dist-server/app.cjs:20151:32)
+    at matcher (/tmp/building-innovation/dist-server/app.cjs:20380:27)
+    at new Layer (/tmp/building-innovation/dist-server/app.cjs:20387:68)
+    at Function.route (/tmp/building-innovation/dist-server/app.cjs:20812:21)
+    at Function.route (/tmp/building-innovation/dist-server/app.cjs:21121:26)
+    at app.<computed> [as get] (/tmp/building-innovation/dist-server/app.cjs:21184:26)
+2026-05-05T20:14:43.491Z
+TypeError: Missing parameter name at index 1: *; visit https://git.new/pathToRegexpError for info
+    at consumeUntil (/tmp/building-innovation/dist-server/app.cjs:20050:21)
+    at parse (/tmp/building-innovation/dist-server/app.cjs:20075:28)
+    at process2 (/tmp/building-innovation/dist-server/app.cjs:20186:58)
+    at pathToRegexp (/tmp/building-innovation/dist-server/app.cjs:20197:7)
+    at Object.match (/tmp/building-innovation/dist-server/app.cjs:20151:32)
+    at matcher (/tmp/building-innovation/dist-server/app.cjs:20380:27)
+    at new Layer (/tmp/building-innovation/dist-server/app.cjs:20387:68)
+    at Function.route (/tmp/building-innovation/dist-server/app.cjs:20812:21)
+    at Function.route (/tmp/building-innovation/dist-server/app.cjs:21121:26)
+    at app.<computed> [as get] (/tmp/building-innovation/dist-server/app.cjs:21184:26)
