@@ -278,6 +278,33 @@ const App: React.FC = () => {
     };
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Material>>({});
+
+    const handleSelectPlan = async (newTier: string) => {
+        if (!currentUser) return;
+        
+        // Simulated Checkout Flow
+        const confirmMsg = lang === 'es' 
+            ? `¿Confirmas la suscripción al plan ${newTier}? (Simulación de pago)` 
+            : `Confirm subscription to ${newTier} plan? (Payment Simulation)`;
+            
+        if (confirm(confirmMsg)) {
+            try {
+                const res = await fetch(`/api/admin/users/${currentUser.id}/tier`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ tier: newTier }),
+                });
+                if (res.ok) {
+                    const updatedUser = await res.json();
+                    setCurrentUser({ ...currentUser, tier: updatedUser.tier });
+                    alert(lang === 'es' ? "¡Suscripción actualizada!" : "Subscription updated!");
+                    setShowSubscriptionModal(false);
+                }
+            } catch (e) {
+                console.error("Subscription error:", e);
+            }
+        }
+    };
     const [contractorForm, setContractorForm] = useState<Partial<Contractor>>(
         {},
     );
@@ -966,6 +993,16 @@ const App: React.FC = () => {
             }));
             return;
         }
+
+        // Pre-check quota
+        if (currentUser && currentUser.role !== 'admin') {
+            const limit = currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999;
+            if ((currentUser.generations_used || 0) >= limit) {
+                setShowSubscriptionModal(true);
+                return;
+            }
+        }
+
         setGenerationState((prev) => ({
             ...prev,
             isGenerating: true,
@@ -3370,7 +3407,8 @@ const App: React.FC = () => {
                                     </ul>
                                     <button 
                                         disabled={p.name === tier}
-                                        className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${p.name === tier ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20'}`}
+                                        onClick={() => handleSelectPlan(p.name)}
+                                        className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${p.name === tier ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20 active:scale-95'}`}
                                     >
                                         {p.name === tier ? 'Current Plan' : 'Select Plan'}
                                     </button>
