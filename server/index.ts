@@ -9,6 +9,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { sendPurchaseNotifications } from './emailService';
 
+const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -36,12 +37,6 @@ const TIERS = {
     PRO: { name: 'Pro', limit: 50 },
     ENTERPRISE: { name: 'Enterprise', limit: 9999 }
 };
-
-// Database connection with fallback to local JSON
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/constructviz_db',
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
 
 // Run migrations on startup
 async function runMigrations() {
