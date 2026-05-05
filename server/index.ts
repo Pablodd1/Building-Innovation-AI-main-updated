@@ -73,6 +73,18 @@ const JSON_USERS_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data',
 
 const JSON_PRODUCTS_PATH = JSON_DB_PATH;
 
+const JSON_CONFIG_PATH = path.join(process.cwd(), 'data', 'config.json');
+
+// Helper to get config (API Keys, etc.)
+async function getConfig() {
+    try {
+        if (fs.existsSync(JSON_CONFIG_PATH)) {
+            return JSON.parse(fs.readFileSync(JSON_CONFIG_PATH, 'utf8'));
+        }
+    } catch (e) {}
+    return { GEMINI_API_KEY: process.env.VITE_GEMINI_API_KEY || "" };
+}
+
 // Helper to save to JSON (fallback persistence)
 function saveToJSON(filePath: string, data: any) {
     try {
@@ -1120,12 +1132,38 @@ app.post('/api/ai/generate', async (req: Request, res: Response) => {
             });
         }
 
-        // Logic for calling Gemini would go here if we want to hide the API Key
-        // For now, we return success and let the frontend call it, 
-        // but we've tracked the usage in our DB.
-        res.json({ success: true, quota });
+        // Logic for calling Gemini
+        const config = await getConfig();
+        const apiKey = config.GEMINI_API_KEY;
+        
+        if (!apiKey) {
+            return res.status(400).json({ error: 'API Key not configured. Please set it in Admin Dashboard.' });
+        }
+
+        res.json({ success: true, quota, apiKey });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Admin Config Endpoints
+app.get('/api/admin/config', async (req: Request, res: Response) => {
+    const config = await getConfig();
+    res.json({ hasKey: !!config.GEMINI_API_KEY });
+});
+
+app.post('/api/admin/config', async (req: Request, res: Response) => {
+    try {
+        const { apiKey } = req.body;
+        if (!apiKey) return res.status(400).json({ error: 'API Key required' });
+        
+        const config = await getConfig();
+        config.GEMINI_API_KEY = apiKey;
+        saveToJSON(JSON_CONFIG_PATH, config);
+        
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 
