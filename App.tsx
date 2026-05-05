@@ -1047,20 +1047,31 @@ const App: React.FC = () => {
                 });
             }
         } catch (error: any) {
-            console.error("Generation failed:", error);
-            const isQuotaError = error.message?.includes('403') || error.message?.includes('Quota exceeded');
+            const errorMsg = error.message || "Unknown error";
+            console.error("Generation failed:", errorMsg);
             
+            // Log to backend for developer to see in /api/debug/errors
+            fetch('/api/log-error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    error: errorMsg, 
+                    context: 'handleGenerate',
+                    userId: currentUser?.id 
+                })
+            }).catch(() => {});
+
             setGenerationState((prev) => ({
                 ...prev,
                 isGenerating: false,
+                error: (lang === 'es' ? 'Error al generar: ' : 'Generation error: ') + errorMsg
             }));
             
+            const isQuotaError = errorMsg.includes('403') || errorMsg.includes('Quota exceeded');
             if (isQuotaError) {
                 if (confirm(lang === 'es' ? 'Has alcanzado tu límite de renders. ¿Deseas mejorar tu plan ahora?' : 'You have reached your render limit. Would you like to upgrade your plan now?')) {
                     setShowSubscriptionModal(true);
                 }
-            } else {
-                alert(lang === 'es' ? 'Error al generar la imagen. Por favor intente nuevamente.' : 'Error generating image. Please try again.');
             }
         }
     };

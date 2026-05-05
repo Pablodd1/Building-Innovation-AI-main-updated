@@ -9,9 +9,27 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { sendPurchaseNotifications } from './emailService';
 
-const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Database Configuration (Support both URL and individual vars)
+const dbConfig = process.env.DATABASE_URL 
+    ? { connectionString: process.env.DATABASE_URL }
+    : {
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        port: parseInt(process.env.DB_PORT || '5432')
+    };
+
+const pool = new Pool({
+    ...dbConfig,
+    ssl: { rejectUnauthorized: false }
+});
+
+// In-memory error log for debugging
+const errorLog: any[] = [];
 
 const TIERS = {
     FREE: { name: 'Free', limit: 5 },
@@ -1057,6 +1075,24 @@ app.get('/api/debug', async (req: Request, res: Response) => {
     }
 
     res.json(debugInfo);
+});
+
+app.post('/api/log-error', (req: Request, res: Response) => {
+    const { error, context, userId } = req.body;
+    const entry = {
+        timestamp: new Date().toISOString(),
+        error,
+        context,
+        userId
+    };
+    errorLog.unshift(entry);
+    if (errorLog.length > 50) errorLog.pop();
+    console.error('Frontend Error:', entry);
+    res.json({ status: 'logged' });
+});
+
+app.get('/api/debug/errors', (req: Request, res: Response) => {
+    res.json(errorLog);
 });
 
 app.post('/api/ai/generate', async (req: Request, res: Response) => {
