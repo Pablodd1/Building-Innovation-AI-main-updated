@@ -9,6 +9,16 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { sendPurchaseNotifications } from './emailService';
 
+// CRASH LOGGER: Captures startup errors on Hostinger
+function logCrash(error: any) {
+    const msg = `${new Date().toISOString()}\n${error.stack || error}\n`;
+    try {
+        fs.appendFileSync(path.join(process.cwd(), 'crash.log'), msg);
+    } catch (e) {}
+    console.error('CRITICAL STARTUP ERROR:', error);
+}
+
+try {
 const { Pool } = pg;
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,7 +31,7 @@ const dbConfig = process.env.DATABASE_URL
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
-        port: parseInt(process.env.DB_PORT || '5432')
+        port: Number(process.env.DB_PORT) || 5432
     };
 
 const pool = new Pool({
@@ -1181,6 +1191,10 @@ app.get('*', (req: Request, res: Response, next) => {
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
-    console.log(`📊 Database: ${process.env.DATABASE_URL?.split('@')[1] || 'localhost'}`);
-    console.log(`📧 Email service: ${process.env.RESEND_API_KEY ? '✓ Configured' : '✗ Not configured'}`);
+    console.log(`📊 Serving from: ${distPath}`);
 });
+
+} catch (startupError) {
+    logCrash(startupError);
+    process.exit(1);
+}
