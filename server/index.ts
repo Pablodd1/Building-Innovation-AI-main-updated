@@ -71,6 +71,21 @@ async function getMaterials() {
     }
 }
 
+// Helper to get users from DB or JSON
+async function getUsers() {
+    try {
+        const result = await pool.query('SELECT * FROM users');
+        return result.rows;
+    } catch (e) {
+        console.warn('Database unavailable, reading from local users fallback...');
+        if (fs.existsSync(JSON_USERS_PATH)) {
+            const data = fs.readFileSync(JSON_USERS_PATH, 'utf8');
+            return JSON.parse(data);
+        }
+        return [];
+    }
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -551,8 +566,36 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
             res.status(201).json({ user: result.rows[0] });
         } catch (dbError) {
-            // Fallback for signup not implemented for simplicity, usually DB is required for Auth
-            res.status(503).json({ error: 'Auth database currently unavailable' });
+            console.warn('Signup DB unavailable, using JSON fallback...');
+            
+            // Check local JSON
+            const users = await getUsers();
+            if (users.find((u: any) => u.email === email)) {
+                return res.status(400).json({ error: 'Email already registered in fallback' });
+            }
+
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(password, salt);
+
+            const newUser = {
+                id: Date.now(),
+                name,
+                email,
+                phone: phone || null,
+                address: address || null,
+                password_hash: hashedPassword,
+                role: 'customer',
+                tier: 'Free',
+                generations_used: 0,
+                created_at: new Date().toISOString()
+            };
+
+            users.push(newUser);
+            saveToJSON(JSON_USERS_PATH, users);
+
+            // Don't return password hash
+            const { password_hash, ...userResponse } = newUser;
+            res.status(201).json({ user: userResponse });
         }
     } catch (error: any) {
         console.error('Signup error:', error);
@@ -583,31 +626,44 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
             });
         }
 
-        const result = await pool.query(
-            'SELECT id, name, email, phone, address, role, tier, generations_used, password_hash FROM users WHERE email = $1',
-            [email]
-        );
+        try {
+            const result = await pool.query(
+                'SELECT id, name, email, phone, address, role, tier, generations_used, password_hash FROM users WHERE email = $1',
+                [email]
+            );
 
-        if (result.rows.length === 0) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            if (result.rows.length > 0) {
+                const user = result.rows[0];
+                const isMatch = await bcrypt.compare(password, user.password_hash);
+                if (!isMatch) {
+                    return res.status(401).json({ error: 'Invalid credentials' });
+                }
+                const { password_hash, ...userResponse } = user;
+                return res.json({ user: userResponse });
+            }
+            
+            // If not in DB, check JSON fallback anyway (might be newly signed up in fallback)
+            throw new Error('Not found in DB');
+            
+        } catch (dbError) {
+            console.warn('Login DB unavailable or user not found, checking JSON fallback...');
+            const users = await getUsers();
+            const user = users.find((u: any) => u.email === email);
+
+            if (!user) {
+                return res.status(401).json({ error: 'Invalid credentials' });
+            }
+
+            const isMatch = await bcrypt.compare(password, user.password_hash);
+            if (!isMatch) {
+                return res.status(401).json({ error: 'Invalid credentials' });
+            }
+
+            const { password_hash, ...userResponse } = user;
+            return res.json({ user: userResponse });
         }
-
-        const user = result.rows[0];
-
-        const isMatch = await bcrypt.compare(password, user.password_hash);
-        if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        const { password_hash, ...userData } = user;
-        res.json({ user: userData });
     } catch (error: any) {
         console.error('Login error:', error);
-        if (email === 'admin@gmail.com' && password === 'admin@@@1') {
-             return res.json({ 
-                user: { id: 999, name: 'Super Admin', email: 'admin@gmail.com', role: 'admin', tier: 'Enterprise', generations_used: 0 } 
-            });
-        }
         res.status(500).json({ error: error.message });
     }
 });

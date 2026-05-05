@@ -392,10 +392,20 @@ const App: React.FC = () => {
                     const proxied = localData.map((m: any) => {
                         const rawUsage = m.usage || "Interior";
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
+                        const refCode = m.ref_code || m.refCode || "";
+                        
+                        // Prioritize local embedded high-fidelity images
+                        let imageUrl = m.image_url || m.imageUrl || "";
+                        if (refCode) {
+                            imageUrl = `/products/${refCode}.webp`;
+                        } else {
+                            imageUrl = proxyImageUrl(imageUrl);
+                        }
+
                         return {
                             ...m,
                             usage: normalizedUsage,
-                            imageUrl: proxyImageUrl(m.imageUrl || ""),
+                            imageUrl: imageUrl,
                         };
                     });
                     setMaterials(proxied);
