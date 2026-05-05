@@ -16,7 +16,7 @@ import {
     RenderOptions,
     User,
 } from "./types";
-import { CONTRACTORS as INITIAL_CONTRACTORS, TRANSLATIONS } from "./constants";
+import { CONTRACTORS as INITIAL_CONTRACTORS, TRANSLATIONS, MATERIALS } from "./constants";
 import { Button } from "./components/Button";
 import { CameraCapture } from "./components/CameraCapture";
 import { ImageComparator } from "./components/ImageComparator";
@@ -99,6 +99,22 @@ const App: React.FC = () => {
     useEffect(() => {
         setUnitSystem(lang === "es" ? "latam" : "usa");
     }, [lang]);
+
+    // Load persisted user on mount
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('constructviz_user');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && parsed.id) {
+                    setCurrentUser(parsed);
+                    setView(AppView.LANDING);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load persisted user:', e);
+        }
+    }, []);
 
     // Authentication State
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -377,13 +393,30 @@ const App: React.FC = () => {
 
     const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
         const target = e.target as HTMLImageElement;
-        // Check if we already tried the proxy or placeholder
-        if (target.src.includes('proxy-image') || target.src.includes('data:image')) {
+        const originalSrc = target.getAttribute('data-original-src') || target.src;
+
+        // Already failed — show placeholder
+        if (target.getAttribute('data-error-fixed') === 'true') {
             target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
             return;
         }
-        
-        // If it was a local path that failed, try the proxy if possible, else placeholder
+
+        // Try proxy for Google Drive / external images
+        if (originalSrc.includes('googleusercontent.com') || originalSrc.includes('drive.google.com')) {
+            target.setAttribute('data-error-fixed', 'true');
+            target.src = `/api/proxy-image?url=${encodeURIComponent(originalSrc)}`;
+            return;
+        }
+
+        // For local paths that failed, try prepending origin
+        if (originalSrc.startsWith('/')) {
+            target.setAttribute('data-error-fixed', 'true');
+            target.src = window.location.origin + originalSrc;
+            return;
+        }
+
+        // Fallback placeholder
+        target.setAttribute('data-error-fixed', 'true');
         target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
     };
 
@@ -1202,6 +1235,7 @@ const App: React.FC = () => {
             }
 
             setCurrentUser(data.user);
+            localStorage.setItem('constructviz_user', JSON.stringify(data.user));
             setView(AppView.LANDING);
             setAuthForm({
                 name: "",
@@ -1329,6 +1363,28 @@ const App: React.FC = () => {
                                 : "Sign Up"}
                     </button>
 
+                    {/* Skip Login - Demo Mode */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const demoUser = {
+                                id: 0,
+                                name: 'Demo User',
+                                email: 'demo@constructviz.ai',
+                                role: 'customer',
+                                tier: 'Free',
+                                generations_used: 0,
+                                created_at: new Date().toISOString()
+                            };
+                            setCurrentUser(demoUser);
+                            localStorage.setItem('constructviz_user', JSON.stringify(demoUser));
+                            setView(AppView.LANDING);
+                        }}
+                        className="w-full text-sm text-gray-500 hover:text-blue-500 underline transition-colors py-2"
+                    >
+                        {t.login.skip || "Skip for now (Demo)"}
+                    </button>
+
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>
@@ -1451,6 +1507,7 @@ const App: React.FC = () => {
                     <button
                         onClick={() => {
                             setCurrentUser(null);
+                            localStorage.removeItem('constructviz_user');
                             setView(AppView.LOGIN);
                         }}
                         className="p-2 text-gray-600 hover:text-gray-900"
@@ -2832,6 +2889,7 @@ const App: React.FC = () => {
                             >
                                 <img
                                     src={material.imageUrl}
+                                    data-original-src={material.imageUrl}
                                     alt={material.name}
                                     onError={handleImageError}
                                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -2904,7 +2962,12 @@ const App: React.FC = () => {
                             ) : (
                                 <img
                                     src={originalImage || ""}
+                                    alt="Captured"
                                     className="w-full h-full object-contain shadow-2xl"
+                                    onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect fill='%231e293b' width='400' height='300'/%3E%3Ctext fill='%2394a3b8' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='14'%3EImage Preview Unavailable%3C/text%3E%3C/svg%3E";
+                                    }}
                                 />
                             )}
                         </div>
@@ -2985,6 +3048,7 @@ const App: React.FC = () => {
                                     >
                                         <img
                                             src={selectedMaterial.imageUrl}
+                                            data-original-src={selectedMaterial.imageUrl}
                                             onError={handleImageError}
                                             className="w-16 h-16 rounded-lg object-cover border border-gray-300"
                                         />
@@ -3490,24 +3554,45 @@ const App: React.FC = () => {
                 </div>
             )}
             {view === AppView.EDITOR && renderEditor()}
-            {view === AppView.ESTIMATION && selectedMaterial && (
-                <div className="h-screen bg-slate-900 p-4 md:p-8 overflow-y-auto flex justify-center">
-                    <div className="w-full max-w-4xl h-full">
-                        <EstimationPanel
-                            material={selectedMaterial}
-                            onBack={() => setView(AppView.EDITOR)}
-                            onAddToCart={() => {
-                                updateCartCount();
-                            }}
-                            onNewQuote={() => setView(AppView.GALLERY)}
-                            contractors={contractors}
-                            lang={lang}
-                            unitSystem={unitSystem}
-                            userEmail={currentUser?.email || ''}
-                            userName={currentUser?.name || ''}
-                        />
+            {view === AppView.ESTIMATION && (
+                selectedMaterial ? (
+                    <div className="h-screen bg-slate-900 p-4 md:p-8 overflow-y-auto flex justify-center">
+                        <div className="w-full max-w-4xl h-full">
+                            <EstimationPanel
+                                material={selectedMaterial}
+                                onBack={() => setView(AppView.EDITOR)}
+                                onAddToCart={() => {
+                                    updateCartCount();
+                                }}
+                                onNewQuote={() => setView(AppView.GALLERY)}
+                                contractors={contractors}
+                                lang={lang}
+                                unitSystem={unitSystem}
+                                userEmail={currentUser?.email || ''}
+                                userName={currentUser?.name || ''}
+                            />
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
+                        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md">
+                            <svg className="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <h2 className="text-xl font-bold text-white mb-2">
+                                {lang === 'es' ? 'Ningún Material Seleccionado' : 'No Material Selected'}
+                            </h2>
+                            <p className="text-slate-400 mb-6">
+                                {lang === 'es'
+                                    ? 'Por favor selecciona un material del catálogo primero.'
+                                    : 'Please select a material from the catalog first.'}
+                            </p>
+                            <Button onClick={() => setView(AppView.GALLERY)}>
+                                {lang === 'es' ? 'Ir al Catálogo' : 'Browse Catalog'}
+                            </Button>
+                        </div>
+                    </div>
+                )
             )}
             {view === AppView.CART && renderCart()}
             {showSubscriptionModal && renderSubscriptionModal()}
