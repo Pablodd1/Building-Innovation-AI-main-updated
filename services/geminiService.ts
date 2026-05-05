@@ -155,7 +155,7 @@ export const generateMaterialOverlay = async (
     const mimeType = getMimeType(originalImageBase64);
 
     const isFurniture =
-        material.usage === "Furniture" || material.category === "Muebles";
+        (material.usage as any) === "Furniture" || material.category === "Muebles";
 
     // Lighting context from renderOptions (optional)
     const lightingHint =

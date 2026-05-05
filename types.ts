@@ -37,7 +37,7 @@ export interface Material {
   category: string; // e.g., "Flooring"
   subcategory?: string; // e.g., "SPC", "Laminate", "Porcelain"
   usage: "Interior" | "Exterior";
-  dimensions: MaterialDimensions;
+  dimensions?: MaterialDimensions;
   pricing: MaterialPricing;
   specs?: TechnicalSpecs;
   promptModifier: string; // AI visual description
