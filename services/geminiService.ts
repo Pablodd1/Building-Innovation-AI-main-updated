@@ -242,25 +242,20 @@ Rules:
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-image",
+            model: "gemini-1.5-flash",
             contents,
         });
         return extractImage(response);
     } catch (error: any) {
         console.warn(
-            "Flash image generation failed, falling back to Pro model:",
+            "Primary generation failed, trying fallback:",
             getErrorMessage(error)
         );
 
         try {
             const response = await ai.models.generateContent({
-                model: "gemini-3-pro-image-preview",
+                model: "gemini-1.5-pro",
                 contents,
-                config: {
-                    imageConfig: {
-                        imageSize: "1024x1024",
-                    },
-                },
             });
             return extractImage(response);
         } catch (fallbackError: any) {

@@ -1019,13 +1019,45 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
             }
 
             user.generations_used = used + 1;
-            saveToJSON(JSON_USERS_PATH, users);
+            try {
+                saveToJSON(JSON_USERS_PATH, users);
+            } catch (saveErr) {
+                console.error('Failed to save to users.json:', saveErr);
+            }
             return { allowed: true, used: used + 1, limit: tierConfig.limit };
         } catch (jsonErr) {
             return { allowed: true };
         }
     }
 }
+
+app.get('/api/debug', async (req: Request, res: Response) => {
+    const debugInfo: any = {
+        status: 'online',
+        timestamp: new Date().toISOString(),
+        env: {
+            node_env: process.env.NODE_ENV,
+            has_db_url: !!process.env.DATABASE_URL,
+            port: PORT
+        }
+    };
+
+    try {
+        await pool.query('SELECT 1');
+        debugInfo.database = 'connected';
+    } catch (e: any) {
+        debugInfo.database = `error: ${e.message}`;
+    }
+
+    try {
+        const users = await getUsers();
+        debugInfo.json_users_count = users.length;
+    } catch (e: any) {
+        debugInfo.json_users = `error: ${e.message}`;
+    }
+
+    res.json(debugInfo);
+});
 
 app.post('/api/ai/generate', async (req: Request, res: Response) => {
     try {
