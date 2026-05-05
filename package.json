@@ -7,9 +7,9 @@
     "dev": "concurrently \"tsx server/index.ts\" \"vite\"",
     "server": "tsx server/index.ts",
     "build:frontend": "vite build",
-    "build:server": "esbuild server/index.ts --bundle --platform=node --target=node22 --outfile=dist-server/index.cjs --external:express --external:pg --external:cors --external:nodemailer",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --target=node22 --outfile=dist-server/app.js",
     "build": "npm run build:frontend && npm run build:server",
-    "start": "node dist-server/index.cjs",
+    "start": "node app.js",
     "preview": "vite preview"
   },
   "dependencies": {
