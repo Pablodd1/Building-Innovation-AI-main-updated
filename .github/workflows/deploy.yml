@@ -35,6 +35,9 @@ jobs:
           set ssl:verify-certificate no;
           set ftp:ssl-allow no;
           set ftp:passive-mode true;
+          set net:timeout 10;
+          set net:max-retries 3;
+          set net:reconnect-interval-base 5;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mirror -Rnv ./dist/ ./ --parallel=1 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
           "
