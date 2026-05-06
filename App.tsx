@@ -28,8 +28,6 @@ import {
     generateCinematicVideo,
     generateMaterialProbe,
 } from "./services/geminiService";
-import { VirtualPreviewEngine } from "./services/virtualPreview";
-import { VirtualPreview } from "./components/VirtualPreview";
 import { formatMetersUSA } from "./services/unitUtils";
 
 interface HistoryItem {
@@ -350,9 +348,6 @@ const App: React.FC = () => {
         analysis: null,
         materialProbe: null,
     });
-
-    // Virtual Preview State
-    const [showVirtualPreview, setShowVirtualPreview] = useState(false);
     const [cartCount, setCartCount] = useState<number>(0);
 
     const [showProbeModal, setShowProbeModal] = useState(false);
@@ -3043,37 +3038,7 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                        {/* Virtual Preview Button */}
-                        {selectedMaterial && originalImage && (
-                            <div className="bg-gradient-to-r from-indigo-500 to-purple-600 p-4 rounded-xl border border-indigo-400 shadow-lg"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                        </svg>
-                                        <span className="text-white font-bold text-sm">
-                                            {lang === 'es' ? 'Vista Previa Virtual' : 'Virtual Preview'}
-                                        </span>
-                                    </div>
-                                    <span className="text-[10px] text-indigo-200 font-bold uppercase">
-                                        {lang === 'es' ? 'Sin API · Gratis' : 'No API · Free'}
-                                    </span>
-                                </div>
-                                <p className="text-indigo-100 text-xs mt-2 mb-3">
-                                    {lang === 'es' 
-                                        ? 'Ve el material en tu pared al instante. Sin costo, sin espera.' 
-                                        : 'See the material on your wall instantly. No cost, no wait.'}
-                                </p>
-                                <button
-                                    onClick={() => setShowVirtualPreview(true)}
-                                    className="w-full py-2.5 rounded-lg bg-white text-indigo-600 font-bold text-sm hover:bg-indigo-50 transition-colors"
-                                >
-                                    {lang === 'es' ? 'Abrir Vista Previa' : 'Open Preview'}
-                                </button>
-                            </div>
-                        )}
+                        {/* Material Info */}
                         {selectedMaterial && (
                             <div className="flex flex-col gap-2 bg-gray-200 p-4 rounded-xl border border-gray-300">
                                 <div className="flex items-center gap-4">
@@ -3589,24 +3554,6 @@ const App: React.FC = () => {
                 </div>
             )}
             {view === AppView.EDITOR && renderEditor()}
-
-            {/* Virtual Preview Overlay */}
-            {showVirtualPreview && selectedMaterial && originalImage && (
-                <VirtualPreview
-                    material={selectedMaterial}
-                    capturedImage={originalImage}
-                    onClose={() => setShowVirtualPreview(false)}
-                    onSave={(previewImage) => {
-                        setGenerationState((prev) => ({
-                            ...prev,
-                            resultImage: previewImage,
-                        }));
-                        setShowVirtualPreview(false);
-                    }}
-                    lang={lang}
-                />
-            )}
-
             {view === AppView.ESTIMATION && (
                 selectedMaterial ? (
                     <div className="h-screen bg-slate-900 p-4 md:p-8 overflow-y-auto flex justify-center">
