@@ -325,8 +325,6 @@ const App: React.FC = () => {
     const [contractorForm, setContractorForm] = useState<Partial<Contractor>>(
         {},
     );
-    const [customApiKey, setCustomApiKey] = useState("");
-
     const [originalImage, setOriginalImage] = useState<string | null>(null);
     const [customPrompt, setCustomPrompt] = useState<string>("");
 
@@ -530,8 +528,6 @@ const App: React.FC = () => {
             setContractors(INITIAL_CONTRACTORS);
         }
 
-        const savedKey = localStorage.getItem("custom_api_key");
-        if (savedKey) setCustomApiKey(savedKey);
         updateCartCount();
     }, []);
 
@@ -961,11 +957,6 @@ const App: React.FC = () => {
         };
         setContractors([...contractors, newContractor]);
         setContractorForm({});
-    };
-
-    const handleSaveApiKey = () => {
-        localStorage.setItem("custom_api_key", customApiKey.trim());
-        alert("API Key Saved!");
     };
 
     const resetMaterials = async () => {
@@ -2794,23 +2785,16 @@ const App: React.FC = () => {
                     <div className="max-w-xl">
                         <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
                             <h3 className="text-lg font-bold text-gray-700 mb-4">
-                                API Configuration
+                                AI Configuration
                             </h3>
                             <p className="text-sm text-gray-500 mb-4">
                                 {lang === "es"
-                                    ? "Ingrese su clave de API para habilitar la visualización de materiales."
-                                    : "Enter your API Key to enable material visualization."}
+                                    ? "La IA está configurada en el servidor. No se requiere clave de API en el navegador."
+                                    : "AI is configured server-side. No API key required in the browser."}
                             </p>
-                            <input
-                                type="password"
-                                className="w-full bg-gray-200 border border-gray-300 rounded p-3 text-gray-700 mb-4"
-                                placeholder="AIzaSy..."
-                                value={customApiKey}
-                                onChange={(e) =>
-                                    setCustomApiKey(e.target.value)
-                                }
-                            />
-                            <Button onClick={handleSaveApiKey}>Save Key</Button>
+                            <div className="bg-green-100 border border-green-300 rounded p-3 text-sm text-green-800">
+                                ✅ {lang === "es" ? "Protección activa: la clave nunca se expone al cliente." : "Secure: key never exposed to client."}
+                            </div>
                         </div>
                     </div>
                 )}
