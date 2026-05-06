@@ -51,7 +51,7 @@ jobs:
           set net:reconnect-interval-max 60;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
           mkdir -f public_html/dist public_html/dist-server public_html/data;
-          mirror -Rnv ./dist/ public_html/dist/ --parallel=3 --no-perms;
-          mirror -Rnv ./dist-server/ public_html/dist-server/ --parallel=3 --no-perms;
-          mirror -Rnv ./data/ public_html/data/ --parallel=3 --no-perms;
+          mirror -Rnv ./dist/ public_html/dist/ --parallel=3 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist-server/ public_html/dist-server/ --parallel=3 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./data/ public_html/data/ --parallel=3 --no-perms --ignore-time --only-newer;
           "
