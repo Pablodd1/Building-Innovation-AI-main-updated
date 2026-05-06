@@ -45,11 +45,13 @@ jobs:
           set ssl:verify-certificate no;
           set ftp:ssl-allow no;
           set ftp:passive-mode true;
-          set net:timeout 10;
-          set net:max-retries 3;
-          set net:reconnect-interval-base 5;
+          set net:timeout 15;
+          set net:max-retries 5;
+          set net:reconnect-interval-base 10;
+          set net:reconnect-interval-max 60;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mirror -Rnv ./dist/ ./public_html/dist/ --parallel=10 --no-perms --ignore-time --only-newer;
-          mirror -Rnv ./dist-server/ ./public_html/dist-server/ --parallel=10 --no-perms --ignore-time --only-newer;
-          mirror -Rnv ./data/ ./public_html/data/ --parallel=10 --no-perms --ignore-time --only-newer;
+          mkdir -f public_html/dist public_html/dist-server public_html/data;
+          mirror -Rnv ./dist/ public_html/dist/ --parallel=3 --no-perms;
+          mirror -Rnv ./dist-server/ public_html/dist-server/ --parallel=3 --no-perms;
+          mirror -Rnv ./data/ public_html/data/ --parallel=3 --no-perms;
           "
