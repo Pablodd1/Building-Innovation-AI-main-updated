@@ -7,6 +7,7 @@ import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { GoogleGenAI } from "@google/genai";
 import { sendPurchaseNotifications } from './emailService';
 
 // CRASH LOGGER: Captures startup errors on Hostinger
@@ -139,6 +140,188 @@ app.get('/api/health', (req: Request, res: Response) => {
         database: 'fallback_enabled',
         timestamp: new Date().toISOString() 
     });
+});
+
+// ===== AI GENERATION ENDPOINTS (Server-side API key — clients don't need their own) =====
+
+const cleanBase64 = (dataURI: string) =>
+    dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+
+const getMimeType = (dataURI: string) => {
+    const match = dataURI.match(/^data:(image\/\w+);base64,/);
+    return match ? match[1] : "image/jpeg";
+};
+
+const getErrorMessage = (error: any): string => {
+    if (typeof error === "string") return error;
+    if (error?.error?.message) return error.error.message;
+    if (error?.response?.data?.error?.message) return error.response.data.error.message;
+    if (error?.message) return error.message;
+    return JSON.stringify(error);
+};
+
+const extractImage = (response: any): string => {
+    if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+    }
+    throw new Error("No image generated in the response.");
+};
+
+// Get API key — server only, never exposed to client
+const getServerApiKey = (): string => {
+    // Priority: env var > config file
+    const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
+    if (envKey.trim()) return envKey.trim();
+    
+    try {
+        if (fs.existsSync(JSON_CONFIG_PATH)) {
+            const config = JSON.parse(fs.readFileSync(JSON_CONFIG_PATH, "utf8"));
+            if (config.GEMINI_API_KEY?.trim()) return config.GEMINI_API_KEY.trim();
+        }
+    } catch (e) {}
+    
+    return "";
+};
+
+// POST /api/ai/generate-overlay — Server-side AI image generation
+app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
+    try {
+        const { originalImage, material, userInstruction, renderOptions, lang, userId } = req.body;
+        
+        // Check quota
+        if (userId) {
+            const quota = await checkAndIncrementQuota(userId);
+            if (!quota.allowed) {
+                return res.status(403).json({ 
+                    error: "Quota exceeded", 
+                    message: `You have used ${quota.used}/${quota.limit} generations. Please upgrade your tier.` 
+                });
+            }
+        }
+
+        // Get API key (server-side only)
+        const apiKey = getServerApiKey();
+        if (!apiKey) {
+            return res.status(500).json({ 
+                error: "API Key not configured on server. Please contact administrator." 
+            });
+        }
+
+        const ai = new GoogleGenAI({ apiKey });
+        const base64Data = cleanBase64(originalImage);
+        const mimeType = getMimeType(originalImage);
+
+        const isFurniture = material?.category === "Muebles" || material?.usage === "Furniture";
+        
+        const lightingHint =
+            renderOptions?.lighting === "SUNSET"
+                ? "warm golden hour sunset lighting"
+                : renderOptions?.lighting === "NIGHT_LUXURY"
+                    ? "dramatic night luxury lighting with warm interior glow"
+                    : "natural ambient lighting";
+
+        // Build prompt
+        const materialIdentity = `"${material?.name || "selected material"}" — Category: ${material?.category || "general"}${material?.subcategory ? `, Sub: ${material.subcategory}` : ""}`;
+        
+        let finalPrompt: string;
+        if (isFurniture) {
+            finalPrompt = `You are a professional virtual stager.
+Place ${materialIdentity} into this room.
+Style: ${material?.promptModifier || "modern"}.
+${userInstruction ? `User request: "${userInstruction}"` : ""}
+Rules:
+- Match room perspective, scale to surrounding objects
+- Cast correct shadows from the room's light source (${lightingHint})
+- Photorealistic textures (fabric weave, wood grain, metal reflections)
+- Do NOT alter existing furniture/objects unless user asks
+- Output ONLY the final image`;
+        } else {
+            finalPrompt = `You are an architectural visualization specialist.
+Apply ${materialIdentity} to the correct surfaces in this image.
+${userInstruction ? `User request: "${userInstruction}"` : ""}
+Rules:
+- Apply material ONLY to matching surfaces (floors for flooring, walls for wall covering, ceilings for ceiling panels, etc.)
+- Preserve all objects IN FRONT of the surface — do NOT paint over furniture, people, plants
+- Match room perspective for texture mapping (grout lines, wood grain direction)
+- Re-apply original shadows/highlights onto the new material
+- Lighting: ${lightingHint}
+- Output ONLY the final photorealistic image`;
+        }
+
+        const contents = {
+            parts: [
+                { inlineData: { data: base64Data, mimeType } },
+                { text: finalPrompt },
+            ],
+        };
+
+        // Generate with primary model
+        let response;
+        try {
+            response = await ai.models.generateContent({
+                model: "gemini-1.5-flash",
+                contents,
+            });
+        } catch (primaryError: any) {
+            console.warn("Primary model failed, trying fallback:", getErrorMessage(primaryError));
+            response = await ai.models.generateContent({
+                model: "gemini-1.5-pro",
+                contents,
+            });
+        }
+
+        const resultImage = extractImage(response);
+        res.json({ success: true, image: resultImage });
+        
+    } catch (error: any) {
+        console.error("AI generation error:", error);
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// POST /api/ai/analyze-room — Server-side room analysis
+app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
+    try {
+        const { image, userId, lang } = req.body;
+        
+        if (userId) {
+            const quota = await checkAndIncrementQuota(userId);
+            if (!quota.allowed) {
+                return res.status(403).json({ error: "Quota exceeded" });
+            }
+        }
+
+        const apiKey = getServerApiKey();
+        if (!apiKey) {
+            return res.status(500).json({ error: "API Key not configured on server" });
+        }
+
+        const ai = new GoogleGenAI({ apiKey });
+        const base64Data = cleanBase64(image);
+        const mimeType = getMimeType(image);
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: {
+                parts: [
+                    { inlineData: { data: base64Data, mimeType } },
+                    {
+                        text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
+                    },
+                ],
+            },
+        });
+
+        res.json({ success: true, analysis: response.text || "Could not analyze the room." });
+        
+    } catch (error: any) {
+        console.error("Room analysis error:", error);
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
 });
 
 // ===== MATERIALS ENDPOINTS (existing) =====
