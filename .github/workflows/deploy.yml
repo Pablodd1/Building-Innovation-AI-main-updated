@@ -8,6 +8,8 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -17,8 +19,6 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Install Dependencies
         run: npm ci || npm install
@@ -29,15 +29,11 @@ jobs:
       - name: Create API Config
         run: |
           mkdir -p data
-          # Check for API key in various secret names (backward compatible)
-          API_KEY="${{ secrets.GEMINI_API_KEY || secrets.VITE_GEMINI_API_KEY || '' }}"
-          if [ -n "$API_KEY" ]; then
-            echo '{"GEMINI_API_KEY":"'"$API_KEY"'"}' > data/config.json
-            echo "✅ API config created from GitHub secret"
-          else
-            echo "⚠️ No GEMINI_API_KEY or VITE_GEMINI_API_KEY secret found. AI generation will fail until configured."
-            echo '{}' > data/config.json
-          fi
+          cat > data/config.json << 'EOF'
+          {"GEMINI_API_KEY":"${{ secrets.GEMINI_API_KEY || secrets.VITE_GEMINI_API_KEY || '' }}"}
+          EOF
+          echo "API config created"
+
       - name: Deploy via LFTP
         env:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
@@ -53,7 +49,7 @@ jobs:
           set net:max-retries 3;
           set net:reconnect-interval-base 5;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mirror -Rnv ./dist/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
-          mirror -Rnv ./dist-server/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
-          mirror -Rnv ./data/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist/ ./public_html/dist/ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist-server/ ./public_html/dist-server/ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./data/ ./public_html/data/ --parallel=10 --no-perms --ignore-time --only-newer;
           "
