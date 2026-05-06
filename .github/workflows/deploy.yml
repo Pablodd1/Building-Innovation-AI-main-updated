@@ -17,12 +17,22 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Install Dependencies
         run: npm ci || npm install
 
       - name: Build Project
         run: npm run build
+
+      - name: Create API Config
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          mkdir -p data
+          echo '{"GEMINI_API_KEY":"'"$GEMINI_API_KEY"'"}' > data/config.json
+          echo "API config created: $(cat data/config.json | cut -c1-50)..."
 
       - name: Deploy via LFTP
         env:
@@ -39,6 +49,7 @@ jobs:
           set net:max-retries 3;
           set net:reconnect-interval-base 5;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mirror -Rnv ./dist/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
-          mirror -Rnv ./dist-server/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist/ ./public_html/dist/ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist-server/ ./public_html/dist-server/ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./data/ ./public_html/data/ --parallel=10 --no-perms --ignore-time --only-newer;
           "
