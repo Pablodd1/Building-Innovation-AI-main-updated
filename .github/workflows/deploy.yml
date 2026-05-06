@@ -27,13 +27,17 @@ jobs:
         run: npm run build
 
       - name: Create API Config
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           mkdir -p data
-          echo '{"GEMINI_API_KEY":"'"$GEMINI_API_KEY"'"}' > data/config.json
-          echo "API config created: $(cat data/config.json | cut -c1-50)..."
-
+          # Check for API key in various secret names (backward compatible)
+          API_KEY="${{ secrets.GEMINI_API_KEY || secrets.VITE_GEMINI_API_KEY || '' }}"
+          if [ -n "$API_KEY" ]; then
+            echo '{"GEMINI_API_KEY":"'"$API_KEY"'"}' > data/config.json
+            echo "✅ API config created from GitHub secret"
+          else
+            echo "⚠️ No GEMINI_API_KEY or VITE_GEMINI_API_KEY secret found. AI generation will fail until configured."
+            echo '{}' > data/config.json
+          fi
       - name: Deploy via LFTP
         env:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
@@ -49,7 +53,7 @@ jobs:
           set net:max-retries 3;
           set net:reconnect-interval-base 5;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mirror -Rnv ./dist/ ./public_html/dist/ --parallel=10 --no-perms --ignore-time --only-newer;
-          mirror -Rnv ./dist-server/ ./public_html/dist-server/ --parallel=10 --no-perms --ignore-time --only-newer;
-          mirror -Rnv ./data/ ./public_html/data/ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./dist-server/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
+          mirror -Rnv ./data/ ./ --parallel=10 --no-perms --ignore-time --only-newer;
           "
