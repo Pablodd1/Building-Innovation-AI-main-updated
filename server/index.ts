@@ -699,18 +699,24 @@ Rules:
             ],
         };
 
-        // Generate with primary model
+        // Generate with image-capable model (Nano Banana)
         let response;
         try {
             response = await ai.models.generateContent({
-                model: "gemini-1.5-pro",
+                model: "gemini-2.5-flash-image",
                 contents,
+                config: {
+                    responseModalities: ["TEXT", "IMAGE"],
+                },
             });
         } catch (primaryError: any) {
-            console.warn("Primary model failed, trying fallback (gemini-1.5-flash):", getErrorMessage(primaryError));
+            console.warn("gemini-2.5-flash-image failed, trying fallback (gemini-3.1-flash-image-preview):", getErrorMessage(primaryError));
             response = await ai.models.generateContent({
-                model: "gemini-1.5-flash",
+                model: "gemini-3.1-flash-image-preview",
                 contents,
+                config: {
+                    responseModalities: ["TEXT", "IMAGE"],
+                },
             });
         }
 
@@ -747,7 +753,7 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
         let response;
         try {
             response = await ai.models.generateContent({
-                model: "gemini-1.5-flash",
+                model: "gemini-2.5-flash",
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType } },
@@ -757,19 +763,10 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
                     ],
                 },
             });
-        } catch (flashError: any) {
-            console.warn("gemini-1.5-flash failed, falling back to 1.5-pro:", getErrorMessage(flashError));
-            response = await ai.models.generateContent({
-                model: "gemini-1.5-pro",
-                contents: {
-                    parts: [
-                        { inlineData: { data: base64Data, mimeType } },
-                        {
-                            text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
-                        },
-                    ],
-                },
-            });
+        } catch (primaryError: any) {
+            console.warn("gemini-2.5-flash failed for analysis:", getErrorMessage(primaryError));
+            // Re-throw — gemini-2.5-flash is the most reliable text model
+            throw primaryError;
         }
 
         res.json({ success: true, analysis: response.text || "Could not analyze the room." });

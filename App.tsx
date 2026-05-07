@@ -22,7 +22,6 @@ import { CameraCapture } from "./components/CameraCapture";
 import { ImageComparator } from "./components/ImageComparator";
 import { EstimationPanel } from "./components/EstimationPanel";
 import { AdminPurchaseQueue } from "./components/AdminPurchaseQueue";
-import { SmartView } from "./components/SmartView";
 import {
     generateMaterialOverlay,
     generateRoomAnalysis,
@@ -350,7 +349,6 @@ const App: React.FC = () => {
     const [cartCount, setCartCount] = useState<number>(0);
 
     const [showProbeModal, setShowProbeModal] = useState(false);
-    const [showSmartView, setShowSmartView] = useState(false);
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -3066,17 +3064,7 @@ const App: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-                                {/* Smart View */}
-                        <button
-                            onClick={() => setShowSmartView(true)}
-                            className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm hover:from-blue-500 hover:to-indigo-500 transition-colors mt-2 flex items-center justify-center gap-2"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                            {lang === 'es' ? 'Vista Inteligente' : 'Smart View'}
-                        </button>
+
 
                         {/* New Analysis Trigger */}
                                 <Button
@@ -3553,22 +3541,7 @@ const App: React.FC = () => {
             )}
             {view === AppView.EDITOR && renderEditor()}
 
-            {/* Smart View Overlay */}
-            {showSmartView && selectedMaterial && originalImage && (
-                <SmartView
-                    material={selectedMaterial}
-                    capturedImage={originalImage}
-                    onClose={() => setShowSmartView(false)}
-                    onApply={(resultImage) => {
-                        setGenerationState((prev) => ({
-                            ...prev,
-                            resultImage: resultImage,
-                        }));
-                        setShowSmartView(false);
-                    }}
-                    lang={lang}
-                />
-            )}
+
 
             {view === AppView.ESTIMATION && (
                 selectedMaterial ? (
