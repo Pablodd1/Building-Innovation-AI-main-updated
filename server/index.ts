@@ -572,6 +572,125 @@ app.get('/api/admin/status', (req: Request, res: Response) => {
     });
 });
 
+// ===== ANALYTICS & GENERATION TRACKING =====
+
+// In-memory generation log (persists until server restart; could be extended to DB/JSON)
+const generationLog: Array<{
+    timestamp: string;
+    userId?: number;
+    materialId?: string;
+    materialName?: string;
+    category?: string;
+    success: boolean;
+    durationMs: number;
+    model: string;
+    error?: string;
+}> = [];
+
+app.get('/api/admin/analytics', async (req: Request, res: Response) => {
+    try {
+        const health = await monitor.getHealth();
+        
+        // Get user stats from JSON fallback
+        let userStats = { total: 0, free: 0, pro: 0, enterprise: 0, totalGenerations: 0 };
+        try {
+            const users = await getUsers();
+            userStats.total = users.length;
+            for (const u of users) {
+                const tier = (u.tier || 'Free').toLowerCase();
+                if (tier === 'pro') userStats.pro++;
+                else if (tier === 'enterprise') userStats.enterprise++;
+                else userStats.free++;
+                userStats.totalGenerations += (u.generations_used || 0);
+            }
+        } catch (e) {}
+        
+        // Get product stats
+        let productCount = 0;
+        let categoryBreakdown: Record<string, number> = {};
+        try {
+            const products = loadFromJSON(JSON_PRODUCTS_PATH);
+            productCount = products.length;
+            for (const p of products) {
+                const cat = p.category || 'Uncategorized';
+                categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
+            }
+        } catch (e) {}
+        
+        // Top rendered materials from generation log
+        const materialCounts: Record<string, { name: string; count: number; category: string }> = {};
+        for (const gen of generationLog) {
+            if (gen.materialId && gen.success) {
+                if (!materialCounts[gen.materialId]) {
+                    materialCounts[gen.materialId] = { name: gen.materialName || gen.materialId, count: 0, category: gen.category || '' };
+                }
+                materialCounts[gen.materialId].count++;
+            }
+        }
+        const topMaterials = Object.entries(materialCounts)
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 10)
+            .map(([id, data]) => ({ id, ...data }));
+        
+        // Recent generations (last 20)
+        const recentGenerations = generationLog.slice(-20).reverse();
+        
+        // Hourly generation counts (last 24h)
+        const now = Date.now();
+        const hourlyGenerations: Array<{ hour: string; count: number; errors: number }> = [];
+        for (let i = 23; i >= 0; i--) {
+            const hourStart = now - (i + 1) * 3600000;
+            const hourEnd = now - i * 3600000;
+            const hourLabel = new Date(hourEnd).toISOString().slice(11, 16);
+            const inRange = generationLog.filter(g => {
+                const t = new Date(g.timestamp).getTime();
+                return t >= hourStart && t < hourEnd;
+            });
+            hourlyGenerations.push({
+                hour: hourLabel,
+                count: inRange.filter(g => g.success).length,
+                errors: inRange.filter(g => !g.success).length,
+            });
+        }
+        
+        // Success rate
+        const totalGens = generationLog.length;
+        const successGens = generationLog.filter(g => g.success).length;
+        const avgDuration = totalGens > 0 
+            ? Math.round(generationLog.reduce((sum, g) => sum + g.durationMs, 0) / totalGens)
+            : 0;
+
+        res.json({
+            server: {
+                uptime: Math.floor(process.uptime()),
+                nodeEnv: process.env.NODE_ENV || 'development',
+                commit: BUILD_COMMIT,
+                startTime: health.usage.startTime,
+            },
+            usage: health.usage,
+            users: userStats,
+            products: {
+                total: productCount,
+                categories: categoryBreakdown,
+            },
+            ai: {
+                totalGenerations: totalGens,
+                successfulGenerations: successGens,
+                failedGenerations: totalGens - successGens,
+                successRate: totalGens > 0 ? Math.round((successGens / totalGens) * 100) : 0,
+                avgDurationMs: avgDuration,
+                apiKeyStatus: health.checks.apiKey.ok ? 'valid' : 'missing',
+            },
+            topMaterials,
+            recentGenerations,
+            hourlyGenerations,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
 // ===== AI GENERATION ENDPOINTS (Server-side API key — clients don't need their own) =====
 
 const cleanBase64 = (dataURI: string) =>
@@ -741,6 +860,8 @@ Rules:
         contents.parts.push({ text: finalPrompt });
 
         // Generate with image-capable model (Nano Banana)
+        const genStartTime = Date.now();
+        let usedModel = "gemini-2.5-flash-image";
         let response;
         try {
             response = await ai.models.generateContent({
@@ -752,6 +873,7 @@ Rules:
             });
         } catch (primaryError: any) {
             console.warn("gemini-2.5-flash-image failed, trying fallback (gemini-3.1-flash-image-preview):", getErrorMessage(primaryError));
+            usedModel = "gemini-3.1-flash-image-preview";
             response = await ai.models.generateContent({
                 model: "gemini-3.1-flash-image-preview",
                 contents,
@@ -762,9 +884,38 @@ Rules:
         }
 
         const resultImage = extractImage(response);
+        const durationMs = Date.now() - genStartTime;
+        
+        // Log successful generation
+        generationLog.push({
+            timestamp: new Date().toISOString(),
+            userId,
+            materialId: material?.id || material?.refCode,
+            materialName: material?.name,
+            category: material?.category,
+            success: true,
+            durationMs,
+            model: usedModel,
+        });
+        
         res.json({ success: true, image: resultImage });
         
     } catch (error: any) {
+        const durationMs = Date.now() - (genStartTime || Date.now());
+        
+        // Log failed generation
+        generationLog.push({
+            timestamp: new Date().toISOString(),
+            userId: req.body?.userId,
+            materialId: req.body?.material?.id || req.body?.material?.refCode,
+            materialName: req.body?.material?.name,
+            category: req.body?.material?.category,
+            success: false,
+            durationMs,
+            model: 'gemini-2.5-flash-image',
+            error: getErrorMessage(error),
+        });
+        
         console.error("AI generation error:", error);
         res.status(500).json({ error: getErrorMessage(error) });
     }

@@ -186,14 +186,35 @@ const App: React.FC = () => {
 
     // Admin Form State
     const [adminTab, setAdminTab] = useState<
-        "MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS"
+        "MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS"
     >("MATERIALS");
 
     useEffect(() => {
         if (view === AppView.ADMIN && adminTab === "USERS") {
             fetchAllUsers();
         }
+        if (view === AppView.ADMIN && adminTab === "ANALYTICS") {
+            fetchAnalytics();
+        }
     }, [view, adminTab]);
+
+    const [analyticsData, setAnalyticsData] = useState<any>(null);
+    const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+    const fetchAnalytics = async () => {
+        setIsLoadingAnalytics(true);
+        try {
+            const res = await fetch('/api/admin/analytics');
+            if (res.ok) {
+                const data = await res.json();
+                setAnalyticsData(data);
+            }
+        } catch (e) {
+            console.error('Failed to fetch analytics:', e);
+        } finally {
+            setIsLoadingAnalytics(false);
+        }
+    };
 
     const fetchAllUsers = async () => {
         setIsLoadingUsers(true);
@@ -1620,7 +1641,15 @@ const App: React.FC = () => {
                             {t.admin.dashboard}
                         </h1>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
+                        <Button
+                            variant={
+                                adminTab === "ANALYTICS" ? "primary" : "ghost"
+                            }
+                            onClick={() => setAdminTab("ANALYTICS")}
+                        >
+                            {lang === "es" ? "Análisis" : "Analytics"}
+                        </Button>
                         <Button
                             variant={
                                 adminTab === "MATERIALS" ? "primary" : "ghost"
@@ -1628,6 +1657,14 @@ const App: React.FC = () => {
                             onClick={() => setAdminTab("MATERIALS")}
                         >
                             {t.admin.products}
+                        </Button>
+                        <Button
+                            variant={
+                                adminTab === "USERS" ? "primary" : "ghost"
+                            }
+                            onClick={() => setAdminTab("USERS")}
+                        >
+                            {lang === "es" ? "Usuarios" : "Users"}
                         </Button>
                         <Button
                             variant={
@@ -1655,6 +1692,150 @@ const App: React.FC = () => {
                         </Button>
                     </div>
                 </div>
+
+                {adminTab === "ANALYTICS" && (
+                    <div className="space-y-6 animate-fadeIn">
+                        {isLoadingAnalytics ? (
+                            <div className="flex items-center justify-center py-20">
+                                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+                            </div>
+                        ) : analyticsData ? (
+                            <>
+                                {/* KPI Cards */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Server Uptime</div>
+                                        <div className="text-2xl font-black text-gray-800">{Math.floor((analyticsData.server?.uptime || 0) / 3600)}h {Math.floor(((analyticsData.server?.uptime || 0) % 3600) / 60)}m</div>
+                                        <div className="text-[10px] text-green-600 font-bold mt-1">● Online</div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">AI Generations</div>
+                                        <div className="text-2xl font-black text-blue-600">{analyticsData.ai?.totalGenerations || 0}</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">{analyticsData.ai?.successRate || 0}% success rate</div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Avg Render Time</div>
+                                        <div className="text-2xl font-black text-purple-600">{analyticsData.ai?.avgDurationMs ? (analyticsData.ai.avgDurationMs / 1000).toFixed(1) + 's' : '—'}</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">Gemini Nano Banana</div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Products</div>
+                                        <div className="text-2xl font-black text-gray-800">{analyticsData.products?.total || 0}</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">{Object.keys(analyticsData.products?.categories || {}).length} categories</div>
+                                    </div>
+                                </div>
+
+                                {/* User Distribution & API Status */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">User Tier Distribution</h3>
+                                        <div className="space-y-3">
+                                            {[
+                                                { label: 'Free', count: analyticsData.users?.free || 0, color: 'bg-gray-400', total: analyticsData.users?.total || 1 },
+                                                { label: 'Pro', count: analyticsData.users?.pro || 0, color: 'bg-blue-500', total: analyticsData.users?.total || 1 },
+                                                { label: 'Enterprise', count: analyticsData.users?.enterprise || 0, color: 'bg-purple-500', total: analyticsData.users?.total || 1 },
+                                            ].map(tier => (
+                                                <div key={tier.label} className="flex items-center gap-3">
+                                                    <span className="text-xs font-bold text-gray-600 w-20">{tier.label}</span>
+                                                    <div className="flex-1 bg-gray-100 rounded-full h-3">
+                                                        <div className={`${tier.color} h-3 rounded-full transition-all`} style={{ width: `${Math.max(2, (tier.count / tier.total) * 100)}%` }}></div>
+                                                    </div>
+                                                    <span className="text-xs font-bold text-gray-500 w-8 text-right">{tier.count}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between text-xs text-gray-500">
+                                            <span>Total Users: <strong className="text-gray-700">{analyticsData.users?.total || 0}</strong></span>
+                                            <span>Total Renders: <strong className="text-gray-700">{analyticsData.users?.totalGenerations || 0}</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">System Health</h3>
+                                        <div className="space-y-2">
+                                            {[
+                                                { label: 'API Key', ok: analyticsData.ai?.apiKeyStatus === 'valid' },
+                                                { label: 'AI Model', ok: true, detail: 'gemini-2.5-flash-image' },
+                                                { label: 'Product Images', ok: (analyticsData.products?.total || 0) > 0, detail: `${analyticsData.products?.total || 0} loaded` },
+                                                { label: 'Server', ok: true, detail: `Port ${analyticsData.server?.nodeEnv || '3000'}` },
+                                            ].map(item => (
+                                                <div key={item.label} className="flex items-center justify-between py-1.5 px-3 bg-gray-50 rounded-lg">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-2 h-2 rounded-full ${item.ok ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                                        <span className="text-xs font-semibold text-gray-700">{item.label}</span>
+                                                    </div>
+                                                    <span className="text-[10px] text-gray-400">{(item as any).detail || (item.ok ? 'OK' : 'Error')}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-gray-100">
+                                            <div className="text-[10px] text-gray-400">API Calls: {analyticsData.usage?.apiCalls || 0} | Requests: {analyticsData.usage?.totalRequests || 0}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Product Categories */}
+                                <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                    <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">Product Catalog by Category</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                        {Object.entries(analyticsData.products?.categories || {}).sort((a: any, b: any) => b[1] - a[1]).map(([cat, count]: [string, any]) => (
+                                            <div key={cat} className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
+                                                <div className="text-lg font-black text-blue-600">{count}</div>
+                                                <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider leading-tight mt-1">{cat}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Recent Generations */}
+                                {(analyticsData.recentGenerations?.length || 0) > 0 && (
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">Recent AI Generations</h3>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="text-[10px] uppercase text-gray-400 border-b border-gray-100">
+                                                    <tr>
+                                                        <th className="py-2 px-3">Time</th>
+                                                        <th className="py-2 px-3">Material</th>
+                                                        <th className="py-2 px-3">Category</th>
+                                                        <th className="py-2 px-3">Model</th>
+                                                        <th className="py-2 px-3">Duration</th>
+                                                        <th className="py-2 px-3">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                    {analyticsData.recentGenerations.map((gen: any, i: number) => (
+                                                        <tr key={i} className="hover:bg-gray-50">
+                                                            <td className="py-2 px-3 text-gray-500">{new Date(gen.timestamp).toLocaleTimeString()}</td>
+                                                            <td className="py-2 px-3 font-semibold text-gray-700">{gen.materialName || '—'}</td>
+                                                            <td className="py-2 px-3 text-gray-400">{gen.category || '—'}</td>
+                                                            <td className="py-2 px-3"><code className="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded">{gen.model}</code></td>
+                                                            <td className="py-2 px-3 text-gray-500">{(gen.durationMs / 1000).toFixed(1)}s</td>
+                                                            <td className="py-2 px-3">
+                                                                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${gen.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                                                    {gen.success ? 'Success' : 'Failed'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Refresh Button */}
+                                <div className="flex justify-center">
+                                    <button onClick={fetchAnalytics} className="px-6 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                                        ↻ {lang === 'es' ? 'Actualizar' : 'Refresh Analytics'}
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-center py-20 text-gray-400">No analytics data available</div>
+                        )}
+                    </div>
+                )}
 
                 {adminTab === "MATERIALS" && (
                     <div className="space-y-6 animate-fadeIn">
