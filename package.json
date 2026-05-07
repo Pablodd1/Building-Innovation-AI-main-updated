@@ -9,7 +9,7 @@
     "build:frontend": "vite build",
     "build:server": "esbuild server/index.ts --bundle --platform=node --target=node22 --outfile=dist-server/app.cjs --format=cjs --define:process.env.GITHUB_SHA=\\\"${GITHUB_SHA:-unknown}\\\"",
     "build": "npm run build:frontend && npm run build:server",
-    "start": "node app.js",
+    "start": "node dist-server/app.cjs",
     "preview": "vite preview"
   },
   "dependencies": {
