@@ -55,12 +55,12 @@ jobs:
           set net:reconnect-interval-base 10;
           set net:reconnect-interval-max 60;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mkdir -f public_html/dist public_html/dist-server public_html/data;
-          mirror -Rnv ./dist/ public_html/dist/ --parallel=3 --no-perms --ignore-time;
-          mirror -Rnv ./dist-server/ public_html/dist-server/ --parallel=3 --no-perms --ignore-time;
+          mkdir -f nodejs/dist nodejs/dist-server nodejs/data;
+          mirror -Rnv ./dist/ nodejs/dist/ --parallel=3 --no-perms --ignore-time;
+          mirror -Rnv ./dist-server/ nodejs/dist-server/ --parallel=3 --no-perms --ignore-time;
           # Force overwrite config.json every deploy (no --only-newer)
-          mirror -Rnv ./data/ public_html/data/ --parallel=1 --no-perms --ignore-time;
+          mirror -Rnv ./data/ nodejs/data/ --parallel=1 --no-perms --ignore-time;
           # Verify
-          ls -la public_html/data/config.json;
-          ls -la public_html/dist-server/app.cjs;
+          ls -la nodejs/data/config.json;
+          ls -la nodejs/dist-server/app.cjs;
           "
