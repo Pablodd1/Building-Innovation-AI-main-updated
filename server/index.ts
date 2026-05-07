@@ -7,9 +7,12 @@ import pg from 'pg';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // CRASH LOGGER: Captures startup errors on Hostinger
 function logCrash(error: any) {
@@ -1441,10 +1444,9 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
 });
 
 // Serve static files from the frontend build
-const __dirname = path.resolve();
-const distPath = fs.existsSync(path.join(__dirname, 'dist')) 
-    ? path.join(__dirname, 'dist') 
-    : __dirname;
+const distPath = fs.existsSync(path.join(path.resolve(), 'dist'))
+    ? path.join(path.resolve(), 'dist')
+    : path.resolve();
 
 console.log(`📂 Serving static files from: ${distPath}`);
 
