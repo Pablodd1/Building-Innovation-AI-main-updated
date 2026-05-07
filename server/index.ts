@@ -744,17 +744,33 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
         const base64Data = cleanBase64(image);
         const mimeType = getMimeType(image);
 
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: {
-                parts: [
-                    { inlineData: { data: base64Data, mimeType } },
-                    {
-                        text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
-                    },
-                ],
-            },
-        });
+        let response;
+        try {
+            response = await ai.models.generateContent({
+                model: "gemini-2.5-pro",
+                contents: {
+                    parts: [
+                        { inlineData: { data: base64Data, mimeType } },
+                        {
+                            text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
+                        },
+                    ],
+                },
+            });
+        } catch (proError: any) {
+            console.warn("gemini-2.5-pro failed, falling back to 2.5-flash:", getErrorMessage(proError));
+            response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: {
+                    parts: [
+                        { inlineData: { data: base64Data, mimeType } },
+                        {
+                            text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
+                        },
+                    ],
+                },
+            });
+        }
 
         res.json({ success: true, analysis: response.text || "Could not analyze the room." });
         
