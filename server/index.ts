@@ -9,6 +9,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { GoogleGenAI } from "@google/genai";
 import { sendPurchaseNotifications } from './emailService';
+import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 
 // CRASH LOGGER: Captures startup errors on Hostinger
 function logCrash(error: any) {
@@ -154,6 +155,16 @@ app.get('/api/health', (req: Request, res: Response) => {
         status: 'ok', 
         database: 'fallback_enabled',
         timestamp: new Date().toISOString() 
+    });
+});
+
+// Build info — confirms which commit is running
+app.get('/api/build', (req: Request, res: Response) => {
+    res.json({
+        commit: BUILD_COMMIT,
+        builtAt: BUILD_TIME,
+        nodeEnv: process.env.NODE_ENV || 'development',
+        port: PORT,
     });
 });
 
