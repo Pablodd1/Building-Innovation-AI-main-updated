@@ -703,13 +703,13 @@ Rules:
         let response;
         try {
             response = await ai.models.generateContent({
-                model: "gemini-2.0-flash",
+                model: "gemini-1.5-pro",
                 contents,
             });
         } catch (primaryError: any) {
-            console.warn("Primary model failed, trying fallback:", getErrorMessage(primaryError));
+            console.warn("Primary model failed, trying fallback (gemini-1.5-flash):", getErrorMessage(primaryError));
             response = await ai.models.generateContent({
-                model: "gemini-2.0-flash",
+                model: "gemini-1.5-flash",
                 contents,
             });
         }
@@ -747,7 +747,7 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
         let response;
         try {
             response = await ai.models.generateContent({
-                model: "gemini-2.5-pro",
+                model: "gemini-1.5-flash",
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType } },
@@ -757,10 +757,10 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
                     ],
                 },
             });
-        } catch (proError: any) {
-            console.warn("gemini-2.5-pro failed, falling back to 2.5-flash:", getErrorMessage(proError));
+        } catch (flashError: any) {
+            console.warn("gemini-1.5-flash failed, falling back to 1.5-pro:", getErrorMessage(flashError));
             response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: "gemini-1.5-pro",
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType } },
@@ -1885,7 +1885,7 @@ console.log(`📂 Serving static files from: ${distPath}`);
 app.use(express.static(distPath));
 
 // SPA fallback: handle all non-API routes
-app.get('/{*path}', (req: Request, res: Response, next) => {
+app.use((req: Request, res: Response, next) => {
     // If it's an API route that wasn't matched, continue to error handler
     if (req.path.startsWith('/api')) {
         return next();
