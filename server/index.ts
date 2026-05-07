@@ -174,9 +174,18 @@ class SystemMonitor {
   private async checkConfig() {
     try {
       const configPath = findConfigPath();
-      if (!configPath) return { ok: false, message: 'Config file not found' };
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      const key = config.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      let key = null;
+      
+      if (configPath) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        key = config.GEMINI_API_KEY;
+      }
+      
+      // Fallback to env var
+      if (!key) {
+        key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      }
+      
       if (!key) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
       if (!key.startsWith('AIza')) return { ok: false, message: 'API key format invalid (should start with AIza)' };
       return { ok: true, message: `Key valid (${key.length} chars)` };
