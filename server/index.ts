@@ -12,6 +12,7 @@ import { GoogleGenAI } from "@google/genai";
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 import { TelegramAlerts, telegramAlerts } from './telegramAlerts';
+import { productionAlerts } from './productionAlerts';
 
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
 const SERVER_DIR = path.resolve();
@@ -314,18 +315,36 @@ async function getUsers() {
     }
 }
 
-// Middleware + Monitoring
+// Middleware + Monitoring + Security
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// Request tracking for admin dashboard
+// Security headers for production
+app.use((req: Request, res: Response, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+});
+
+// Request tracking for admin dashboard + error alerts
 app.use((req: Request, res: Response, next) => {
     monitor.trackRequest(req);
     const start = Date.now();
     res.on('finish', () => {
         const duration = Date.now() - start;
+        if (duration > 5000) {
+            console.warn(`[SLOW] ${req.method} ${req.path} took ${duration}ms`);
+        }
         if (res.statusCode >= 500) {
             monitor.trackError(new Error(`${req.method} ${req.path} returned ${res.statusCode} in ${duration}ms`));
+            productionAlerts.sendErrorAlert(
+                new Error(`${req.method} ${req.path} returned ${res.statusCode}`),
+                `Request took ${duration}ms`
+            );
         }
     });
     next();
@@ -495,6 +514,34 @@ app.get('/api/admin/test-telegram', async (req: Request, res: Response) => {
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
+});
+
+// Production status endpoint
+app.get('/api/admin/status', (req: Request, res: Response) => {
+    res.json({
+        app: {
+            name: 'BuildingApp',
+            version: '0.0.0',
+            commit: BUILD_COMMIT,
+            nodeEnv: process.env.NODE_ENV || 'development',
+            port: PORT,
+            uptime: Math.floor(process.uptime()),
+        },
+        alerts: productionAlerts.getStatus(),
+        database: {
+            configured: !!process.env.DATABASE_URL,
+            fallback: true,
+        },
+        ai: {
+            provider: 'Google Gemini',
+            apiKeyConfigured: true,
+        },
+        security: {
+            headersEnabled: true,
+            rateLimiting: false, // TODO: add rate limiting
+        },
+        timestamp: new Date().toISOString(),
+    });
 });
 
 // ===== AI GENERATION ENDPOINTS (Server-side API key — clients don't need their own) =====
@@ -1823,7 +1870,14 @@ app.listen(PORT, async () => {
         console.warn('[Telegram] Config init failed:', e);
     }
     
-    // Send startup notification via Telegram
+    // Send startup notification via email (primary)
+    try {
+        await productionAlerts.sendStartupAlert(BUILD_COMMIT, PORT);
+    } catch (e) {
+        console.warn('[Alerts] Startup email failed:', e);
+    }
+    
+    // Send startup notification via Telegram (secondary)
     try {
         await telegramAlerts.sendStartupAlert(BUILD_COMMIT, PORT);
     } catch (e) {
@@ -1833,18 +1887,22 @@ app.listen(PORT, async () => {
     // Schedule daily health report (every 24 hours)
     setInterval(async () => {
         try {
-            await monitor.sendHealthAlert();
+            const health = await monitor.getHealth();
+            await productionAlerts.sendHealthAlert(health);
+            await monitor.sendHealthAlert(); // Telegram
         } catch (e) {
-            console.warn('[Telegram] Daily report failed:', e);
+            console.warn('[Alerts] Daily report failed:', e);
         }
     }, 24 * 60 * 60 * 1000); // 24 hours
     
     // Also send initial health report after 30 seconds
     setTimeout(async () => {
         try {
-            await monitor.sendHealthAlert();
+            const health = await monitor.getHealth();
+            await productionAlerts.sendHealthAlert(health, true);
+            await monitor.sendHealthAlert(); // Telegram
         } catch (e) {
-            console.warn('[Telegram] Initial report failed:', e);
+            console.warn('[Alerts] Initial report failed:', e);
         }
     }, 30000);
 });
