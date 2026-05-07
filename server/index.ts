@@ -15,6 +15,89 @@ import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
 const SERVER_DIR = path.resolve();
 
+// [SystemMonitor class moved to after config definitions]
+
+
+// CRASH LOGGER: Captures startup errors on Hostinger
+function logCrash(error: any) {
+    const msg = `${new Date().toISOString()}\n${error.stack || error}\n`;
+    try {
+        fs.appendFileSync(path.join(process.cwd(), 'crash.log'), msg);
+    } catch (e) {}
+    console.error('CRITICAL STARTUP ERROR:', error);
+}
+
+try {
+const { Pool } = pg;
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Database Configuration (Support both URL and individual vars)
+const dbConfig = process.env.DATABASE_URL 
+    ? { connectionString: process.env.DATABASE_URL }
+    : {
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        port: Number(process.env.DB_PORT) || 5432
+    };
+
+const pool = new Pool({
+    ...dbConfig,
+    ssl: { rejectUnauthorized: false }
+});
+
+// In-memory error log for debugging
+const errorLog: any[] = [];
+
+const TIERS = {
+    FREE: { name: 'Free', limit: 5 },
+    PRO: { name: 'Pro', limit: 50 },
+    ENTERPRISE: { name: 'Enterprise', limit: 9999 }
+};
+
+// Run migrations on startup
+async function runMigrations() {
+    try {
+        await pool.query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'Free';
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS generations_used INTEGER DEFAULT 0;
+            ALTER TABLE materials ADD COLUMN IF NOT EXISTS price_contractor DECIMAL(10, 2);
+        `);
+        console.log('✅ Database migrations applied');
+    } catch (e: any) {
+        console.warn('⚠️ Migration failed (likely no DB connection):', e.message);
+    }
+}
+runMigrations();
+
+const JSON_DB_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'products.json'))
+    ? path.join(process.cwd(), 'public', 'data', 'products.json')
+    : path.join(process.cwd(), 'data', 'products.json');
+
+const JSON_USERS_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'users.json'))
+    ? path.join(process.cwd(), 'public', 'data', 'users.json')
+    : path.join(process.cwd(), 'data', 'users.json');
+
+const JSON_PRODUCTS_PATH = JSON_DB_PATH;
+
+// Try multiple paths for config — Hostinger cwd varies depending on how Node is started
+const JSON_CONFIG_PATHS = [
+    path.join(process.cwd(), 'data', 'config.json'),           // cwd/data
+    path.resolve(SERVER_DIR, '..', 'data', 'config.json'),      // sibling to dist-server
+    path.resolve(SERVER_DIR, '..', '..', 'data', 'config.json'), // two levels up
+];
+
+function findConfigPath(): string | null {
+    for (const p of JSON_CONFIG_PATHS) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
+const JSON_CONFIG_PATH = findConfigPath() || JSON_CONFIG_PATHS[0];
+
 // ==================== ADMIN HEALTH & MONITORING SYSTEM ====================
 
 interface HealthStatus {
@@ -185,86 +268,6 @@ setTimeout(async () => {
         serverBundle: health.checks.serverBundle.ok ? '✅' : '❌',
     });
 }, 1000);
-
-// CRASH LOGGER: Captures startup errors on Hostinger
-function logCrash(error: any) {
-    const msg = `${new Date().toISOString()}\n${error.stack || error}\n`;
-    try {
-        fs.appendFileSync(path.join(process.cwd(), 'crash.log'), msg);
-    } catch (e) {}
-    console.error('CRITICAL STARTUP ERROR:', error);
-}
-
-try {
-const { Pool } = pg;
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Database Configuration (Support both URL and individual vars)
-const dbConfig = process.env.DATABASE_URL 
-    ? { connectionString: process.env.DATABASE_URL }
-    : {
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        port: Number(process.env.DB_PORT) || 5432
-    };
-
-const pool = new Pool({
-    ...dbConfig,
-    ssl: { rejectUnauthorized: false }
-});
-
-// In-memory error log for debugging
-const errorLog: any[] = [];
-
-const TIERS = {
-    FREE: { name: 'Free', limit: 5 },
-    PRO: { name: 'Pro', limit: 50 },
-    ENTERPRISE: { name: 'Enterprise', limit: 9999 }
-};
-
-// Run migrations on startup
-async function runMigrations() {
-    try {
-        await pool.query(`
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'Free';
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS generations_used INTEGER DEFAULT 0;
-            ALTER TABLE materials ADD COLUMN IF NOT EXISTS price_contractor DECIMAL(10, 2);
-        `);
-        console.log('✅ Database migrations applied');
-    } catch (e: any) {
-        console.warn('⚠️ Migration failed (likely no DB connection):', e.message);
-    }
-}
-runMigrations();
-
-const JSON_DB_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'products.json'))
-    ? path.join(process.cwd(), 'public', 'data', 'products.json')
-    : path.join(process.cwd(), 'data', 'products.json');
-
-const JSON_USERS_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'users.json'))
-    ? path.join(process.cwd(), 'public', 'data', 'users.json')
-    : path.join(process.cwd(), 'data', 'users.json');
-
-const JSON_PRODUCTS_PATH = JSON_DB_PATH;
-
-// Try multiple paths for config — Hostinger cwd varies depending on how Node is started
-const JSON_CONFIG_PATHS = [
-    path.join(process.cwd(), 'data', 'config.json'),           // cwd/data
-    path.resolve(SERVER_DIR, '..', 'data', 'config.json'),      // sibling to dist-server
-    path.resolve(SERVER_DIR, '..', '..', 'data', 'config.json'), // two levels up
-];
-
-function findConfigPath(): string | null {
-    for (const p of JSON_CONFIG_PATHS) {
-        if (fs.existsSync(p)) return p;
-    }
-    return null;
-}
-
-const JSON_CONFIG_PATH = findConfigPath() || JSON_CONFIG_PATHS[0];
 
 // Helper to get config (API Keys, etc.)
 async function getConfig() {
