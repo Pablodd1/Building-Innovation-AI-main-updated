@@ -709,7 +709,7 @@ Rules:
         } catch (primaryError: any) {
             console.warn("Primary model failed, trying fallback:", getErrorMessage(primaryError));
             response = await ai.models.generateContent({
-                model: "gemini-2.0-flash-exp",
+                model: "gemini-2.0-flash",
                 contents,
             });
         }
