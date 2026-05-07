@@ -74,13 +74,28 @@ const JSON_USERS_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data',
 
 const JSON_PRODUCTS_PATH = JSON_DB_PATH;
 
-const JSON_CONFIG_PATH = path.join(process.cwd(), 'data', 'config.json');
+// Try multiple paths for config — Hostinger cwd varies depending on how Node is started
+const JSON_CONFIG_PATHS = [
+    path.join(process.cwd(), 'data', 'config.json'),           // cwd/data
+    path.resolve(__dirname, '..', 'data', 'config.json'),      // sibling to dist-server
+    path.resolve(__dirname, '..', '..', 'data', 'config.json'), // two levels up
+];
+
+function findConfigPath(): string | null {
+    for (const p of JSON_CONFIG_PATHS) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
+const JSON_CONFIG_PATH = findConfigPath() || JSON_CONFIG_PATHS[0];
 
 // Helper to get config (API Keys, etc.)
 async function getConfig() {
+    const configPath = findConfigPath();
     try {
-        if (fs.existsSync(JSON_CONFIG_PATH)) {
-            return JSON.parse(fs.readFileSync(JSON_CONFIG_PATH, 'utf8'));
+        if (configPath) {
+            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
         }
     } catch (e) {}
     return { GEMINI_API_KEY: process.env.VITE_GEMINI_API_KEY || "" };
@@ -173,16 +188,17 @@ const extractImage = (response: any): string => {
 
 // Get API key — server only, never exposed to client
 const getServerApiKey = (): string => {
-    // Priority: env var > config file
+    // Priority: env var > config file (any found path)
     const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
     if (envKey.trim()) return envKey.trim();
     
-    try {
-        if (fs.existsSync(JSON_CONFIG_PATH)) {
-            const config = JSON.parse(fs.readFileSync(JSON_CONFIG_PATH, "utf8"));
+    const configPath = findConfigPath();
+    if (configPath) {
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
             if (config.GEMINI_API_KEY?.trim()) return config.GEMINI_API_KEY.trim();
-        }
-    } catch (e) {}
+        } catch (e) {}
+    }
     
     return "";
 };
@@ -1333,6 +1349,28 @@ app.post('/api/ai/generate', async (req: Request, res: Response) => {
 app.get('/api/admin/config', async (req: Request, res: Response) => {
     const config = await getConfig();
     res.json({ hasKey: !!config.GEMINI_API_KEY });
+});
+
+// Debug endpoint — helps diagnose path issues on Hostinger (safe: no key exposed)
+app.get('/api/debug/config-path', async (req: Request, res: Response) => {
+    const searches = JSON_CONFIG_PATHS.map(p => ({
+        path: p,
+        exists: fs.existsSync(p),
+        cwd: process.cwd(),
+        dirname: __dirname,
+    }));
+    const found = searches.find(s => s.exists);
+    const config = await getConfig();
+    res.json({
+        cwd: process.cwd(),
+        dirname: __dirname,
+        pathsSearched: searches,
+        configFound: !!found,
+        configPath: found?.path || null,
+        keyPresent: !!config.GEMINI_API_KEY,
+        keyLength: config.GEMINI_API_KEY?.length || 0,
+        envKeyPresent: !!(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY),
+    });
 });
 
 app.post('/api/admin/config', async (req: Request, res: Response) => {
