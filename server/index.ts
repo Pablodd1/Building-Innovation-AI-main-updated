@@ -582,6 +582,34 @@ const getMimeType = (dataURI: string) => {
     return match ? match[1] : "image/jpeg";
 };
 
+const getLocalImageBase64 = (relativePath: string): { data: string; mimeType: string } | null => {
+    try {
+        if (!relativePath) return null;
+        // Remove leading slash if present
+        const cleanPath = relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+        
+        // Try multiple locations for the image
+        const possiblePaths = [
+            path.join(process.cwd(), 'public', cleanPath),
+            path.join(process.cwd(), cleanPath),
+            path.resolve(cleanPath)
+        ];
+
+        for (const fullPath of possiblePaths) {
+            if (fs.existsSync(fullPath)) {
+                const data = fs.readFileSync(fullPath);
+                const ext = path.extname(fullPath).toLowerCase().replace('.', '');
+                const mimeType = ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg';
+                return { data: data.toString('base64'), mimeType };
+            }
+        }
+        return null;
+    } catch (e) {
+        console.warn(`Could not load local image: ${relativePath}`, e);
+        return null;
+    }
+};
+
 const getErrorMessage = (error: any): string => {
     if (typeof error === "string") return error;
     if (error?.error?.message) return error.error.message;
@@ -664,27 +692,34 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
                     ? "dramatic night luxury lighting with warm interior glow"
                     : "natural ambient lighting";
 
+        // Load product image as reference if available
+        const productRef = getLocalImageBase64(material?.imageUrl);
+        const hasProductImage = !!productRef;
+
         // Build prompt
         const materialIdentity = `"${material?.name || "selected material"}" — Category: ${material?.category || "general"}${material?.subcategory ? `, Sub: ${material.subcategory}` : ""}`;
         
         let finalPrompt: string;
         if (isFurniture) {
             finalPrompt = `You are a professional virtual stager.
-Place ${materialIdentity} into this room.
+Place the product shown in the "Product Reference" image into this room.
+Product Name: ${materialIdentity}
 Style: ${material?.promptModifier || "modern"}.
 ${userInstruction ? `User request: "${userInstruction}"` : ""}
 Rules:
 - Match room perspective, scale to surrounding objects
 - Cast correct shadows from the room's light source (${lightingHint})
-- Photorealistic textures (fabric weave, wood grain, metal reflections)
+- Use exact textures/colors from the Product Reference image
 - Do NOT alter existing furniture/objects unless user asks
 - Output ONLY the final image`;
         } else {
             finalPrompt = `You are an architectural visualization specialist.
-Apply ${materialIdentity} to the correct surfaces in this image.
+Apply the material shown in the "Product Reference" image to the correct surfaces in the room photo.
+Material: ${materialIdentity}
 ${userInstruction ? `User request: "${userInstruction}"` : ""}
 Rules:
 - Apply material ONLY to matching surfaces (floors for flooring, walls for wall covering, ceilings for ceiling panels, etc.)
+- Use the EXACT texture, pattern, and color from the Product Reference image
 - Preserve all objects IN FRONT of the surface — do NOT paint over furniture, people, plants
 - Match room perspective for texture mapping (grout lines, wood grain direction)
 - Re-apply original shadows/highlights onto the new material
@@ -692,12 +727,18 @@ Rules:
 - Output ONLY the final photorealistic image`;
         }
 
-        const contents = {
+        const contents: any = {
             parts: [
-                { inlineData: { data: base64Data, mimeType } },
-                { text: finalPrompt },
+                { inlineData: { data: base64Data, mimeType } }, // Part 1: Room Image
             ],
         };
+
+        if (hasProductImage) {
+            contents.parts.push({ text: "Product Reference Image:" });
+            contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
+        }
+
+        contents.parts.push({ text: finalPrompt });
 
         // Generate with image-capable model (Nano Banana)
         let response;
