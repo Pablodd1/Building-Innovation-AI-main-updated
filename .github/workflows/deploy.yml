@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir -p data
           cat > data/config.json << 'EOF'
-          {"GEMINI_API_KEY":"${{ secrets.GEMINI_API_KEY || secrets.VITE_GEMINI_API_KEY || '' }}"}
+          {"GEMINI_API_KEY":"${{ secrets.GEMINI_API_KEY || secrets.VITE_GEMINI_API_KEY || '' }}","TELEGRAM_BOT_TOKEN":"${{ secrets.TELEGRAM_BOT_TOKEN || '' }}","TELEGRAM_CHAT_ID":"${{ secrets.TELEGRAM_CHAT_ID || '7838956683' }}"}
           EOF
           echo "API config created"
           ls -la data/config.json

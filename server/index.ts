@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
+import { TelegramAlerts, telegramAlerts } from './telegramAlerts';
 
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
 const SERVER_DIR = path.resolve();
@@ -143,7 +144,8 @@ class SystemMonitor {
 
   trackError(error: any) {
     this.counters.errors++;
-    this.sendAlert('error', `Error occurred: ${error.message || error}`);
+    // Send Telegram alert for errors
+    telegramAlerts.sendErrorAlert(error instanceof Error ? error : new Error(String(error)));
   }
 
   async getHealth(): Promise<HealthStatus> {
@@ -229,29 +231,9 @@ class SystemMonitor {
     }
   }
 
-  async sendAlert(type: string, message: string) {
-    const now = Date.now();
-    const lastSent = this.alertCooldown.get(type) || 0;
-    if (now - lastSent < 3600000) return; // 1 hour cooldown
-
-    this.alertCooldown.set(type, now);
-    const adminEmail = process.env.ADMIN_EMAIL || 'jasmelacosta@gmail.com';
-    
-    try {
-      const { sendPurchaseNotifications } = await import('./emailService');
-      await sendPurchaseNotifications({
-        customerEmail: adminEmail,
-        materialName: 'System Alert',
-        quantity: 0,
-        totalPrice: 0,
-        customerName: 'System Monitor',
-        company: 'BuildingApp',
-        phone: 'N/A',
-      });
-      console.log(`[ALERT] ${type}: ${message}`);
-    } catch (e) {
-      console.error('[ALERT] Failed to send alert email:', e);
-    }
+  async sendHealthAlert(): Promise<boolean> {
+    const health = await this.getHealth();
+    return telegramAlerts.sendHealthAlert(health);
   }
 
   getDailyReport() {
@@ -486,6 +468,33 @@ app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
 app.get('/api/admin/report', (req: Request, res: Response) => {
     const report = monitor.getDailyReport();
     res.json(report);
+});
+
+// Test Telegram configuration
+app.get('/api/admin/test-telegram', async (req: Request, res: Response) => {
+    try {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (!token) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'TELEGRAM_BOT_TOKEN not configured. Add it to environment variables.' 
+            });
+        }
+        
+        const result = await telegramAlerts.sendMessage({
+            text: '<b>✅ BuildingApp Telegram Test</b>\n\nYour Telegram alerts are working!',
+            parse_mode: 'HTML'
+        });
+        
+        res.json({
+            success: result,
+            message: result ? 'Test message sent successfully' : 'Failed to send test message',
+            tokenConfigured: !!token,
+            chatId: process.env.TELEGRAM_CHAT_ID || '7838956683'
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 // ===== AI GENERATION ENDPOINTS (Server-side API key — clients don't need their own) =====
@@ -897,6 +906,21 @@ app.post('/api/purchase-requests', async (req: Request, res: Response) => {
                 ...purchaseRequest,
                 cart_items: JSON.parse(purchaseRequest.cart_items)
             });
+
+            // Also send Telegram alert
+            try {
+                await telegramAlerts.sendPurchaseAlert({
+                    customerName: `${first_name} ${last_name}`,
+                    company: company_name,
+                    materialName: material_name || 'Multiple items',
+                    quantity: quantity || cart_items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || 1,
+                    totalPrice: total_price,
+                    customerEmail: customer_email,
+                    phone: phone
+                });
+            } catch (tgErr) {
+                console.warn('[Telegram] Purchase alert failed:', tgErr);
+            }
 
             // Log email delivery
             if (notifications.customer.success) {
@@ -1787,9 +1811,42 @@ app.get('/{*path}', (req: Request, res: Response, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
     console.log(`📊 Serving from: ${distPath}`);
+    
+    // Initialize Telegram from config file
+    try {
+        const { initTelegramFromConfig } = await import('./telegramAlerts');
+        await initTelegramFromConfig();
+    } catch (e) {
+        console.warn('[Telegram] Config init failed:', e);
+    }
+    
+    // Send startup notification via Telegram
+    try {
+        await telegramAlerts.sendStartupAlert(BUILD_COMMIT, PORT);
+    } catch (e) {
+        console.warn('[Telegram] Startup alert failed:', e);
+    }
+    
+    // Schedule daily health report (every 24 hours)
+    setInterval(async () => {
+        try {
+            await monitor.sendHealthAlert();
+        } catch (e) {
+            console.warn('[Telegram] Daily report failed:', e);
+        }
+    }, 24 * 60 * 60 * 1000); // 24 hours
+    
+    // Also send initial health report after 30 seconds
+    setTimeout(async () => {
+        try {
+            await monitor.sendHealthAlert();
+        } catch (e) {
+            console.warn('[Telegram] Initial report failed:', e);
+        }
+    }, 30000);
 });
 
 } catch (startupError) {
