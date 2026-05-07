@@ -330,6 +330,34 @@ app.use((req: Request, res: Response, next) => {
     next();
 });
 
+// Simple in-memory rate limiter for API endpoints
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT = 100; // requests per window
+const RATE_WINDOW = 60 * 1000; // 1 minute
+
+function rateLimit(req: Request, res: Response, next: Function) {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const key = `${ip}:${req.path}`;
+    const record = rateLimitStore.get(key);
+    
+    if (!record || now > record.resetTime) {
+        rateLimitStore.set(key, { count: 1, resetTime: now + RATE_WINDOW });
+        return next();
+    }
+    
+    if (record.count >= RATE_LIMIT) {
+        console.warn(`[RATE LIMIT] ${ip} exceeded limit for ${req.path}`);
+        return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+    }
+    
+    record.count++;
+    next();
+}
+
+// Apply rate limiting to API routes
+app.use('/api/', rateLimit);
+
 // Request tracking for admin dashboard + error alerts
 app.use((req: Request, res: Response, next) => {
     monitor.trackRequest(req);
