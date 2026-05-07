@@ -12,7 +12,8 @@ import { GoogleGenAI } from "@google/genai";
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
+const SERVER_DIR = path.resolve();
 
 // CRASH LOGGER: Captures startup errors on Hostinger
 function logCrash(error: any) {
@@ -81,8 +82,8 @@ const JSON_PRODUCTS_PATH = JSON_DB_PATH;
 // Try multiple paths for config — Hostinger cwd varies depending on how Node is started
 const JSON_CONFIG_PATHS = [
     path.join(process.cwd(), 'data', 'config.json'),           // cwd/data
-    path.resolve(__dirname, '..', 'data', 'config.json'),      // sibling to dist-server
-    path.resolve(__dirname, '..', '..', 'data', 'config.json'), // two levels up
+    path.resolve(SERVER_DIR, '..', 'data', 'config.json'),      // sibling to dist-server
+    path.resolve(SERVER_DIR, '..', '..', 'data', 'config.json'), // two levels up
 ];
 
 function findConfigPath(): string | null {
@@ -1380,13 +1381,13 @@ app.get('/api/debug/config-path', async (req: Request, res: Response) => {
         path: p,
         exists: fs.existsSync(p),
         cwd: process.cwd(),
-        dirname: __dirname,
+        dirname: SERVER_DIR,
     }));
     const found = searches.find(s => s.exists);
     const config = await getConfig();
     res.json({
         cwd: process.cwd(),
-        dirname: __dirname,
+        dirname: SERVER_DIR,
         pathsSearched: searches,
         configFound: !!found,
         configPath: found?.path || null,
