@@ -566,7 +566,7 @@ app.get('/api/admin/status', (req: Request, res: Response) => {
         },
         security: {
             headersEnabled: true,
-            rateLimiting: false, // TODO: add rate limiting
+            rateLimiting: true,
         },
         timestamp: new Date().toISOString(),
     });
