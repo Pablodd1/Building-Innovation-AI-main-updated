@@ -188,18 +188,27 @@ const extractImage = (response: any): string => {
 
 // Get API key — server only, never exposed to client
 const getServerApiKey = (): string => {
-    // Priority: env var > config file (any found path)
+    // Priority: env var (Hostinger Node.js apps support this) > config file
     const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
-    if (envKey.trim()) return envKey.trim();
+    if (envKey.trim()) {
+        console.log("[API Key] Loaded from environment variable");
+        return envKey.trim();
+    }
     
     const configPath = findConfigPath();
     if (configPath) {
         try {
             const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-            if (config.GEMINI_API_KEY?.trim()) return config.GEMINI_API_KEY.trim();
-        } catch (e) {}
+            if (config.GEMINI_API_KEY?.trim()) {
+                console.log("[API Key] Loaded from config file:", configPath);
+                return config.GEMINI_API_KEY.trim();
+            }
+        } catch (e) {
+            console.error("[API Key] Error reading config file:", configPath, e);
+        }
     }
     
+    console.error("[API Key] No key found in env vars or config file. Checked paths:", JSON_CONFIG_PATHS);
     return "";
 };
 
