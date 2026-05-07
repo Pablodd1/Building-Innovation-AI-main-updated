@@ -77,7 +77,7 @@ class SystemMonitor {
       checks: {
         apiKey: config,
         database: db,
-        configFile: { ok: !!config.ok, path: JSON_CONFIG_PATH },
+        configFile: { ok: !!findConfigPath(), path: findConfigPath() },
         staticFiles,
         serverBundle: bundle,
       },
@@ -90,7 +90,9 @@ class SystemMonitor {
 
   private async checkConfig() {
     try {
-      const config = JSON.parse(fs.readFileSync(JSON_CONFIG_PATH, 'utf8'));
+      const configPath = findConfigPath();
+      if (!configPath) return { ok: false, message: 'Config file not found' };
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       const key = config.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       if (!key) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
       if (!key.startsWith('AIza')) return { ok: false, message: 'API key format invalid (should start with AIza)' };
