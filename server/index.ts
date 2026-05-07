@@ -15,6 +15,175 @@ import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
 const SERVER_DIR = path.resolve();
 
+// ==================== ADMIN HEALTH & MONITORING SYSTEM ====================
+
+interface HealthStatus {
+  timestamp: string;
+  uptime: number;
+  version: string;
+  commit: string;
+  checks: {
+    apiKey: { ok: boolean; message: string };
+    database: { ok: boolean; message: string };
+    configFile: { ok: boolean; path: string | null };
+    staticFiles: { ok: boolean; distPath: string; size: number };
+    serverBundle: { ok: boolean; path: string; size: number };
+  };
+  usage: {
+    totalRequests: number;
+    apiCalls: number;
+    aiGenerations: number;
+    materialViews: number;
+    errors: number;
+    startTime: string;
+  };
+}
+
+class SystemMonitor {
+  private startTime = Date.now();
+  private counters = {
+    totalRequests: 0,
+    apiCalls: 0,
+    aiGenerations: 0,
+    materialViews: 0,
+    errors: 0,
+  };
+  private dailyLog: any[] = [];
+  private alertCooldown = new Map<string, number>();
+
+  trackRequest(req: Request) {
+    this.counters.totalRequests++;
+    if (req.path.startsWith('/api')) this.counters.apiCalls++;
+    if (req.path.includes('generate')) this.counters.aiGenerations++;
+    if (req.path.includes('material') || req.path.includes('products')) this.counters.materialViews++;
+  }
+
+  trackError(error: any) {
+    this.counters.errors++;
+    this.sendAlert('error', `Error occurred: ${error.message || error}`);
+  }
+
+  async getHealth(): Promise<HealthStatus> {
+    const config = await this.checkConfig();
+    const db = await this.checkDatabase();
+    const staticFiles = this.checkStaticFiles();
+    const bundle = this.checkServerBundle();
+
+    return {
+      timestamp: new Date().toISOString(),
+      uptime: Math.floor((Date.now() - this.startTime) / 1000),
+      version: '0.0.0',
+      commit: BUILD_COMMIT,
+      checks: {
+        apiKey: config,
+        database: db,
+        configFile: { ok: !!config.ok, path: JSON_CONFIG_PATH },
+        staticFiles,
+        serverBundle: bundle,
+      },
+      usage: {
+        ...this.counters,
+        startTime: new Date(this.startTime).toISOString(),
+      },
+    };
+  }
+
+  private async checkConfig() {
+    try {
+      const config = JSON.parse(fs.readFileSync(JSON_CONFIG_PATH, 'utf8'));
+      const key = config.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (!key) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
+      if (!key.startsWith('AIza')) return { ok: false, message: 'API key format invalid (should start with AIza)' };
+      return { ok: true, message: `Key valid (${key.length} chars)` };
+    } catch (e: any) {
+      return { ok: false, message: `Config error: ${e.message}` };
+    }
+  }
+
+  private async checkDatabase() {
+    try {
+      const testPool = new Pool({
+        connectionString: process.env.DATABASE_URL || 'postgresql://localhost/test',
+        ssl: { rejectUnauthorized: false },
+      });
+      await testPool.query('SELECT 1');
+      await testPool.end();
+      return { ok: true, message: 'PostgreSQL connected' };
+    } catch (e: any) {
+      return { ok: false, message: `DB error: ${e.message}` };
+    }
+  }
+
+  private checkStaticFiles() {
+    const distPath = path.join(SERVER_DIR, 'dist');
+    try {
+      const stats = fs.statSync(distPath);
+      const files = fs.readdirSync(distPath);
+      return { ok: true, distPath, size: files.length };
+    } catch (e: any) {
+      return { ok: false, distPath, size: 0 };
+    }
+  }
+
+  private checkServerBundle() {
+    const bundlePath = path.join(SERVER_DIR, 'dist-server', 'app.cjs');
+    try {
+      const stats = fs.statSync(bundlePath);
+      return { ok: true, path: bundlePath, size: Math.round(stats.size / 1024 / 1024 * 100) / 100 };
+    } catch (e: any) {
+      return { ok: false, path: bundlePath, size: 0 };
+    }
+  }
+
+  async sendAlert(type: string, message: string) {
+    const now = Date.now();
+    const lastSent = this.alertCooldown.get(type) || 0;
+    if (now - lastSent < 3600000) return; // 1 hour cooldown
+
+    this.alertCooldown.set(type, now);
+    const adminEmail = process.env.ADMIN_EMAIL || 'jasmelacosta@gmail.com';
+    
+    try {
+      const { sendPurchaseNotifications } = await import('./emailService');
+      await sendPurchaseNotifications({
+        customerEmail: adminEmail,
+        materialName: 'System Alert',
+        quantity: 0,
+        totalPrice: 0,
+        customerName: 'System Monitor',
+        company: 'BuildingApp',
+        phone: 'N/A',
+      });
+      console.log(`[ALERT] ${type}: ${message}`);
+    } catch (e) {
+      console.error('[ALERT] Failed to send alert email:', e);
+    }
+  }
+
+  getDailyReport() {
+    const report = {
+      date: new Date().toISOString().split('T')[0],
+      uptime: Math.floor((Date.now() - this.startTime) / 1000),
+      usage: { ...this.counters },
+      health: null as any,
+    };
+    return report;
+  }
+}
+
+const monitor = new SystemMonitor();
+
+// Test the monitor on startup (logs to console)
+setTimeout(async () => {
+    const health = await monitor.getHealth();
+    console.log('📊 System Health Check:', {
+        apiKey: health.checks.apiKey.ok ? '✅' : '❌',
+        database: health.checks.database.ok ? '✅' : '⚠️',
+        staticFiles: health.checks.staticFiles.ok ? '✅' : '❌',
+        serverBundle: health.checks.serverBundle.ok ? '✅' : '❌',
+    });
+}, 1000);
+
 // CRASH LOGGER: Captures startup errors on Hostinger
 function logCrash(error: any) {
     const msg = `${new Date().toISOString()}\n${error.stack || error}\n`;
@@ -149,9 +318,22 @@ async function getUsers() {
     }
 }
 
-// Middleware
+// Middleware + Monitoring
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+// Request tracking for admin dashboard
+app.use((req: Request, res: Response, next) => {
+    monitor.trackRequest(req);
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        if (res.statusCode >= 500) {
+            monitor.trackError(new Error(`${req.method} ${req.path} returned ${res.statusCode} in ${duration}ms`));
+        }
+    });
+    next();
+});
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
@@ -170,6 +352,126 @@ app.get('/api/build', (req: Request, res: Response) => {
         nodeEnv: process.env.NODE_ENV || 'development',
         port: PORT,
     });
+});
+
+// ===== ADMIN HEALTH & DASHBOARD ENDPOINTS =====
+
+// Full health status (JSON)
+app.get('/api/admin/health', async (req: Request, res: Response) => {
+    try {
+        const health = await monitor.getHealth();
+        res.json(health);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Visual HTML dashboard
+app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
+    try {
+        const health = await monitor.getHealth();
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BuildingApp Admin Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #fff; margin-bottom: 10px; }
+        .subtitle { color: #888; margin-bottom: 30px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .card { background: #141414; border: 1px solid #222; border-radius: 12px; padding: 20px; }
+        .card h3 { color: #fff; margin-bottom: 15px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .status { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .status-dot.ok { background: #22c55e; }
+        .status-dot.fail { background: #ef4444; }
+        .status-dot.warn { background: #f59e0b; }
+        .metric { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #222; }
+        .metric:last-child { border-bottom: none; }
+        .metric-value { color: #fff; font-weight: 600; }
+        .commit { font-family: monospace; background: #1a1a1a; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .refresh { position: fixed; top: 20px; right: 20px; background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+        .refresh:hover { background: #1d4ed8; }
+        .uptime { font-size: 24px; font-weight: 700; color: #22c55e; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button class="refresh" onclick="location.reload()">Refresh</button>
+        <h1>BuildingApp Admin Dashboard</h1>
+        <p class="subtitle">Monitor your app's health, usage, and performance</p>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>System Status</h3>
+                <div class="status">
+                    <span class="status-dot ${health.checks.apiKey.ok ? 'ok' : 'fail'}"></span>
+                    <span>API Key: ${health.checks.apiKey.message}</span>
+                </div>
+                <div class="status">
+                    <span class="status-dot ${health.checks.database.ok ? 'ok' : 'warn'}"></span>
+                    <span>Database: ${health.checks.database.message}</span>
+                </div>
+                <div class="status">
+                    <span class="status-dot ${health.checks.configFile.ok ? 'ok' : 'fail'}"></span>
+                    <span>Config File: ${health.checks.configFile.path ? 'Found' : 'Missing'}</span>
+                </div>
+                <div class="status">
+                    <span class="status-dot ${health.checks.staticFiles.ok ? 'ok' : 'fail'}"></span>
+                    <span>Static Files: ${health.checks.staticFiles.size} files</span>
+                </div>
+                <div class="status">
+                    <span class="status-dot ${health.checks.serverBundle.ok ? 'ok' : 'fail'}"></span>
+                    <span>Server Bundle: ${health.checks.serverBundle.size} MB</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Usage Statistics</h3>
+                <div class="metric"><span>Total Requests</span><span class="metric-value">${health.usage.totalRequests.toLocaleString()}</span></div>
+                <div class="metric"><span>API Calls</span><span class="metric-value">${health.usage.apiCalls.toLocaleString()}</span></div>
+                <div class="metric"><span>AI Generations</span><span class="metric-value">${health.usage.aiGenerations.toLocaleString()}</span></div>
+                <div class="metric"><span>Material Views</span><span class="metric-value">${health.usage.materialViews.toLocaleString()}</span></div>
+                <div class="metric"><span>Errors</span><span class="metric-value" style="color:${health.usage.errors > 0 ? '#ef4444' : '#22c55e'}">${health.usage.errors.toLocaleString()}</span></div>
+            </div>
+            
+            <div class="card">
+                <h3>Build Info</h3>
+                <div class="metric"><span>Commit</span><span class="commit">${health.commit}</span></div>
+                <div class="metric"><span>Version</span><span class="metric-value">${health.version}</span></div>
+                <div class="metric"><span>Uptime</span><span class="metric-value">${Math.floor(health.uptime / 60)}m ${health.uptime % 60}s</span></div>
+                <div class="metric"><span>Server Time</span><span class="metric-value">${new Date(health.timestamp).toLocaleTimeString()}</span></div>
+            </div>
+            
+            <div class="card">
+                <h3>Quick Links</h3>
+                <div class="metric"><a href="/api/health" style="color:#2563eb">/api/health</a></div>
+                <div class="metric"><a href="/api/build" style="color:#2563eb">/api/build</a></div>
+                <div class="metric"><a href="/api/debug/config-path" style="color:#2563eb">/api/debug/config-path</a></div>
+                <div class="metric"><a href="/api/admin/health" style="color:#2563eb">/api/admin/health (JSON)</a></div>
+            </div>
+        </div>
+        
+        <p style="color:#555; text-align:center; margin-top:40px;">BuildingApp Admin Dashboard — Auto-refreshes on page reload</p>
+    </div>
+</body>
+</html>`;
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Daily report endpoint (for cron jobs or scheduled emails)
+app.get('/api/admin/report', (req: Request, res: Response) => {
+    const report = monitor.getDailyReport();
+    res.json(report);
 });
 
 // ===== AI GENERATION ENDPOINTS (Server-side API key — clients don't need their own) =====
