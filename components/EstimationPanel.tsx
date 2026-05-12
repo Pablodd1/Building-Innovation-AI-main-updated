@@ -27,6 +27,7 @@ interface EstimationPanelProps {
   unitSystem?: 'latam' | 'usa';
   userEmail?: string;
   userName?: string;
+  userLocation?: { lat: number; lon: number } | null;
 }
 
 // Logo Component
@@ -39,7 +40,7 @@ const BrandLogoSmall = ({ className = "stroke-white print:stroke-black" }: { cla
   </svg>
 );
 
-export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en', unitSystem = 'usa', userEmail = '', userName = '' }) => {
+export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en', unitSystem = 'usa', userEmail = '', userName = '', userLocation = null }) => {
   const [width, setWidth] = useState<number>(3);
   const [height, setHeight] = useState<number>(2.5);
 
@@ -66,6 +67,29 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
   const [manualLaborOverride, setManualLaborOverride] = useState<boolean>(false);
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [emailError, setEmailError] = useState<string>('');
+  
+  const [nearbyInstallers, setNearbyInstallers] = useState<any[]>([]);
+  const [isSearchingInstallers, setIsSearchingInstallers] = useState(false);
+
+  const fetchNearbyInstallers = async () => {
+    if (!userLocation) return;
+    setIsSearchingInstallers(true);
+    try {
+        const res = await fetch('/api/marketplace/installers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: userLocation.lat, lon: userLocation.lon })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            setNearbyInstallers(data);
+        }
+    } catch (e) {
+        console.error('Failed to fetch installers:', e);
+    } finally {
+        setIsSearchingInstallers(false);
+    }
+  };
 
   const t = TRANSLATIONS[lang];
   const isUSA = unitSystem === 'usa';
@@ -693,6 +717,49 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                         />
                     ) : (
                         <div className="text-2xl font-black text-green-400">${laborCost}</div>
+                    )}
+                </div>
+            )}
+
+            {/* Nearby Installers Marketplace */}
+            {userLocation && (
+                <div className="bg-slate-800/40 p-4 rounded-lg border border-slate-700/50">
+                    <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">
+                            {lang === 'es' ? 'Instaladores Cercanos' : 'Nearby Installers'}
+                        </h4>
+                        <button 
+                            onClick={fetchNearbyInstallers}
+                            disabled={isSearchingInstallers}
+                            className="text-[10px] font-bold text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                            {isSearchingInstallers ? (lang === 'es' ? 'Buscando...' : 'Searching...') : (lang === 'es' ? 'Buscar Proximidad' : 'Search Proximity')}
+                        </button>
+                    </div>
+
+                    {nearbyInstallers.length > 0 ? (
+                        <div className="space-y-2">
+                            {nearbyInstallers.map((inst) => (
+                                <div 
+                                    key={inst.id} 
+                                    onClick={() => setSelectedContractor(inst.id)}
+                                    className={`flex justify-between items-center p-2 rounded border cursor-pointer transition-all ${selectedContractor === inst.id ? 'bg-blue-600/20 border-blue-500' : 'bg-black border-slate-700 hover:border-slate-500'}`}
+                                >
+                                    <div>
+                                        <div className="text-xs font-bold text-white">{inst.name}</div>
+                                        <div className="text-[9px] text-slate-500 uppercase">{inst.region}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-[10px] font-bold text-blue-400">{inst.distance_km.toFixed(1)} km</div>
+                                        <div className="text-[9px] text-slate-500">{lang === 'es' ? 'Distancia' : 'Distance'}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-[10px] text-slate-500 italic">
+                            {lang === 'es' ? 'Haga clic para encontrar instaladores certificados en su área.' : 'Click to find certified installers in your area.'}
+                        </p>
                     )}
                 </div>
             )}

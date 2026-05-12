@@ -9,10 +9,12 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
+import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 import { TelegramAlerts, telegramAlerts } from './telegramAlerts';
 import { productionAlerts } from './productionAlerts';
+import mysql from 'mysql2/promise';
 
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
 const SERVER_DIR = path.resolve();
@@ -30,11 +32,9 @@ function logCrash(error: any) {
 }
 
 try {
+const PORT = process.env.PORT || 3000;
 const { Pool } = pg;
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Database Configuration (Support both URL and individual vars)
 const dbConfig = process.env.DATABASE_URL 
     ? { connectionString: process.env.DATABASE_URL }
     : {
@@ -45,24 +45,65 @@ const dbConfig = process.env.DATABASE_URL
         port: Number(process.env.DB_PORT) || 5432
     };
 
-const pool = new Pool({
-    ...dbConfig,
-    ssl: { rejectUnauthorized: false }
-});
+const isPostgres = !!(process.env.DATABASE_URL || process.env.DB_PORT === '5432');
+
+const pool = isPostgres 
+    ? new Pool({ ...dbConfig, ssl: { rejectUnauthorized: false } })
+    : null;
+
+const mysqlPool = !isPostgres 
+    ? mysql.createPool({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        port: Number(process.env.DB_PORT) || 3306,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0
+    })
+    : null;
+
+// Helper to run queries on either DB
+async function query(text: string, params: any[] = []) {
+    if (isPostgres && pool) {
+        return await pool.query(text, params);
+    } else if (mysqlPool) {
+        // Convert $1, $2 to ? for MySQL
+        const mysqlQuery = text.replace(/\$\d+/g, '?');
+        const [rows] = await mysqlPool.execute(mysqlQuery, params);
+        return { rows: rows as any[] };
+    }
+    throw new Error('No database connection configured');
+}
 
 // In-memory error log for debugging
 const errorLog: any[] = [];
 
 const TIERS = {
-    FREE: { name: 'Free', limit: 5 },
-    PRO: { name: 'Pro', limit: 50 },
+    FREE: { name: 'Tier 1 (Free)', limit: 20 },
+    STARTER: { name: 'Tier 2 ($10)', limit: 50 },
+    PLUS: { name: 'Tier 3 ($50)', limit: 100 },
     ENTERPRISE: { name: 'Enterprise', limit: 9999 }
 };
+
+// HA VERSINE FORMULA: Calculate distance between two coordinates in km
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
 
 // Run migrations on startup
 async function runMigrations() {
     try {
-        await pool.query(`
+        await query(`
             ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'Free';
             ALTER TABLE users ADD COLUMN IF NOT EXISTS generations_used INTEGER DEFAULT 0;
             ALTER TABLE materials ADD COLUMN IF NOT EXISTS price_contractor DECIMAL(10, 2);
@@ -199,13 +240,26 @@ class SystemMonitor {
 
   private async checkDatabase() {
     try {
-      const testPool = new Pool({
-        connectionString: process.env.DATABASE_URL || 'postgresql://localhost/test',
-        ssl: { rejectUnauthorized: false },
-      });
-      await testPool.query('SELECT 1');
-      await testPool.end();
-      return { ok: true, message: 'PostgreSQL connected' };
+      if (isPostgres) {
+        const testPool = new Pool({
+          connectionString: process.env.DATABASE_URL || 'postgresql://localhost/test',
+          ssl: { rejectUnauthorized: false },
+        });
+        await testPool.query('SELECT 1');
+        await testPool.end();
+        return { ok: true, message: 'PostgreSQL connected' };
+      } else {
+        const connection = await mysql.createConnection({
+          host: process.env.DB_HOST,
+          user: process.env.DB_USER,
+          password: process.env.DB_PASSWORD,
+          database: process.env.DB_NAME,
+          port: Number(process.env.DB_PORT) || 3306,
+        });
+        await connection.execute('SELECT 1');
+        await connection.end();
+        return { ok: true, message: 'MySQL connected' };
+      }
     } catch (e: any) {
       return { ok: false, message: `DB error: ${e.message}` };
     }
@@ -288,7 +342,7 @@ function saveToJSON(filePath: string, data: any) {
 // Helper to get materials from DB or JSON
 async function getMaterials() {
     try {
-        const result = await pool.query('SELECT * FROM materials ORDER BY created_at DESC');
+        const result = await query('SELECT * FROM materials ORDER BY created_at DESC');
         return result.rows;
     } catch (e) {
         console.warn('Database unavailable, reading from local JSON manifest...');
@@ -303,7 +357,7 @@ async function getMaterials() {
 // Helper to get users from DB or JSON
 async function getUsers() {
     try {
-        const result = await pool.query('SELECT * FROM users');
+        const result = await query('SELECT * FROM users');
         return result.rows;
     } catch (e) {
         console.warn('Database unavailable, reading from local users fallback...');
@@ -317,6 +371,40 @@ async function getUsers() {
 
 // Middleware + Monitoring + Security
 app.use(cors());
+// Stripe Webhook Endpoint (Must use raw body for signature verification)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_123', { apiVersion: '2025-02-24.acacia' });
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
+
+app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req: Request, res: Response) => {
+    const sig = req.headers['stripe-signature'] as string;
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } catch (err: any) {
+        console.error(`Webhook Error: ${err.message}`);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the event
+    if (event.type === 'checkout.session.completed') {
+        const session = event.data.object as any;
+        const userId = session.client_reference_id;
+        
+        if (userId) {
+            console.log(`Payment successful for user ${userId}. Upgrading tier...`);
+            try {
+                const tier = session.amount_total > 4000 ? 'Enterprise' : 'Pro'; // $50 = Enterprise, $10 = Pro
+                await query('UPDATE users SET tier = $1 WHERE id = $2', [tier, userId]);
+            } catch (e: any) {
+                console.error(`Failed to upgrade tier for user ${userId}:`, e);
+            }
+        }
+    }
+
+    res.json({received: true});
+});
+
 app.use(express.json({ limit: '50mb' }));
 
 // Security headers for production
@@ -992,7 +1080,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
         } = req.body;
 
         try {
-            const result = await pool.query(
+            const result = await query(
                 `INSERT INTO materials (
             ref_code, name, category, subcategory, price, price_contractor, currency, unit,
             items_per_box, width_cm, length_cm, thickness_m,
@@ -1028,7 +1116,7 @@ app.put('/api/materials/:id', async (req: Request, res: Response) => {
             description, image_url, usage, prompt_modifier
         } = req.body;
 
-        const result = await pool.query(
+        const result = await query(
             `UPDATE materials SET
         ref_code = $2, name = $3, category = $4, subcategory = $5,
         price = $6, currency = $7, unit = $8, items_per_box = $9,
@@ -1045,20 +1133,57 @@ app.put('/api/materials/:id', async (req: Request, res: Response) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Material not found' });
         }
-
         res.json(result.rows[0]);
     } catch (error: any) {
-        console.error('Update material error:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
+// ===== MARKETPLACE & INSTALLERS =====
+
+app.post('/api/marketplace/installers', async (req: Request, res: Response) => {
+    try {
+        const { lat, lon, limit = 3 } = req.body;
+        if (!lat || !lon) return res.status(400).json({ error: 'Coordinates required' });
+
+        // Get approved installers from DB or JSON
+        let installers = [];
+        try {
+            const result = await query('SELECT * FROM contractors WHERE is_approved = true');
+            installers = result.rows;
+        } catch (e) {
+            // JSON Fallback
+            installers = [
+                { id: '1', name: 'Master Floors Medellín', lat: 6.2442, lon: -75.5812, region: 'Antioquia', approved: true },
+                { id: '2', name: 'Luxury Walls Bogota', lat: 4.7110, lon: -74.0721, region: 'Cundinamarca', approved: true },
+                { id: '3', name: 'Pro Installers Cali', lat: 3.4516, lon: -76.5320, region: 'Valle', approved: true },
+            ];
+        }
+
+        // Calculate distances
+        const installersWithDistance = installers.map((inst: any) => ({
+            ...inst,
+            distance_km: calculateDistance(lat, lon, inst.lat || 0, inst.lon || 0)
+        }));
+
+        // Sort by distance and return top N
+        const sorted = installersWithDistance
+            .sort((a, b) => a.distance_km - b.distance_km)
+            .slice(0, limit);
+
+        res.json(sorted);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 // Delete material
 app.delete('/api/materials/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         try {
-            const result = await pool.query('DELETE FROM materials WHERE id = $1 RETURNING id', [id]);
+            const result = await query('DELETE FROM materials WHERE id = $1 RETURNING id', [id]);
             if (result.rows.length === 0) {
                 // If not in DB, maybe it's in JSON
                 throw new Error('Not found in DB');
@@ -1100,7 +1225,7 @@ app.post('/api/materials/bulk', async (req: Request, res: Response) => {
 
         let imported = 0;
         for (const vals of values) {
-            await pool.query(
+            await query(
                 `INSERT INTO materials (
           ref_code, name, category, subcategory, price, currency, unit,
           items_per_box, width_cm, length_cm, thickness_m,
@@ -1121,7 +1246,7 @@ app.post('/api/materials/bulk', async (req: Request, res: Response) => {
 // Delete all materials (factory reset)
 app.delete('/api/materials', async (req: Request, res: Response) => {
     try {
-        await pool.query('DELETE FROM materials');
+        await query('DELETE FROM materials');
         res.json({ success: true, message: 'All materials deleted' });
     } catch (error: any) {
         console.error('Delete all materials error:', error);
@@ -1157,7 +1282,7 @@ app.post('/api/purchase-requests', async (req: Request, res: Response) => {
         }
 
         // Insert purchase request
-        const result = await pool.query(
+        const result = await query(
             `INSERT INTO purchase_requests (
         user_id, customer_name, customer_email, customer_phone, customer_address,
         cart_items, total_estimate, currency, project_notes, room_image_url, status
@@ -1204,7 +1329,7 @@ app.post('/api/purchase-requests', async (req: Request, res: Response) => {
 
             // Log email delivery
             if (notifications.customer.success) {
-                await pool.query(
+                await query(
                     `INSERT INTO email_logs (purchase_request_id, recipient_email, email_type, status)
            VALUES ($1, $2, $3, $4)`,
                     [purchaseRequest.id, customer_email, 'customer_confirmation', 'sent']
@@ -1212,7 +1337,7 @@ app.post('/api/purchase-requests', async (req: Request, res: Response) => {
             }
 
             if (notifications.admin.success) {
-                await pool.query(
+                await query(
                     `INSERT INTO email_logs (purchase_request_id, recipient_email, email_type, status)
            VALUES ($1, $2, $3, $4)`,
                     [purchaseRequest.id, process.env.ADMIN_EMAIL || 'admin@constructviz.com', 'admin_alert', 'sent']
@@ -1274,7 +1399,7 @@ app.post('/api/send-quote-email', async (req: Request, res: Response) => {
             unitCost: estimatedCost / (quantity || 1)
         }];
 
-        const result = await pool.query(
+        const result = await query(
             `INSERT INTO purchase_requests (
                 customer_name, customer_email, customer_phone, customer_address,
                 cart_items, total_estimate, currency, project_notes, status
@@ -1337,7 +1462,7 @@ app.get('/api/purchase-requests', async (req: Request, res: Response) => {
 
         query += ' ORDER BY created_at DESC';
 
-        const result = await pool.query(query, params);
+        const result = await query(query, params);
 
         // Parse cart_items JSON
         const requests = result.rows.map(row => ({
@@ -1356,7 +1481,7 @@ app.get('/api/purchase-requests', async (req: Request, res: Response) => {
 app.get('/api/purchase-requests/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const result = await pool.query('SELECT * FROM purchase_requests WHERE id = $1', [id]);
+        const result = await query('SELECT * FROM purchase_requests WHERE id = $1', [id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Purchase request not found' });
@@ -1401,7 +1526,7 @@ app.patch('/api/purchase-requests/:id', async (req: Request, res: Response) => {
 
         updateFields.push('updated_at = CURRENT_TIMESTAMP');
 
-        const result = await pool.query(
+        const result = await query(
             `UPDATE purchase_requests 
        SET ${updateFields.join(', ')}
        WHERE id = $1
@@ -1433,7 +1558,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
         try {
             // Check if email already exists
-            const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+            const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
             if (existing.rows.length > 0) {
                 return res.status(400).json({ error: 'Email already registered' });
             }
@@ -1442,7 +1567,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(password, salt);
 
-            const result = await pool.query(
+            const result = await query(
                 `INSERT INTO users (name, email, phone, address, password_hash, role, tier, generations_used)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id, name, email, phone, address, role, tier, generations_used, created_at`,
@@ -1512,7 +1637,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         }
 
         try {
-            const result = await pool.query(
+            const result = await query(
                 'SELECT id, name, email, phone, address, role, tier, generations_used, password_hash FROM users WHERE email = $1',
                 [email]
             );
@@ -1558,7 +1683,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 // Get all materials
 app.get('/api/materials', async (req: Request, res: Response) => {
     try {
-        const result = await pool.query('SELECT * FROM materials ORDER BY category, name');
+        const result = await query('SELECT * FROM materials ORDER BY category, name');
         if (result.rows.length === 0) {
             // Fallback to JSON if DB is empty
             if (fs.existsSync(JSON_DB_PATH)) {
@@ -1581,7 +1706,7 @@ app.get('/api/materials', async (req: Request, res: Response) => {
 app.post('/api/materials', async (req: Request, res: Response) => {
     try {
         const m = req.body;
-        const result = await pool.query(
+        const result = await query(
             `INSERT INTO materials (
                 ref_code, name, category, subcategory, price, price_contractor, currency, 
                 unit, items_per_box, width_cm, length_cm, thickness_m, 
@@ -1613,7 +1738,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
         );
 
         // Sync to JSON fallback
-        const all = await pool.query('SELECT * FROM materials ORDER BY category, name');
+        const all = await query('SELECT * FROM materials ORDER BY category, name');
         fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
 
         res.json(result.rows[0]);
@@ -1673,7 +1798,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
      try {
          const { id } = req.params;
          const m = req.body;
-         const result = await pool.query(
+         const result = await query(
              `UPDATE materials SET
                  name = $1, category = $2, subcategory = $3, price = $4, price_contractor = $5,
                  currency = $6, unit = $7, items_per_box = $8, width_cm = $9, length_cm = $10,
@@ -1688,7 +1813,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
          );
  
          // Sync to JSON
-         const all = await pool.query('SELECT * FROM materials ORDER BY category, name');
+         const all = await query('SELECT * FROM materials ORDER BY category, name');
          fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
  
          res.json(result.rows[0]);
@@ -1740,10 +1865,10 @@ app.post('/api/materials', async (req: Request, res: Response) => {
 app.delete('/api/materials/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
-        await pool.query('DELETE FROM materials WHERE id = $1 OR ref_code = $2', [id, id]);
+        await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2', [id, id]);
         
         // Sync to JSON fallback
-        const all = await pool.query('SELECT * FROM materials ORDER BY category, name');
+        const all = await query('SELECT * FROM materials ORDER BY category, name');
         fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
         
         res.json({ success: true });
@@ -1780,7 +1905,7 @@ app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid tier' });
         }
 
-        const result = await pool.query(
+        const result = await query(
             'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, email, tier',
             [tier, id]
         );
@@ -1821,7 +1946,7 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
         const hashedPassword = await bcrypt.hash(password, salt);
 
         try {
-            const result = await pool.query(
+            const result = await query(
                 `INSERT INTO users (name, email, password_hash, role, tier)
                  VALUES ($1, $2, $3, $4, $5)
                  RETURNING id, name, email, role, tier, created_at`,
@@ -1859,11 +1984,12 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
 // Get all users (Admin only)
 app.get('/api/admin/users', async (req: Request, res: Response) => {
     try {
-        const result = await pool.query('SELECT id, name, email, role, tier, generations_used, created_at FROM users ORDER BY created_at DESC');
+        const result = await query('SELECT id, name, email, role, tier, generations_used, created_at FROM users ORDER BY created_at DESC');
         res.json(result.rows);
     } catch (error: any) {
-        console.error('Get users error:', error);
-        res.status(500).json({ error: error.message });
+        console.warn('Database unavailable, reading from local users fallback for admin...');
+        const users = await getUsers();
+        res.json(users);
     }
 });
 
@@ -1874,17 +2000,18 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
         // Special case for Super Admin
         if (userId === 999) return { allowed: true };
 
-        const result = await pool.query('SELECT tier, generations_used FROM users WHERE id = $1', [userId]);
+        const result = await query('SELECT tier, generations_used FROM users WHERE id = $1', [userId]);
         if (result.rows.length === 0) return { allowed: false, error: 'User not found' };
 
         const { tier, generations_used } = result.rows[0];
-        const tierConfig = TIERS[tier.toUpperCase() as keyof typeof TIERS] || TIERS.FREE;
+        const tierKey = (tier || 'FREE').toUpperCase();
+        const tierConfig = (TIERS as any)[tierKey] || TIERS.FREE;
 
         if (generations_used >= tierConfig.limit) {
             return { allowed: false, limit: tierConfig.limit, used: generations_used };
         }
 
-        await pool.query('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', [userId]);
+        await query('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', [userId]);
         return { allowed: true, used: generations_used + 1, limit: tierConfig.limit };
     } catch (e: any) {
         console.warn('Quota check fallback to JSON:', e.message);
@@ -1928,7 +2055,7 @@ app.get('/api/debug', async (req: Request, res: Response) => {
     };
 
     try {
-        await pool.query('SELECT 1');
+        await query('SELECT 1');
         debugInfo.database = 'connected';
     } catch (e: any) {
         debugInfo.database = `error: ${e.message}`;

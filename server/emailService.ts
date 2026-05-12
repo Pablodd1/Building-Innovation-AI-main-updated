@@ -1,5 +1,6 @@
 // Email Service for Purchase Notifications
-// Uses Resend API (https://resend.com) - 3,000 free emails/month
+// Supports both Resend API and SMTP (Nodemailer)
+import nodemailer from 'nodemailer';
 
 interface PurchaseRequest {
   id: number;
@@ -25,10 +26,23 @@ interface EmailResult {
   error?: string;
 }
 
-// Get API key from environment variable
+// Get config from environment variables
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@constructviz.com';
 const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@constructviz.com';
+
+// SMTP Configuration
+const smtpConfig = {
+  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+  port: Number(process.env.SMTP_PORT) || 465,
+  secure: true,
+  auth: {
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+  },
+};
+
+const transporter = smtpConfig.auth.user ? nodemailer.createTransport(smtpConfig) : null;
 
 /**
  * Send confirmation email to customer
@@ -36,8 +50,8 @@ const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@constructviz.com';
 export async function sendCustomerConfirmation(
   request: PurchaseRequest
 ): Promise<EmailResult> {
-  if (!RESEND_API_KEY) {
-    console.error('RESEND_API_KEY not configured');
+  if (!RESEND_API_KEY && !transporter) {
+    console.error('Email service (Resend or SMTP) not configured');
     return { success: false, error: 'Email service not configured' };
   }
 
@@ -107,29 +121,40 @@ export async function sendCustomerConfirmation(
   `;
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from: `ConstructViz <${FROM_EMAIL}>`,
-        to: [request.customer_email],
+    if (transporter) {
+      const info = await transporter.sendMail({
+        from: `"ConstructViz" <${FROM_EMAIL}>`,
+        to: request.customer_email,
         subject: `Quote Request Received - Request #${request.id}`,
         html: htmlContent,
-      }),
-    });
+      });
+      console.log('Customer confirmation sent via SMTP:', info.messageId);
+      return { success: true, messageId: info.messageId };
+    } else {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: `ConstructViz <${FROM_EMAIL}>`,
+          to: [request.customer_email],
+          subject: `Quote Request Received - Request #${request.id}`,
+          html: htmlContent,
+        }),
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Resend API error:', errorData);
-      return { success: false, error: errorData.message || 'Email send failed' };
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Resend API error:', errorData);
+        return { success: false, error: errorData.message || 'Email send failed' };
+      }
+
+      const data = await response.json();
+      console.log('Customer confirmation sent via Resend:', data.id);
+      return { success: true, messageId: data.id };
     }
-
-    const data = await response.json();
-    console.log('Customer confirmation sent:', data.id);
-    return { success: true, messageId: data.id };
   } catch (error: any) {
     console.error('Email send error:', error);
     return { success: false, error: error.message };
@@ -142,8 +167,8 @@ export async function sendCustomerConfirmation(
 export async function sendAdminAlert(
   request: PurchaseRequest
 ): Promise<EmailResult> {
-  if (!RESEND_API_KEY) {
-    console.error('RESEND_API_KEY not configured');
+  if (!RESEND_API_KEY && !transporter) {
+    console.error('Email service (Resend or SMTP) not configured');
     return { success: false, error: 'Email service not configured' };
   }
 
@@ -229,29 +254,40 @@ export async function sendAdminAlert(
   `;
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from: `ConstructViz Alerts <${FROM_EMAIL}>`,
-        to: [ADMIN_EMAIL],
+    if (transporter) {
+      const info = await transporter.sendMail({
+        from: `"ConstructViz Alerts" <${FROM_EMAIL}>`,
+        to: ADMIN_EMAIL,
         subject: `🔔 New Purchase Request #${request.id} - ${request.customer_name}`,
         html: htmlContent,
-      }),
-    });
+      });
+      console.log('Admin alert sent via SMTP:', info.messageId);
+      return { success: true, messageId: info.messageId };
+    } else {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: `ConstructViz Alerts <${FROM_EMAIL}>`,
+          to: [ADMIN_EMAIL],
+          subject: `🔔 New Purchase Request #${request.id} - ${request.customer_name}`,
+          html: htmlContent,
+        }),
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Resend API error:', errorData);
-      return { success: false, error: errorData.message || 'Email send failed' };
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Resend API error:', errorData);
+        return { success: false, error: errorData.message || 'Email send failed' };
+      }
+
+      const data = await response.json();
+      console.log('Admin alert sent via Resend:', data.id);
+      return { success: true, messageId: data.id };
     }
-
-    const data = await response.json();
-    console.log('Admin alert sent:', data.id);
-    return { success: true, messageId: data.id };
   } catch (error: any) {
     console.error('Email send error:', error);
     return { success: false, error: error.message };

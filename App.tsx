@@ -115,9 +115,19 @@ const App: React.FC = () => {
             console.warn('Failed to load persisted user:', e);
         }
     }, []);
-
+    
     // Authentication State
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+    // Persist user changes across refreshes
+    useEffect(() => {
+        if (currentUser) {
+            localStorage.setItem('constructviz_user', JSON.stringify(currentUser));
+        } else {
+            localStorage.removeItem('constructviz_user');
+        }
+    }, [currentUser]);
+
     const [authMode, setAuthMode] = useState<"login" | "signup">("login");
     const [authForm, setAuthForm] = useState({
         name: "",
@@ -139,6 +149,17 @@ const App: React.FC = () => {
     const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">(
         "USD",
     );
+    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+
+    // Detect location on mount
+    useEffect(() => {
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+                (err) => console.warn("Location access denied:", err.message)
+            );
+        }
+    }, []);
 
     // Currency conversion rate (1 USD = ~4100 COP approximately)
     const USD_TO_COP_RATE = 4100;
@@ -1516,6 +1537,33 @@ const App: React.FC = () => {
                             </svg>
                         </button>
                     )}
+                    {/* Credit Meter */}
+                    {currentUser && (
+                        <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-full">
+                            <div className="flex flex-col">
+                                <div className="flex justify-between items-center w-24">
+                                    <span className="text-[9px] font-bold text-blue-600 uppercase">{currentUser.tier}</span>
+                                    <span className="text-[9px] font-bold text-blue-400">
+                                        {currentUser.generations_used} / {currentUser.tier === 'Free' ? '5' : currentUser.tier === 'Pro' ? '100' : '∞'}
+                                    </span>
+                                </div>
+                                <div className="w-24 h-1 bg-blue-200 rounded-full overflow-hidden mt-0.5">
+                                    <div 
+                                        className="h-full bg-blue-600 transition-all duration-500" 
+                                        style={{ width: `${Math.min(100, (currentUser.generations_used / (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 100 : 9999)) * 100)}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setShowSubscriptionModal(true)}
+                                className="p-1 hover:bg-blue-100 rounded-full text-blue-600"
+                                title="Upgrade Tier"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                            </button>
+                        </div>
+                    )}
+
                     <button
                         onClick={() => {
                             setCurrentUser(null);
