@@ -1752,34 +1752,34 @@ const App: React.FC = () => {
                                 {/* KPI Cards */}
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Server Uptime</div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Tiempo en Línea" : "Server Uptime"}</div>
                                         <div className="text-2xl font-black text-gray-800">{Math.floor((analyticsData.server?.uptime || 0) / 3600)}h {Math.floor(((analyticsData.server?.uptime || 0) % 3600) / 60)}m</div>
-                                        <div className="text-[10px] text-green-600 font-bold mt-1">● Online</div>
+                                        <div className="text-[10px] text-green-600 font-bold mt-1">● {lang === "es" ? "En Línea" : "Online"}</div>
                                     </div>
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">AI Generations</div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Generaciones IA" : "AI Generations"}</div>
                                         <div className="text-2xl font-black text-blue-600">{analyticsData.ai?.totalGenerations || 0}</div>
-                                        <div className="text-[10px] text-gray-500 mt-1">{analyticsData.ai?.successRate || 0}% success rate</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">{analyticsData.ai?.successRate || 0}% {lang === "es" ? "éxito" : "success rate"}</div>
                                     </div>
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Avg Render Time</div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Tiempo Promedio" : "Avg Render Time"}</div>
                                         <div className="text-2xl font-black text-purple-600">{analyticsData.ai?.avgDurationMs ? (analyticsData.ai.avgDurationMs / 1000).toFixed(1) + 's' : '—'}</div>
-                                        <div className="text-[10px] text-gray-500 mt-1">Gemini Nano Banana</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">Gemini AI Model</div>
                                     </div>
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Products</div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Productos Totales" : "Total Products"}</div>
                                         <div className="text-2xl font-black text-gray-800">{analyticsData.products?.total || 0}</div>
-                                        <div className="text-[10px] text-gray-500 mt-1">{Object.keys(analyticsData.products?.categories || {}).length} categories</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">{Object.keys(analyticsData.products?.categories || {}).length} {lang === "es" ? "categorías" : "categories"}</div>
                                     </div>
                                 </div>
 
                                 {/* User Distribution & API Status */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">User Tier Distribution</h3>
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">{lang === "es" ? "Distribución de Usuarios" : "User Tier Distribution"}</h3>
                                         <div className="space-y-3">
                                             {[
-                                                { label: 'Free', count: analyticsData.users?.free || 0, color: 'bg-gray-400', total: analyticsData.users?.total || 1 },
+                                                { label: lang === "es" ? "Gratis" : "Free", count: analyticsData.users?.free || 0, color: 'bg-gray-400', total: analyticsData.users?.total || 1 },
                                                 { label: 'Pro', count: analyticsData.users?.pro || 0, color: 'bg-blue-500', total: analyticsData.users?.total || 1 },
                                                 { label: 'Enterprise', count: analyticsData.users?.enterprise || 0, color: 'bg-purple-500', total: analyticsData.users?.total || 1 },
                                             ].map(tier => (
@@ -1793,13 +1793,13 @@ const App: React.FC = () => {
                                             ))}
                                         </div>
                                         <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between text-xs text-gray-500">
-                                            <span>Total Users: <strong className="text-gray-700">{analyticsData.users?.total || 0}</strong></span>
-                                            <span>Total Renders: <strong className="text-gray-700">{analyticsData.users?.totalGenerations || 0}</strong></span>
+                                            <span>{lang === "es" ? "Total Usuarios:" : "Total Users:"} <strong className="text-gray-700">{analyticsData.users?.total || 0}</strong></span>
+                                            <span>{lang === "es" ? "Renders Totales:" : "Total Renders:"} <strong className="text-gray-700">{analyticsData.users?.totalGenerations || 0}</strong></span>
                                         </div>
                                     </div>
 
                                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">System Health</h3>
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">{lang === "es" ? "Salud del Sistema" : "System Health"}</h3>
                                         <div className="space-y-2">
                                             {[
                                                 { label: 'API Key', ok: analyticsData.ai?.apiKeyStatus === 'valid' },
@@ -1824,7 +1824,7 @@ const App: React.FC = () => {
 
                                 {/* Product Categories */}
                                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                    <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">Product Catalog by Category</h3>
+                                    <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">{lang === "es" ? "Catálogo por Categoría" : "Product Catalog by Category"}</h3>
                                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                                         {Object.entries(analyticsData.products?.categories || {}).sort((a: any, b: any) => b[1] - a[1]).map(([cat, count]: [string, any]) => (
                                             <div key={cat} className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
@@ -1838,16 +1838,16 @@ const App: React.FC = () => {
                                 {/* Recent Generations */}
                                 {(analyticsData.recentGenerations?.length || 0) > 0 && (
                                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">Recent AI Generations</h3>
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">{lang === "es" ? "Generaciones Recientes" : "Recent AI Generations"}</h3>
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-left text-xs">
                                                 <thead className="text-[10px] uppercase text-gray-400 border-b border-gray-100">
                                                     <tr>
-                                                        <th className="py-2 px-3">Time</th>
-                                                        <th className="py-2 px-3">Material</th>
-                                                        <th className="py-2 px-3">Category</th>
-                                                        <th className="py-2 px-3">Model</th>
-                                                        <th className="py-2 px-3">Duration</th>
+                                                        <th className="py-2 px-3">{lang === "es" ? "Hora" : "Time"}</th>
+                                                        <th className="py-2 px-3">{lang === "es" ? "Material" : "Material"}</th>
+                                                        <th className="py-2 px-3">{lang === "es" ? "Categoría" : "Category"}</th>
+                                                        <th className="py-2 px-3">{lang === "es" ? "Modelo" : "Model"}</th>
+                                                        <th className="py-2 px-3">{lang === "es" ? "Duración" : "Duration"}</th>
                                                         <th className="py-2 px-3">Status</th>
                                                     </tr>
                                                 </thead>
