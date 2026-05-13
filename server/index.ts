@@ -391,11 +391,39 @@ function saveToJSON(filePath: string, data: any) {
     }
 }
 
+// Helper to map DB row to Material interface
+function mapDBToMaterial(row: any) {
+    if (!row) return null;
+    return {
+        id: String(row.id),
+        refCode: row.ref_code || row.refCode || '',
+        name: row.name || '',
+        description: row.description || '',
+        imageUrl: row.image_url || row.imageUrl || '',
+        category: row.category || '',
+        subcategory: row.subcategory || '',
+        usage: row.usage || 'Interior',
+        promptModifier: row.prompt_modifier || row.promptModifier || '',
+        pricing: {
+            pricePerUnit: Number(row.price || 0),
+            priceContractor: Number(row.price_contractor || row.price || 0),
+            currency: row.currency || 'USD',
+            unitLabel: row.unit || row.unitLabel || 'Unidad',
+            itemsPerBox: Number(row.items_per_box || 1)
+        },
+        dimensions: {
+            width: Number(row.width_cm || row.width || 0),
+            length: Number(row.length_cm || row.length || 0),
+            thickness: Number(row.thickness_m || row.thickness || 0)
+        }
+    };
+}
+
 // Helper to get materials from DB or JSON
 async function getMaterials() {
     try {
-        const result = await query('SELECT * FROM materials ORDER BY created_at DESC');
-        return result.rows;
+        const result = await query('SELECT * FROM materials ORDER BY category, name');
+        return result.rows.map(mapDBToMaterial);
     } catch (e) {
         console.warn('Database unavailable, reading from local JSON manifest...');
         if (fs.existsSync(JSON_DB_PATH)) {
@@ -1247,7 +1275,8 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
             
             // Sync to JSON fallback if we have a DB connection
             const all = await query('SELECT * FROM materials ORDER BY category, name');
-            saveToJSON(JSON_DB_PATH, all.rows);
+            const mapped = all.rows.map(mapDBToMaterial);
+            saveToJSON(JSON_DB_PATH, mapped);
             
             if (result.rows.length === 0) {
                 throw new Error('Not found in DB');
