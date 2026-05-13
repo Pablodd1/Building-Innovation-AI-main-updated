@@ -1000,18 +1000,18 @@ Rules:
 - Do NOT alter existing furniture/objects unless user asks
 - Output ONLY the final image`;
         } else {
-            finalPrompt = `You are an architectural visualization specialist.
-Apply the material shown in the "Product Reference" image to the correct surfaces in the room photo.
+            finalPrompt = `You are an elite architectural visualization specialist.
+Your task is to photorealistically OVERLAY the material from the "Product Reference" image onto the appropriate surfaces in the user's original room photo.
 Material: ${materialIdentity}
 ${userInstruction ? `User request: "${userInstruction}"` : ""}
-Rules:
-- Apply material ONLY to matching surfaces (floors for flooring, walls for wall covering, ceilings for ceiling panels, etc.)
-- Use the EXACT texture, pattern, and color from the Product Reference image
-- Preserve all objects IN FRONT of the surface — do NOT paint over furniture, people, plants
-- Match room perspective for texture mapping (grout lines, wood grain direction)
-- Re-apply original shadows/highlights onto the new material
-- Lighting: ${lightingHint}
-- Output ONLY the final photorealistic image`;
+
+STRICT RENDERING RULES:
+1. 100% PHOTOREALISM: The output must look like a real photograph, equal in quality and resolution to the original picture.
+2. EXACT OVERLAY: Apply the EXACT texture, pattern, color, and scale from the Product Reference image onto the target surface.
+3. PRESERVE FOREGROUND: You MUST flawlessly preserve and cut around all objects IN FRONT of the surface (furniture, people, plants, windows). DO NOT paint over them.
+4. PERSPECTIVE & LIGHTING: Match the room's 3D perspective exactly. Re-apply the original room's shadows, reflections, and highlights over the new material so it blends perfectly.
+5. Lighting conditions: ${lightingHint}
+6. Output ONLY the final high-quality image.`;
         }
 
         const contents: any = {
