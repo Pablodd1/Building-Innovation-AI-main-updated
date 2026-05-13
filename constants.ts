@@ -224,7 +224,7 @@ export const TRANSLATIONS: Record<Language, any> = {
             isometric: "Isometric View",
             probe: "Material Sample",
             lighting: "Lighting Condition",
-            download: "Download Result"
+            download: "Download Result Image"
         },
         quote: {
             area: "Surface Area",
@@ -384,7 +384,7 @@ export const TRANSLATIONS: Record<Language, any> = {
             isometric: "Vista Isométrica",
             probe: "Muestra de Material",
             lighting: "Condiciones de Luz",
-            download: "Descargar Resultado"
+            download: "Descargar Imagen del Resultado"
         },
         quote: {
             area: "Área de Superficie",

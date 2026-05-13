@@ -190,29 +190,49 @@ class SystemMonitor {
     telegramAlerts.sendErrorAlert(error instanceof Error ? error : new Error(String(error)));
   }
 
-  async getHealth(): Promise<HealthStatus> {
-    const config = await this.checkConfig();
-    const db = await this.checkDatabase();
-    const staticFiles = this.checkStaticFiles();
-    const bundle = this.checkServerBundle();
-
-    return {
-      timestamp: new Date().toISOString(),
-      uptime: Math.floor((Date.now() - this.startTime) / 1000),
-      version: '0.0.0',
-      commit: BUILD_COMMIT,
-      checks: {
-        apiKey: config,
-        database: db,
-        configFile: { ok: !!findConfigPath(), path: findConfigPath() },
-        staticFiles,
-        serverBundle: bundle,
-      },
       usage: {
         ...this.counters,
+        totalUsers: await this.getTotalUsers(),
         startTime: new Date(this.startTime).toISOString(),
       },
     };
+  }
+
+  private async getTotalUsers(): Promise<number> {
+    try {
+      if (pool) {
+        const res = await pool.query('SELECT COUNT(*) FROM users');
+        return parseInt(res.rows[0].count);
+      }
+      const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
+      const users = JSON.parse(data);
+      return Array.isArray(users) ? users.length : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // --- Proactive Health ---
+  private lastStatus = true;
+  
+  async checkAndReport() {
+    try {
+      const health = await this.getHealth();
+      const currentStatus = health.checks.apiKey.ok && health.checks.database.ok;
+      
+      // If status changed (Recovered or Failed)
+      if (currentStatus !== this.lastStatus) {
+        if (currentStatus) {
+           await telegramAlerts.sendSuccessAlert("System Recovery", "API Key and Database are back online.");
+        } else {
+           const issues = [];
+           if (!health.checks.apiKey.ok) issues.push(`AI Key: ${health.checks.apiKey.message}`);
+           if (!health.checks.database.ok) issues.push(`DB: ${health.checks.database.message}`);
+           await telegramAlerts.sendErrorAlert(new Error("Health Degraded"), issues.join("\n"));
+        }
+        this.lastStatus = currentStatus;
+      }
+    } catch (e) {}
   }
 
   private async checkConfig() {
@@ -304,7 +324,7 @@ class SystemMonitor {
 
 const monitor = new SystemMonitor();
 
-// Test the monitor on startup (logs to console)
+// Test the monitor on startup (logs to console + telegram)
 setTimeout(async () => {
     const health = await monitor.getHealth();
     console.log('📊 System Health Check:', {
@@ -313,7 +333,15 @@ setTimeout(async () => {
         staticFiles: health.checks.staticFiles.ok ? '✅' : '❌',
         serverBundle: health.checks.serverBundle.ok ? '✅' : '❌',
     });
-}, 1000);
+    
+    // Send startup health report to Telegram
+    await telegramAlerts.sendStartupAlert(BUILD_COMMIT, Number(PORT));
+    await monitor.sendHealthAlert();
+}, 2000);
+
+// Set up proactive monitoring intervals
+setInterval(() => monitor.checkAndReport(), 300000); // Check every 5 mins for state changes
+setInterval(() => monitor.sendHealthAlert(), 12 * 3600000); // Detailed report every 12 hours
 
 // Helper to get config (API Keys, etc.)
 async function getConfig() {
@@ -988,6 +1016,11 @@ Rules:
         
         res.json({ success: true, image: resultImage });
         
+        // Periodic success notification (every 50 gens to confirm health)
+        if (generationLog.length % 50 === 0) {
+            telegramAlerts.sendSuccessAlert(`Milestone reached: ${generationLog.length} generations total`, "System performance is stable.");
+        }
+        
     } catch (error: any) {
         const durationMs = Date.now() - (genStartTime || Date.now());
         
@@ -1000,11 +1033,13 @@ Rules:
             category: req.body?.material?.category,
             success: false,
             durationMs,
-            model: 'gemini-2.5-flash-image',
+            model: "error",
             error: getErrorMessage(error),
         });
+
+        console.error("AI Generation failed:", error);
+        telegramAlerts.sendErrorAlert(error, `AI Generation failed for user ${req.body?.userId || 'anonymous'} while rendering ${req.body?.material?.name || 'unknown material'}`);
         
-        console.error("AI generation error:", error);
         res.status(500).json({ error: getErrorMessage(error) });
     }
 });

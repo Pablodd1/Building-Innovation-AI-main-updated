@@ -125,6 +125,7 @@ export class TelegramAlerts {
 • AI Generations: ${health.usage.aiGenerations}
 • Material Views: ${health.usage.materialViews}
 • Errors: ${health.usage.errors}
+• <b>Users:</b> ${health.usage.totalUsers}
 
 <b>Uptime:</b> ${Math.floor(health.uptime / 60)}m ${health.uptime % 60}s
 <b>Commit:</b> <code>${health.commit}</code>
@@ -159,6 +160,18 @@ ${context ? `<b>Context:</b> ${context}\n` : ''}
 <a href="https://buildingapp.us/api/admin/dashboard">View Dashboard</a>`;
 
     return this.sendAlert('startup', text, true);
+  }
+
+  async sendSuccessAlert(message: string, context?: string): Promise<boolean> {
+    const text = `<b>✅ BuildingApp Success Notification</b>
+
+<b>Status:</b> ${message}
+${context ? `<b>Details:</b> ${context}\n` : ''}
+<b>Time:</b> ${new Date().toLocaleTimeString()}
+
+<a href="https://buildingapp.us/api/admin/dashboard">View Dashboard</a>`;
+
+    return this.sendAlert('success', text);
   }
 
   async sendPurchaseAlert(purchase: any): Promise<boolean> {
