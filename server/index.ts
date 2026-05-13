@@ -1242,24 +1242,34 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         try {
-            const result = await query('DELETE FROM materials WHERE id = $1 RETURNING id', [id]);
+            // Try deleting by numeric ID or by RefCode (SKU)
+            const result = await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2 RETURNING id', [id, id]);
+            
+            // Sync to JSON fallback if we have a DB connection
+            const all = await query('SELECT * FROM materials ORDER BY category, name');
+            saveToJSON(JSON_DB_PATH, all.rows);
+            
             if (result.rows.length === 0) {
-                // If not in DB, maybe it's in JSON
                 throw new Error('Not found in DB');
             }
             res.json({ success: true, id: result.rows[0].id });
-        } catch (dbError) {
-            console.warn('DB delete failed or not found, checking JSON fallback...');
+        } catch (dbError: any) {
+            console.warn('DB delete failed or not found, checking JSON fallback:', dbError.message);
             const materials = await getMaterials();
             const initialLength = materials.length;
-            const filtered = materials.filter((m: any) => m.id !== id && String(m.id) !== id);
+            
+            // Filter by ID or RefCode (SKU)
+            const filtered = materials.filter((m: any) => 
+                String(m.id) !== String(id) && 
+                String(m.refCode || m.ref_code || '') !== String(id)
+            );
             
             if (filtered.length === initialLength) {
                 return res.status(404).json({ error: 'Material not found in fallback' });
             }
             
             saveToJSON(JSON_DB_PATH, filtered);
-            res.json({ success: true, id });
+            res.json({ success: true, id, note: 'Deleted from JSON fallback' });
         }
     } catch (error: any) {
         console.error('Delete material error:', error);
@@ -1920,41 +1930,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
      }
  });
 
-// Delete material
-app.delete('/api/materials/:id', async (req: Request, res: Response) => {
-    const { id } = req.params;
-    try {
-        await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2', [id, id]);
-        
-        // Sync to JSON fallback
-        const all = await query('SELECT * FROM materials ORDER BY category, name');
-        fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
-        
-        res.json({ success: true });
-    } catch (error: any) {
-        console.warn('DB delete failed, updating JSON directly:', error.message);
-        
-        try {
-            if (fs.existsSync(JSON_DB_PATH)) {
-                const data = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
-                const filtered = data.filter((item: any) => 
-                    String(item.id) !== String(id) && 
-                    String(item.refCode || item.ref_code) !== String(id)
-                );
-                
-                if (data.length === filtered.length) {
-                    return res.status(404).json({ error: 'Material not found in JSON' });
-                }
-                
-                fs.writeFileSync(JSON_DB_PATH, JSON.stringify(filtered, null, 2));
-                return res.json({ success: true, note: 'Deleted from JSON fallback only' });
-            }
-            res.status(500).json({ error: 'DB down and JSON file missing' });
-        } catch (jsonError: any) {
-            res.status(500).json({ error: 'Failed to delete from JSON: ' + jsonError.message });
-        }
-    }
-});
+
 app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
