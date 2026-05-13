@@ -1012,10 +1012,10 @@ Rules:
                 },
             });
         } catch (primaryError: any) {
-            console.warn("gemini-2.5-flash-image failed, trying fallback (gemini-3.1-flash-image-preview):", getErrorMessage(primaryError));
-            usedModel = "gemini-3.1-flash-image-preview";
+            console.warn("gemini-2.5-flash-image failed, trying fallback (gemini-3.1-flash-lite):", getErrorMessage(primaryError));
+            usedModel = "gemini-3.1-flash-lite";
             response = await ai.models.generateContent({
-                model: "gemini-3.1-flash-image-preview",
+                model: "gemini-3.1-flash-lite",
                 contents,
                 config: {
                     responseModalities: ["TEXT", "IMAGE"],
