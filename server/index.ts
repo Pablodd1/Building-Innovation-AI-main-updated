@@ -190,6 +190,24 @@ class SystemMonitor {
     telegramAlerts.sendErrorAlert(error instanceof Error ? error : new Error(String(error)));
   }
 
+  async getHealth(): Promise<HealthStatus> {
+    const config = await this.checkConfig();
+    const db = await this.checkDatabase();
+    const staticFiles = this.checkStaticFiles();
+    const bundle = this.checkServerBundle();
+
+    return {
+      timestamp: new Date().toISOString(),
+      uptime: Math.floor((Date.now() - this.startTime) / 1000),
+      version: '0.0.0',
+      commit: BUILD_COMMIT,
+      checks: {
+        apiKey: config,
+        database: db,
+        configFile: { ok: !!findConfigPath(), path: findConfigPath() },
+        staticFiles,
+        serverBundle: bundle,
+      },
       usage: {
         ...this.counters,
         totalUsers: await this.getTotalUsers(),
@@ -203,10 +221,16 @@ class SystemMonitor {
       if (pool) {
         const res = await pool.query('SELECT COUNT(*) FROM users');
         return parseInt(res.rows[0].count);
+      } else if (mysqlPool) {
+        const [rows] = await mysqlPool.execute('SELECT COUNT(*) as count FROM users');
+        return (rows as any)[0].count;
       }
-      const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
-      const users = JSON.parse(data);
-      return Array.isArray(users) ? users.length : 0;
+      if (fs.existsSync(JSON_USERS_PATH)) {
+        const data = fs.readFileSync(JSON_USERS_PATH, 'utf8');
+        const users = JSON.parse(data);
+        return Array.isArray(users) ? users.length : 0;
+      }
+      return 0;
     } catch (e) {
       return 0;
     }
