@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-dist/
+# dist/ (Removed to allow pushing build to Hostinger)
 .env
 
 # Logs
