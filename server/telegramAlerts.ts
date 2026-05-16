@@ -6,7 +6,13 @@ import fs from 'fs';
 import path from 'path';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '7838956683'; // Jasmel's chat ID
+// IMPORTANT: The env var on Hostinger was incorrectly set to the bot's own ID (7731333606).
+// Jasmel's real personal chat ID is 7838956683. We validate and fall back to it.
+const OWNER_CHAT_ID = '7838956683'; // Jasmel Acosta (@JassCTO)
+const envChatId = process.env.TELEGRAM_CHAT_ID || '';
+// Detect if the chat ID matches the bot token prefix (i.e., the bot's own ID) — that's always wrong
+const botIdFromToken = TELEGRAM_BOT_TOKEN.split(':')[0];
+const TELEGRAM_CHAT_ID = (envChatId && envChatId !== botIdFromToken) ? envChatId : OWNER_CHAT_ID;
 
 interface TelegramMessage {
   text: string;
