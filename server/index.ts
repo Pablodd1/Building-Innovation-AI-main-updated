@@ -241,17 +241,12 @@ class SystemMonitor {
   async checkAndReport() {
     try {
       const health = await this.getHealth();
-      const currentStatus = health.checks.apiKey.ok && health.checks.database.ok;
+      // Only care about API Key being healthy for Telegram alerts
+      const currentStatus = health.checks.apiKey.ok;
       
-      // If status changed (Recovered or Failed)
       if (currentStatus !== this.lastStatus) {
-        if (currentStatus) {
-           await telegramAlerts.sendSuccessAlert("System Recovery", "API Key and Database are back online.");
-        } else {
-           const issues = [];
-           if (!health.checks.apiKey.ok) issues.push(`AI Key: ${health.checks.apiKey.message}`);
-           if (!health.checks.database.ok) issues.push(`DB: ${health.checks.database.message}`);
-           await telegramAlerts.sendErrorAlert(new Error("Health Degraded"), issues.join("\n"));
+        if (!currentStatus) {
+           await telegramAlerts.sendErrorAlert(new Error("AI Key Failure"), `The Gemini API Key is missing or invalid: ${health.checks.apiKey.message}`);
         }
         this.lastStatus = currentStatus;
       }
@@ -356,15 +351,10 @@ setTimeout(async () => {
         staticFiles: health.checks.staticFiles.ok ? '✅' : '❌',
         serverBundle: health.checks.serverBundle.ok ? '✅' : '❌',
     });
-    
-    // Send startup health report to Telegram
-    await telegramAlerts.sendStartupAlert(BUILD_COMMIT, Number(PORT));
-    await monitor.sendHealthAlert();
 }, 2000);
 
 // Set up proactive monitoring intervals
-setInterval(() => monitor.checkAndReport(), 300000); // Check every 5 mins for state changes
-setInterval(() => monitor.sendHealthAlert(), 12 * 3600000); // Detailed report every 12 hours
+setInterval(() => monitor.checkAndReport(), 300000); // Check every 5 mins for AI key failure
 
 // Helper to get config (API Keys, etc.)
 async function getConfig() {
@@ -594,10 +584,6 @@ app.use((req: Request, res: Response, next) => {
         }
         if (res.statusCode >= 500) {
             monitor.trackError(new Error(`${req.method} ${req.path} returned ${res.statusCode} in ${duration}ms`));
-            productionAlerts.sendErrorAlert(
-                new Error(`${req.method} ${req.path} returned ${res.statusCode}`),
-                `Request took ${duration}ms`
-            );
         }
     });
     next();
@@ -780,7 +766,6 @@ app.get('/api/admin/status', (req: Request, res: Response) => {
             port: PORT,
             uptime: Math.floor(process.uptime()),
         },
-        alerts: productionAlerts.getStatus(),
         database: {
             configured: !!process.env.DATABASE_URL,
             fallback: true,
@@ -1134,11 +1119,6 @@ STRICT RENDERING RULES:
         
         res.json({ success: true, image: resultImage });
         
-        // Periodic success notification (every 50 gens to confirm health)
-        if (generationLog.length % 50 === 0) {
-            telegramAlerts.sendSuccessAlert(`Milestone reached: ${generationLog.length} generations total`, "System performance is stable.");
-        }
-        
     } catch (error: any) {
         const durationMs = Date.now() - (genStartTime || Date.now());
         
@@ -1156,8 +1136,6 @@ STRICT RENDERING RULES:
         });
 
         console.error("AI Generation failed:", error);
-        telegramAlerts.sendErrorAlert(error, `AI Generation failed for user ${req.body?.userId || 'anonymous'} while rendering ${req.body?.material?.name || 'unknown material'}`);
-        
         res.status(500).json({ error: getErrorMessage(error) });
     }
 });
@@ -1475,21 +1453,6 @@ app.post('/api/purchase-requests', async (req: Request, res: Response) => {
                 ...purchaseRequest,
                 cart_items: JSON.parse(purchaseRequest.cart_items)
             });
-
-            // Also send Telegram alert
-            try {
-                await telegramAlerts.sendPurchaseAlert({
-                    customerName: `${first_name} ${last_name}`,
-                    company: company_name,
-                    materialName: material_name || 'Multiple items',
-                    quantity: quantity || cart_items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || 1,
-                    totalPrice: total_price,
-                    customerEmail: customer_email,
-                    phone: phone
-                });
-            } catch (tgErr) {
-                console.warn('[Telegram] Purchase alert failed:', tgErr);
-            }
 
             // Log email delivery
             if (notifications.customer.success) {
@@ -2390,41 +2353,9 @@ app.listen(PORT, async () => {
         console.warn('[Telegram] Config init failed:', e);
     }
     
-    // Send startup notification via email (primary)
-    try {
-        await productionAlerts.sendStartupAlert(BUILD_COMMIT, PORT);
-    } catch (e) {
-        console.warn('[Alerts] Startup email failed:', e);
-    }
+    // Startup notifications disabled as per user request
     
-    // Send startup notification via Telegram (secondary)
-    try {
-        await telegramAlerts.sendStartupAlert(BUILD_COMMIT, PORT);
-    } catch (e) {
-        console.warn('[Telegram] Startup alert failed:', e);
-    }
-    
-    // Schedule daily health report (every 24 hours)
-    setInterval(async () => {
-        try {
-            const health = await monitor.getHealth();
-            await productionAlerts.sendHealthAlert(health);
-            await monitor.sendHealthAlert(); // Telegram
-        } catch (e) {
-            console.warn('[Alerts] Daily report failed:', e);
-        }
-    }, 24 * 60 * 60 * 1000); // 24 hours
-    
-    // Also send initial health report after 30 seconds
-    setTimeout(async () => {
-        try {
-            const health = await monitor.getHealth();
-            await productionAlerts.sendHealthAlert(health, true);
-            await monitor.sendHealthAlert(); // Telegram
-        } catch (e) {
-            console.warn('[Alerts] Initial report failed:', e);
-        }
-    }, 30000);
+    // Periodic reports disabled as per user request
 });
 
 } catch (startupError) {
