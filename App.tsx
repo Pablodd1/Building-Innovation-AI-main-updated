@@ -303,10 +303,26 @@ const App: React.FC = () => {
                 body: JSON.stringify({ tier }),
             });
             if (res.ok) {
-                fetchAllUsers();
+                setAllUsers(allUsers.map(u => u.id === userId ? { ...u, tier } : u));
+                alert("Tier updated successfully!");
             }
         } catch (e) {
-            console.error("Update tier error:", e);
+            console.error("Failed to update tier", e);
+        }
+    };
+
+    const handleUpdateUserGenerations = async (userId: number, generations_used: number) => {
+        try {
+            const res = await fetch(`/api/admin/users/${userId}/generations`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ generations_used }),
+            });
+            if (res.ok) {
+                setAllUsers(allUsers.map(u => u.id === userId ? { ...u, generations_used } : u));
+            }
+        } catch (e) {
+            console.error("Failed to update generations", e);
         }
     };
 
@@ -3019,7 +3035,13 @@ const App: React.FC = () => {
                                                         style={{ width: `${Math.min(100, (u.generations_used / (u.tier === 'Free' ? 5 : u.tier === 'Pro' ? 50 : 9999)) * 100)}%` }}
                                                     ></div>
                                                 </div>
-                                                <span className="text-[10px] text-gray-500">{u.generations_used} gens</span>
+                                                <input 
+                                                    type="number"
+                                                    className="w-16 bg-gray-200 border border-gray-300 rounded text-[10px] p-1 mt-1"
+                                                    value={u.generations_used}
+                                                    onChange={(e) => handleUpdateUserGenerations(u.id, parseInt(e.target.value) || 0)}
+                                                />
+                                                <span className="text-[10px] text-gray-500 ml-1">gens</span>
                                             </td>
                                             <td className="p-4 text-right">
                                                 <select 
@@ -3712,8 +3734,8 @@ const App: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                             {[
                                 { name: 'Free', price: '$0', limit: 5, color: 'gray' },
-                                { name: 'Pro', price: '$29', limit: 50, color: 'blue', featured: true },
-                                { name: 'Enterprise', price: '$99', limit: '∞', color: 'purple' },
+                                { name: 'Pro', price: '$10', limit: 50, color: 'blue', featured: true },
+                                { name: 'Enterprise', price: '$50', limit: '∞', color: 'purple' },
                             ].map((p) => (
                                 <div key={p.name} className={`relative p-6 rounded-2xl border-2 transition-all ${p.name === tier ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'} ${p.featured ? 'scale-105 shadow-xl z-10 border-blue-400' : ''}`}>
                                     {p.featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Most Popular</div>}

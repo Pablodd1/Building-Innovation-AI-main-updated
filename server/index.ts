@@ -81,10 +81,9 @@ async function query(text: string, params: any[] = []) {
 const errorLog: any[] = [];
 
 const TIERS = {
-    FREE: { name: 'Tier 1 (Free)', limit: 20 },
-    STARTER: { name: 'Tier 2 ($10)', limit: 50 },
-    PLUS: { name: 'Tier 3 ($50)', limit: 100 },
-    ENTERPRISE: { name: 'Enterprise', limit: 9999 }
+    FREE: { name: 'Tier 1 (Free)', limit: 5 },
+    PRO: { name: 'Tier 2 (Pro)', limit: 50 },
+    ENTERPRISE: { name: 'Tier 3 (Enterprise)', limit: 9999 }
 };
 
 // HA VERSINE FORMULA: Calculate distance between two coordinates in km
@@ -2026,6 +2025,36 @@ app.post('/api/materials', async (req: Request, res: Response) => {
      }
  });
 
+
+app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { generations_used } = req.body;
+
+        if (typeof generations_used !== 'number') {
+            return res.status(400).json({ error: 'Invalid generation count' });
+        }
+
+        if (process.env.DB_HOST && process.env.DB_HOST !== 'localhost') {
+            await query(
+                'UPDATE users SET generations_used = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                [generations_used, id]
+            );
+        } else {
+            const users = await getUsers();
+            const index = users.findIndex((u: any) => String(u.id) === String(id));
+            if (index !== -1) {
+                users[index].generations_used = generations_used;
+                saveToJSON(JSON_USERS_PATH, users);
+            }
+        }
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Update generations error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
     try {
