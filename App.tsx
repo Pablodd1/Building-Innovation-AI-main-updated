@@ -116,8 +116,21 @@ const App: React.FC = () => {
         }
     }, []);
     
+    // Handle Stripe Success/Cancel return
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('session_id');
+        if (sessionId) {
+            alert(lang === 'es' ? "¡Pago exitoso! Tu cuenta ha sido actualizada." : "Payment successful! Your account has been updated.");
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, [lang]);
+    
     // Authentication State
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [showMockCheckout, setShowMockCheckout] = useState(false);
+    const [checkoutTier, setCheckoutTier] = useState<string | null>(null);
 
     // Persist user changes across refreshes
     useEffect(() => {
@@ -340,27 +353,46 @@ const App: React.FC = () => {
     const handleSelectPlan = async (newTier: string) => {
         if (!currentUser) return;
         
-        // Simulated Checkout Flow
-        const confirmMsg = lang === 'es' 
-            ? `¿Confirmas la suscripción al plan ${newTier}? (Simulación de pago)` 
-            : `Confirm subscription to ${newTier} plan? (Payment Simulation)`;
+        try {
+            const res = await fetch("/api/checkout/create-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId: currentUser.id, tier: newTier }),
+            });
             
-        if (confirm(confirmMsg)) {
-            try {
-                const res = await fetch(`/api/admin/users/${currentUser.id}/tier`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ tier: newTier }),
-                });
-                if (res.ok) {
-                    const updatedUser = await res.json();
-                    setCurrentUser({ ...currentUser, tier: updatedUser.tier });
-                    alert(lang === 'es' ? "¡Suscripción actualizada!" : "Subscription updated!");
-                    setShowSubscriptionModal(false);
+            const data = await res.json();
+            
+            if (data.isMock) {
+                // Fallback to simulation for testing
+                const confirmMsg = lang === 'es' 
+                    ? `¿Confirmas la suscripción al plan ${newTier}? (Simulación de pago)` 
+                    : `Confirm subscription to ${newTier} plan? (Payment Simulation)`;
+                    
+                if (confirm(confirmMsg)) {
+                    const updateRes = await fetch(`/api/admin/users/${currentUser.id}/tier`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ tier: newTier }),
+                    });
+                    if (updateRes.ok) {
+                        const updatedUser = await updateRes.json();
+                        setCurrentUser({ ...currentUser, tier: updatedUser.tier });
+                        alert(lang === 'es' ? "¡Suscripción actualizada!" : "Subscription updated!");
+                        setShowSubscriptionModal(false);
+                    }
                 }
-            } catch (e) {
-                console.error("Subscription error:", e);
+                return;
             }
+
+            if (data.url) {
+                // Redirect to Stripe Checkout
+                window.location.href = data.url;
+            } else {
+                throw new Error(data.error || "Failed to create checkout session");
+            }
+        } catch (e: any) {
+            console.error("Subscription error:", e);
+            alert(lang === 'es' ? `Error en la suscripción: ${e.message}` : `Subscription error: ${e.message}`);
         }
     };
     const [contractorForm, setContractorForm] = useState<Partial<Contractor>>(

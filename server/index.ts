@@ -477,12 +477,70 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
                 const tier = session.amount_total > 4000 ? 'Enterprise' : 'Pro'; // $50 = Enterprise, $10 = Pro
                 await query('UPDATE users SET tier = $1 WHERE id = $2', [tier, userId]);
             } catch (e: any) {
-                console.error(`Failed to upgrade tier for user ${userId}:`, e);
+                console.error(`Failed to upgrade tier in DB for user ${userId}:`, e);
+                // Fallback to JSON
+                try {
+                    const users = await getUsers();
+                    const index = users.findIndex((u: any) => String(u.id) === String(userId));
+                    if (index !== -1) {
+                        users[index].tier = tier;
+                        saveToJSON(JSON_USERS_PATH, users);
+                        console.log(`Successfully upgraded tier in JSON for user ${userId}`);
+                    }
+                } catch (jsonErr: any) {
+                    console.error(`Failed to upgrade tier in JSON for user ${userId}:`, jsonErr);
+                }
             }
         }
     }
 
     res.json({received: true});
+});
+
+app.post('/api/checkout/create-session', express.json(), async (req: Request, res: Response) => {
+    try {
+        const { userId, tier } = req.body;
+        if (!userId || !tier) {
+            return res.status(400).json({ error: 'Missing userId or tier' });
+        }
+
+        const secretKey = process.env.STRIPE_SECRET_KEY;
+
+        // If key is missing or is the default placeholder, use mock mode
+        if (!secretKey || secretKey === 'sk_test_123') {
+            return res.json({
+                isMock: true,
+                sessionId: `mock_${Date.now()}`,
+                tier: tier
+            });
+        }
+
+        // Real Stripe Session creation
+        const priceMap: Record<string, string> = {
+            'Pro': process.env.STRIPE_PRICE_PRO || 'price_123_pro',
+            'Enterprise': process.env.STRIPE_PRICE_ENTERPRISE || 'price_123_enterprise'
+        };
+
+        const baseUrl = req.headers.origin || req.headers.referer || 'http://localhost:3000';
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: [
+                {
+                    price: priceMap[tier],
+                    quantity: 1,
+                },
+            ],
+            mode: 'subscription',
+            success_url: `${baseUrl}/?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${baseUrl}/`,
+            client_reference_id: String(userId),
+        });
+
+        res.json({ id: session.id, url: session.url });
+    } catch (e: any) {
+        console.error('Checkout Session error:', e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.use(express.json({ limit: '50mb' }));
@@ -869,13 +927,22 @@ const getMimeType = (dataURI: string) => {
     return match ? match[1] : "image/jpeg";
 };
 
-const getLocalImageBase64 = (relativePath: string): { data: string; mimeType: string } | null => {
+const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType: string } | null> => {
     try {
-        if (!relativePath) return null;
-        // Remove leading slash if present
-        const cleanPath = relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+        if (!urlPath) return null;
         
-        // Try multiple locations for the image
+        // Handle HTTP/HTTPS URLs
+        if (urlPath.startsWith('http://') || urlPath.startsWith('https://')) {
+            const response = await fetch(urlPath);
+            if (!response.ok) throw new Error(`Failed to fetch remote image: ${response.statusText}`);
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const mimeType = response.headers.get('content-type') || 'image/jpeg';
+            return { data: buffer.toString('base64'), mimeType };
+        }
+
+        // Handle local paths
+        const cleanPath = urlPath.startsWith('/') ? urlPath.substring(1) : urlPath;
         const possiblePaths = [
             path.join(process.cwd(), 'public', cleanPath),
             path.join(process.cwd(), cleanPath),
@@ -892,7 +959,7 @@ const getLocalImageBase64 = (relativePath: string): { data: string; mimeType: st
         }
         return null;
     } catch (e) {
-        console.warn(`Could not load local image: ${relativePath}`, e);
+        console.warn(`Could not load image: ${urlPath}`, e);
         return null;
     }
 };
@@ -980,7 +1047,7 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
                     : "natural ambient lighting";
 
         // Load product image as reference if available
-        const productRef = getLocalImageBase64(material?.imageUrl);
+        const productRef = await getImageBase64(material?.imageUrl);
         const hasProductImage = !!productRef;
 
         // Build prompt
