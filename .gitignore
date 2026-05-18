@@ -18,3 +18,7 @@ materials.json
 materials_utf8.json
 test.webp
 
+# Persistent local databases (ignored by Git to keep server modifications safe)
+data/*.persistent.json
+
+

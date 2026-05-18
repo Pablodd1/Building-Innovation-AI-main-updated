@@ -114,15 +114,37 @@ async function runMigrations() {
 }
 runMigrations();
 
-const JSON_DB_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'products.json'))
+// Define path variables that are tracked by Git (initial seed data)
+const JSON_PRODUCTS_TRACKED = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'products.json'))
     ? path.join(process.cwd(), 'public', 'data', 'products.json')
     : path.join(process.cwd(), 'data', 'products.json');
 
-const JSON_USERS_PATH = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'users.json'))
+const JSON_USERS_TRACKED = fs.existsSync(path.join(process.cwd(), 'public', 'data', 'users.json'))
     ? path.join(process.cwd(), 'public', 'data', 'users.json')
     : path.join(process.cwd(), 'data', 'users.json');
 
+// Define persistent, untracked fallback paths to prevent git pull from overwriting deletions
+const JSON_DB_PATH = path.join(process.cwd(), 'data', 'products.persistent.json');
+const JSON_USERS_PATH = path.join(process.cwd(), 'data', 'users.persistent.json');
 const JSON_PRODUCTS_PATH = JSON_DB_PATH;
+
+// Initialize persistent files on startup if they don't exist
+try {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+    if (!fs.existsSync(JSON_DB_PATH) && fs.existsSync(JSON_PRODUCTS_TRACKED)) {
+        fs.copyFileSync(JSON_PRODUCTS_TRACKED, JSON_DB_PATH);
+        console.log('✅ Initialized products.persistent.json from tracked products.json');
+    }
+    if (!fs.existsSync(JSON_USERS_PATH) && fs.existsSync(JSON_USERS_TRACKED)) {
+        fs.copyFileSync(JSON_USERS_TRACKED, JSON_USERS_PATH);
+        console.log('✅ Initialized users.persistent.json from tracked users.json');
+    }
+} catch (initErr) {
+    console.error('Failed to initialize persistent JSON fallbacks:', initErr);
+}
 
 // Try multiple paths for config — Hostinger cwd varies depending on how Node is started
 const JSON_CONFIG_PATHS = [
@@ -365,6 +387,19 @@ async function getConfig() {
         }
     } catch (e) {}
     return { GEMINI_API_KEY: process.env.VITE_GEMINI_API_KEY || "" };
+}
+
+// Helper to load from JSON (fallback persistence)
+function loadFromJSON(filePath: string) {
+    try {
+        if (fs.existsSync(filePath)) {
+            const data = fs.readFileSync(filePath, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error(`Error loading from ${filePath}:`, e);
+    }
+    return [];
 }
 
 // Helper to save to JSON (fallback persistence)
