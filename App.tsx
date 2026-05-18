@@ -121,6 +121,24 @@ const App: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         const sessionId = params.get('session_id');
         if (sessionId) {
+            // Re-fetch user from server to get updated tier
+            const stored = localStorage.getItem('constructviz_user');
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed && parsed.id) {
+                        fetch(`/api/admin/users`)
+                            .then(res => res.json())
+                            .then(users => {
+                                const refreshedUser = users.find((u: any) => u.id === parsed.id);
+                                if (refreshedUser) {
+                                    setCurrentUser(refreshedUser);
+                                }
+                            })
+                            .catch(err => console.warn('Failed to refresh user tier', err));
+                    }
+                } catch(e) {}
+            }
             alert(lang === 'es' ? "¡Pago exitoso! Tu cuenta ha sido actualizada." : "Payment successful! Your account has been updated.");
             // Clean URL
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -1592,13 +1610,13 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center w-24">
                                     <span className="text-[9px] font-bold text-blue-600 uppercase">{currentUser.tier}</span>
                                     <span className="text-[9px] font-bold text-blue-400">
-                                        {currentUser.generations_used} / {currentUser.tier === 'Free' ? '5' : currentUser.tier === 'Pro' ? '100' : '∞'}
+                                        {currentUser.generations_used} / {currentUser.tier === 'Free' ? '5' : currentUser.tier === 'Pro' ? '50' : '∞'}
                                     </span>
                                 </div>
                                 <div className="w-24 h-1 bg-blue-200 rounded-full overflow-hidden mt-0.5">
                                     <div 
                                         className="h-full bg-blue-600 transition-all duration-500" 
-                                        style={{ width: `${Math.min(100, (currentUser.generations_used / (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 100 : 9999)) * 100)}%` }}
+                                        style={{ width: `${Math.min(100, (currentUser.generations_used / (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999)) * 100)}%` }}
                                     ></div>
                                 </div>
                             </div>

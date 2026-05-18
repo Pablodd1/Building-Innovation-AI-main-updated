@@ -498,11 +498,17 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
         if (userId) {
             console.log(`Payment successful for user ${userId}. Upgrading tier...`);
             try {
-                const tier = session.amount_total > 4000 ? 'Enterprise' : 'Pro'; // $50 = Enterprise, $10 = Pro
-                await query('UPDATE users SET tier = $1 WHERE id = $2', [tier, userId]);
-            } catch (e: any) {
-                console.error(`Failed to upgrade tier in DB for user ${userId}:`, e);
-                // Fallback to JSON
+                const tier = session.metadata?.tier || (session.amount_total > 4000 ? 'Enterprise' : 'Pro'); // Fallback to amount if metadata missing
+                
+                // 1. Try DB first
+                try {
+                    await query('UPDATE users SET tier = $1 WHERE id = $2', [tier, userId]);
+                    console.log(`Successfully upgraded tier in DB for user ${userId}`);
+                } catch (dbErr: any) {
+                    console.warn(`Failed to upgrade tier in DB for user ${userId}, continuing to JSON:`, dbErr.message);
+                }
+
+                // 2. Always update JSON as fallback (critical on Hostinger where DB fails)
                 try {
                     const users = await getUsers();
                     const index = users.findIndex((u: any) => String(u.id) === String(userId));
@@ -510,10 +516,14 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
                         users[index].tier = tier;
                         saveToJSON(JSON_USERS_PATH, users);
                         console.log(`Successfully upgraded tier in JSON for user ${userId}`);
+                    } else {
+                        console.warn(`User ${userId} not found in JSON fallback`);
                     }
                 } catch (jsonErr: any) {
                     console.error(`Failed to upgrade tier in JSON for user ${userId}:`, jsonErr);
                 }
+            } catch (e: any) {
+                console.error(`Error processing tier upgrade for user ${userId}:`, e);
             }
         }
     }
@@ -558,6 +568,9 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
             success_url: `${baseUrl}/?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${baseUrl}/`,
             client_reference_id: String(userId),
+            metadata: {
+                tier: tier
+            }
         });
 
         res.json({ id: session.id, url: session.url });
