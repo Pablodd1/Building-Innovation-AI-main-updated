@@ -109,6 +109,8 @@ const App: React.FC = () => {
                 if (parsed && parsed.id) {
                     setCurrentUser(parsed);
                     setView(AppView.LANDING);
+                    // Load memory
+                    loadUserMemory(parsed.id);
                 }
             }
         } catch (e) {
@@ -149,6 +151,9 @@ const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [showMockCheckout, setShowMockCheckout] = useState(false);
     const [checkoutTier, setCheckoutTier] = useState<string | null>(null);
+    const [selectedUserDetail, setSelectedUserDetail] = useState<any>(null);
+    const [showUserDetailModal, setShowUserDetailModal] = useState(false);
+    const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
 
     // Persist user changes across refreshes
     useEffect(() => {
@@ -252,6 +257,86 @@ const App: React.FC = () => {
 
     const [analyticsData, setAnalyticsData] = useState<any>(null);
     const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+    // --- User Memory & Behavioral Analytics Helpers ---
+    
+    // Helper to log user behavior dynamically
+    const logUserBehavior = async (eventType: string, details: any = {}) => {
+        if (!currentUser) return;
+        try {
+            await fetch(`/api/users/${currentUser.id}/memory`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    behaviorEvent: {
+                        type: eventType,
+                        timestamp: new Date().toISOString(),
+                        details
+                    }
+                })
+            });
+        } catch (e) {
+            console.warn('Behavior log failed:', e);
+        }
+    };
+
+    // Helper to load user memory and restore last workspace state
+    const loadUserMemory = async (userId: number) => {
+        try {
+            const res = await fetch(`/api/users/${userId}/memory`);
+            if (res.ok) {
+                const memory = await res.json();
+                if (memory && memory.lastState) {
+                    const state = memory.lastState;
+                    if (state.view) setView(state.view);
+                    if (state.displayCurrency) setDisplayCurrency(state.displayCurrency);
+                    if (state.renderOptions) setRenderOptions(state.renderOptions);
+                    if (state.customPrompt) setCustomPrompt(state.customPrompt);
+                    if (state.lang) setLang(state.lang);
+                    if (state.originalImage) setOriginalImage(state.originalImage);
+                    if (state.selectedMaterial) setSelectedMaterial(state.selectedMaterial);
+                    console.log('✅ Workspace state restored successfully');
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load user memory:', e);
+        }
+    };
+
+    // Helper to save current workspace state
+    const saveWorkspaceState = async (updates: any = {}) => {
+        if (!currentUser) return;
+        try {
+            const stateToSave = {
+                view,
+                displayCurrency,
+                renderOptions,
+                customPrompt,
+                lang,
+                originalImage,
+                selectedMaterial,
+                ...updates
+            };
+            
+            await fetch(`/api/users/${currentUser.id}/memory`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lastState: stateToSave })
+            });
+        } catch (e) {
+            console.warn('Workspace sync failed:', e);
+        }
+    };
+
+    // Auto-save changes dynamically with a debounced sync
+    useEffect(() => {
+        if (currentUser) {
+            const timer = setTimeout(() => {
+                saveWorkspaceState();
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [view, displayCurrency, renderOptions, customPrompt, lang, originalImage, selectedMaterial, currentUser]);
 
     const fetchAnalytics = async () => {
         setIsLoadingAnalytics(true);
@@ -378,6 +463,8 @@ const App: React.FC = () => {
             link.href = canvas.toDataURL("image/jpeg", 0.95);
             link.download = `BuildingInnovation_AI_${Date.now()}.jpg`;
             link.click();
+            // Log download behavior
+            logUserBehavior("DOWNLOAD_RENDER", { materialId: selectedMaterial?.id, materialName: selectedMaterial?.name });
         };
         img.src = imgSrc;
     };
@@ -1088,7 +1175,7 @@ const App: React.FC = () => {
     const handleSelectMaterial = async (material: Material) => {
         setSelectedMaterial(material);
         setShowProbeModal(true);
-        // Removed 3D Probe Generation as per user request (too slow/non-functional)
+        logUserBehavior("SELECT_MATERIAL", { id: material.id, name: material.name });
     };
 
     const handleImageCapture = (file: File) => {
@@ -1098,6 +1185,7 @@ const App: React.FC = () => {
             setView(AppView.EDITOR);
             setHistory([]);
             setHistoryIndex(-1);
+            logUserBehavior("UPLOAD_IMAGE", { fileName: file.name, fileSize: file.size });
             setGenerationState((prev) => ({
                 ...prev,
                 resultImage: null,
@@ -1177,6 +1265,27 @@ const App: React.FC = () => {
                     ...currentUser,
                     generations_used: (currentUser.generations_used || 0) + 1
                 });
+
+                // Sync generation result to user memory
+                fetch(`/api/users/${currentUser.id}/memory`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        historyItem: {
+                            ...newHistoryItem,
+                            timestamp: new Date().toISOString()
+                        },
+                        behaviorEvent: {
+                            type: 'SUCCESS_GENERATION',
+                            timestamp: new Date().toISOString(),
+                            details: {
+                                materialId: selectedMaterial?.id,
+                                materialName: selectedMaterial?.name,
+                                prompt: customPrompt
+                            }
+                        }
+                    })
+                }).catch(() => {});
             }
         } catch (error: any) {
             const errorMsg = error.message || "Unknown error";
@@ -1231,6 +1340,7 @@ const App: React.FC = () => {
                 isAnalyzing: false,
                 analysis: analysisText,
             }));
+            logUserBehavior("ROOM_ANALYSIS", { analysisLength: analysisText.length });
         } catch (e: any) {
             setGenerationState((prev) => ({
                 ...prev,
@@ -1271,6 +1381,7 @@ const App: React.FC = () => {
                 isGenerating: false,
                 resultVideo: videoUri,
             }));
+            logUserBehavior("VIDEO_GENERATION", { hasVideo: !!videoUri });
         } catch (e: any) {
             setGenerationState((prev) => ({
                 ...prev,
@@ -1285,6 +1396,7 @@ const App: React.FC = () => {
             <button
                 onClick={() => {
                     setLang("en");
+                    logUserBehavior("CHANGE_LANGUAGE", { lang: "en" });
                 }}
                 className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
@@ -1293,6 +1405,7 @@ const App: React.FC = () => {
             <button
                 onClick={() => {
                     setLang("es");
+                    logUserBehavior("CHANGE_LANGUAGE", { lang: "es" });
                 }}
                 className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
@@ -1336,6 +1449,10 @@ const App: React.FC = () => {
             setCurrentUser(data.user);
             localStorage.setItem('constructviz_user', JSON.stringify(data.user));
             setView(AppView.LANDING);
+            loadUserMemory(data.user.id);
+            setTimeout(() => {
+                logUserBehavior("USER_LOGIN", { email: data.user.email });
+            }, 200);
             setAuthForm({
                 name: "",
                 email: "",
@@ -1704,7 +1821,7 @@ const App: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-4 w-full">
                     <button
-                        onClick={() => handleStart("Interior")}
+                        onClick={() => { handleStart("Interior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Interior" }); }}
                         className="group flex flex-col items-center"
                     >
                         <div className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all">
@@ -1720,7 +1837,7 @@ const App: React.FC = () => {
                         </span>
                     </button>
                     <button
-                        onClick={() => handleStart("Exterior")}
+                        onClick={() => { handleStart("Exterior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Exterior" }); }}
                         className="group flex flex-col items-center"
                     >
                         <div className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all">
@@ -3061,7 +3178,7 @@ const App: React.FC = () => {
                                                 />
                                                 <span className="text-[10px] text-gray-500 ml-1">gens</span>
                                             </td>
-                                            <td className="p-4 text-right">
+                                            <td className="p-4 text-right flex items-center justify-end gap-2">
                                                 <select 
                                                     className="bg-gray-200 border border-gray-300 rounded text-xs p-1"
                                                     value={u.tier}
@@ -3071,6 +3188,13 @@ const App: React.FC = () => {
                                                     <option value="Pro">Pro</option>
                                                     <option value="Enterprise">Enterprise</option>
                                                 </select>
+                                                <button
+                                                    onClick={() => handleViewUserDetail(u.id)}
+                                                    className="p-1.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-600 transition-colors flex items-center justify-center border border-blue-200"
+                                                    title="View Memory & Analytics"
+                                                >
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}
@@ -3729,6 +3853,174 @@ const App: React.FC = () => {
         );
     };
 
+    const handleViewUserDetail = async (userId: number) => {
+        setIsLoadingUserDetail(true);
+        try {
+            const res = await fetch(`/api/admin/users/${userId}/detail`);
+            if (res.ok) {
+                const data = await res.json();
+                setSelectedUserDetail(data);
+                setShowUserDetailModal(true);
+            } else {
+                alert("Failed to load user detail");
+            }
+        } catch (e) {
+            console.error("Error loading user detail:", e);
+            alert("Error loading user detail");
+        } finally {
+            setIsLoadingUserDetail(false);
+        }
+    };
+
+    const renderUserDetailModal = () => {
+        if (!showUserDetailModal || !selectedUserDetail) return null;
+        
+        const u = selectedUserDetail;
+        const memory = u.memory || { lastState: {}, history: [], behaviors: {} };
+        const behaviors = memory.behaviors || {};
+        const events = behaviors.events || [];
+        const counts = behaviors.counts || {};
+        const historyList = memory.history || [];
+        const lastState = memory.lastState || {};
+
+        return (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fadeIn">
+                <div className="bg-white text-black rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl flex flex-col h-full max-h-[85vh]">
+                    {/* Header */}
+                    <div className="flex justify-between items-start bg-gray-50 border-b border-gray-150 p-6">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">{u.name}</h2>
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${u.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{u.role}</span>
+                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700`}>{u.tier}</span>
+                            </div>
+                            <p className="text-gray-500 text-xs mt-1">User ID: {u.id} • Registered: {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                        <button onClick={() => setShowUserDetailModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500 hover:text-gray-700">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Profile & Live Workspace State */}
+                        <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col gap-4">
+                            <div>
+                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Contact Details</h3>
+                                <div className="space-y-2 text-xs">
+                                    <div className="flex justify-between"><span className="text-gray-400">Email:</span><span className="font-medium text-gray-800">{u.email}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Phone:</span><span className="font-medium text-gray-800">{u.phone || 'None'}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Address:</span><span className="font-medium text-gray-800">{u.address || 'None'}</span></div>
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-200" />
+
+                            <div>
+                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Last Active State</h3>
+                                {Object.keys(lastState).length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic">No workspace state captured yet.</p>
+                                ) : (
+                                    <div className="space-y-2 text-xs">
+                                        <div className="flex justify-between"><span className="text-gray-400">Current View:</span><span className="font-bold text-blue-600 uppercase">{lastState.view}</span></div>
+                                        <div className="flex justify-between"><span className="text-gray-400">Selected Product:</span><span className="font-bold text-gray-800 truncate max-w-[120px]">{lastState.selectedMaterial?.name || 'None'}</span></div>
+                                        <div className="flex justify-between"><span className="text-gray-400">Lighting Mode:</span><span className="font-medium text-gray-700">{lastState.renderOptions?.lighting || 'Default'}</span></div>
+                                        <div className="flex justify-between"><span className="text-gray-400">Display Currency:</span><span className="font-medium text-gray-700">{lastState.displayCurrency || 'USD'}</span></div>
+                                        <div className="flex justify-between"><span className="text-gray-400">Language:</span><span className="font-medium text-gray-700 uppercase">{lastState.lang || 'en'}</span></div>
+                                        {lastState.customPrompt && (
+                                            <div className="mt-2 p-2 bg-white rounded border border-gray-100">
+                                                <div className="text-[9px] text-gray-400 uppercase font-bold mb-1">Custom Prompt</div>
+                                                <div className="text-gray-600 italic text-[10px] leading-snug">"{lastState.customPrompt}"</div>
+                                            </div>
+                                        )}
+                                        {lastState.originalImage && (
+                                            <div className="mt-2">
+                                                <div className="text-[9px] text-gray-400 uppercase font-bold mb-1">Active Design Space</div>
+                                                <img src={lastState.originalImage} className="w-full h-24 object-cover rounded-lg border border-gray-200" alt="Last space" />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Behaviors & Counts */}
+                        <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col gap-4">
+                            <div>
+                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Feature Interactions</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="p-3 bg-white border border-gray-150 rounded-xl">
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase">Generations</div>
+                                        <div className="text-2xl font-black text-blue-600">{u.generations_used || 0}</div>
+                                    </div>
+                                    <div className="p-3 bg-white border border-gray-150 rounded-xl">
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase">Downloads</div>
+                                        <div className="text-2xl font-black text-green-600">{counts.DOWNLOAD_RENDER || 0}</div>
+                                    </div>
+                                    <div className="p-3 bg-white border border-gray-150 rounded-xl">
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase">Product Views</div>
+                                        <div className="text-2xl font-black text-purple-600">{counts.SELECT_MATERIAL || 0}</div>
+                                    </div>
+                                    <div className="p-3 bg-white border border-gray-150 rounded-xl">
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase">Space Uploads</div>
+                                        <div className="text-2xl font-black text-amber-600">{counts.UPLOAD_IMAGE || 0}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-200" />
+
+                            <div className="flex-1 flex flex-col min-h-[150px]">
+                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Activity Stream (Last seen: {behaviors.lastActive ? new Date(behaviors.lastActive).toLocaleTimeString() : 'N/A'})</h3>
+                                {events.length === 0 ? (
+                                    <p className="text-xs text-gray-400 italic">No activity recorded yet.</p>
+                                ) : (
+                                    <div className="flex-1 overflow-y-auto space-y-2 max-h-[180px] pr-2">
+                                        {events.map((ev: any, idx: number) => (
+                                            <div key={idx} className="flex justify-between items-center text-[10px] bg-white p-2 rounded border border-gray-100">
+                                                <span className="font-bold uppercase text-gray-600">{ev.type}</span>
+                                                <span className="text-gray-400">{new Date(ev.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Generation History (Images generated) */}
+                        <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col">
+                            <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Design History ({historyList.length})</h3>
+                            {historyList.length === 0 ? (
+                                <div className="flex-1 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-xl p-8">
+                                    <p className="text-xs text-gray-400 italic text-center">No high-fidelity designs generated by this user yet.</p>
+                                </div>
+                            ) : (
+                                <div className="flex-1 overflow-y-auto space-y-4 max-h-[380px] pr-2">
+                                    {historyList.map((item: any, idx: number) => (
+                                        <div key={idx} className="bg-white border border-gray-150 rounded-xl p-3 flex flex-col gap-2">
+                                            {item.resultImage && (
+                                                <img src={item.resultImage} className="w-full h-32 object-cover rounded-lg border border-gray-150" alt="Generated space design" />
+                                            )}
+                                            <div className="text-[10px]">
+                                                <div className="font-bold text-gray-800">{item.material?.name || 'Selected Material'}</div>
+                                                {item.prompt && (
+                                                    <div className="text-gray-500 italic mt-0.5">"{item.prompt}"</div>
+                                                )}
+                                                {item.timestamp && (
+                                                    <div className="text-[8px] text-gray-400 mt-1">{new Date(item.timestamp).toLocaleString()}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderSubscriptionModal = () => {
         const tier = currentUser?.tier || 'Free';
         const used = currentUser?.generations_used || 0;
@@ -3888,6 +4180,7 @@ const App: React.FC = () => {
             )}
             {view === AppView.CART && renderCart()}
             {showSubscriptionModal && renderSubscriptionModal()}
+            {showUserDetailModal && renderUserDetailModal()}
             {renderProbeModal()}
         </div>
     );

@@ -106,6 +106,13 @@ async function runMigrations() {
             ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'Free';
             ALTER TABLE users ADD COLUMN IF NOT EXISTS generations_used INTEGER DEFAULT 0;
             ALTER TABLE materials ADD COLUMN IF NOT EXISTS price_contractor DECIMAL(10, 2);
+            CREATE TABLE IF NOT EXISTS user_memories (
+                user_id INTEGER PRIMARY KEY,
+                last_state JSONB DEFAULT '{}',
+                history JSONB DEFAULT '[]',
+                behaviors JSONB DEFAULT '{}',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         `);
         console.log('✅ Database migrations applied');
     } catch (e: any) {
@@ -126,6 +133,7 @@ const JSON_USERS_TRACKED = fs.existsSync(path.join(process.cwd(), 'public', 'dat
 // Define persistent, untracked fallback paths to prevent git pull from overwriting deletions
 const JSON_DB_PATH = path.join(process.cwd(), 'data', 'products.persistent.json');
 const JSON_USERS_PATH = path.join(process.cwd(), 'data', 'users.persistent.json');
+const JSON_MEMORIES_PATH = path.join(process.cwd(), 'data', 'memories.persistent.json');
 const JSON_PRODUCTS_PATH = JSON_DB_PATH;
 
 // Initialize persistent files on startup if they don't exist
@@ -141,6 +149,10 @@ try {
     if (!fs.existsSync(JSON_USERS_PATH) && fs.existsSync(JSON_USERS_TRACKED)) {
         fs.copyFileSync(JSON_USERS_TRACKED, JSON_USERS_PATH);
         console.log('✅ Initialized users.persistent.json from tracked users.json');
+    }
+    if (!fs.existsSync(JSON_MEMORIES_PATH)) {
+        fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify({}, null, 2), 'utf8');
+        console.log('✅ Initialized memories.persistent.json');
     }
 } catch (initErr) {
     console.error('Failed to initialize persistent JSON fallbacks:', initErr);
@@ -2109,6 +2121,217 @@ app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
         } catch (jsonError) {
             res.status(500).json({ error: error.message });
         }
+    }
+});
+
+// Memory endpoint: Get memory per user
+app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id);
+
+        let memory = { lastState: {}, history: [], behaviors: {} };
+        
+        try {
+            const result = await query('SELECT last_state, history, behaviors FROM user_memories WHERE user_id = $1', [userId]);
+            if (result.rows.length > 0) {
+                memory = {
+                    lastState: result.rows[0].last_state || {},
+                    history: result.rows[0].history || [],
+                    behaviors: result.rows[0].behaviors || {}
+                };
+                return res.json(memory);
+            }
+        } catch (dbErr: any) {
+            console.warn('DB read memory failed, falling back to JSON:', dbErr.message);
+        }
+
+        // JSON fallback
+        if (fs.existsSync(JSON_MEMORIES_PATH)) {
+            const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+            if (data[id]) {
+                memory = data[id];
+            }
+        }
+        res.json(memory);
+    } catch (e: any) {
+        console.error('Error fetching user memory:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Memory endpoint: Save or append memory per user
+app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id);
+        const { lastState, historyItem, behaviorEvent } = req.body;
+
+        // Fetch existing memory
+        let currentMemory: any = { lastState: {}, history: [], behaviors: {} };
+        let source = 'JSON';
+
+        try {
+            const result = await query('SELECT last_state, history, behaviors FROM user_memories WHERE user_id = $1', [userId]);
+            if (result.rows.length > 0) {
+                currentMemory = {
+                    lastState: result.rows[0].last_state || {},
+                    history: result.rows[0].history || [],
+                    behaviors: result.rows[0].behaviors || {}
+                };
+                source = 'DB';
+            }
+        } catch (dbErr) {}
+
+        if (source === 'JSON' && fs.existsSync(JSON_MEMORIES_PATH)) {
+            const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+            if (data[id]) {
+                currentMemory = data[id];
+            }
+        }
+
+        // Apply updates
+        if (lastState) {
+            currentMemory.lastState = { ...currentMemory.lastState, ...lastState };
+        }
+        if (historyItem) {
+            currentMemory.history = [historyItem, ...(currentMemory.history || [])].slice(0, 100);
+        }
+        if (behaviorEvent) {
+            const eventType = behaviorEvent.type || 'unknown';
+            const timestamp = behaviorEvent.timestamp || new Date().toISOString();
+            
+            if (!currentMemory.behaviors) currentMemory.behaviors = {};
+            if (!currentMemory.behaviors.events) currentMemory.behaviors.events = [];
+            currentMemory.behaviors.events = [{ type: eventType, timestamp, details: behaviorEvent.details || {} }, ...(currentMemory.behaviors.events || [])].slice(0, 150);
+            
+            // Increment counts
+            if (!currentMemory.behaviors.counts) currentMemory.behaviors.counts = {};
+            currentMemory.behaviors.counts[eventType] = (currentMemory.behaviors.counts[eventType] || 0) + 1;
+            currentMemory.behaviors.lastActive = timestamp;
+        }
+
+        // Save back to DB
+        try {
+            await query(`
+                INSERT INTO user_memories (user_id, last_state, history, behaviors, updated_at)
+                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE
+                SET last_state = EXCLUDED.last_state,
+                    history = EXCLUDED.history,
+                    behaviors = EXCLUDED.behaviors,
+                    updated_at = CURRENT_TIMESTAMP
+            `, [userId, JSON.stringify(currentMemory.lastState), JSON.stringify(currentMemory.history), JSON.stringify(currentMemory.behaviors)]);
+        } catch (dbErr: any) {
+            console.warn('DB save memory failed, writing to JSON fallback:', dbErr.message);
+        }
+
+        // Always save to JSON fallback
+        if (fs.existsSync(JSON_MEMORIES_PATH)) {
+            const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+            data[id] = currentMemory;
+            fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
+        }
+
+        res.json({ success: true, memory: currentMemory });
+    } catch (e: any) {
+        console.error('Error saving user memory:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Admin endpoint: Get rich user detail including profile and memory
+app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id);
+
+        let userProfile: any = null;
+        
+        // 1. Get user profile
+        try {
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, created_at FROM users WHERE id = $1', [userId]);
+            if (result.rows.length > 0) {
+                userProfile = result.rows[0];
+            }
+        } catch (e) {}
+
+        if (!userProfile) {
+            const users = await getUsers();
+            userProfile = users.find((u: any) => String(u.id) === String(id));
+        }
+
+        if (!userProfile) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // 2. Get memory
+        let memory = { lastState: {}, history: [], behaviors: {} };
+        try {
+            const result = await query('SELECT last_state, history, behaviors FROM user_memories WHERE user_id = $1', [userId]);
+            if (result.rows.length > 0) {
+                memory = {
+                    lastState: result.rows[0].last_state || {},
+                    history: result.rows[0].history || [],
+                    behaviors: result.rows[0].behaviors || {}
+                };
+            } else {
+                // Check JSON fallback
+                if (fs.existsSync(JSON_MEMORIES_PATH)) {
+                    const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+                    if (data[id]) memory = data[id];
+                }
+            }
+        } catch (e) {
+            if (fs.existsSync(JSON_MEMORIES_PATH)) {
+                const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+                if (data[id]) memory = data[id];
+            }
+        }
+
+        res.json({
+            ...userProfile,
+            memory
+        });
+    } catch (e: any) {
+        console.error('Error fetching admin user detail:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Account Deletion Endpoint (App Store & Play Store compliance)
+app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id);
+
+        // Delete from database
+        try {
+            await query('DELETE FROM user_memories WHERE user_id = $1', [userId]);
+            await query('DELETE FROM users WHERE id = $1', [userId]);
+        } catch (dbErr: any) {
+            console.warn('DB delete account failed, trying JSON fallback:', dbErr.message);
+        }
+
+        // Delete from JSON fallback
+        if (fs.existsSync(JSON_USERS_PATH)) {
+            let users = await getUsers();
+            users = users.filter((u: any) => String(u.id) !== String(id));
+            saveToJSON(JSON_USERS_PATH, users);
+        }
+
+        if (fs.existsSync(JSON_MEMORIES_PATH)) {
+            const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+            if (data[id]) {
+                delete data[id];
+                fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
+            }
+        }
+
+        res.json({ success: true, message: 'Account and associated data deleted successfully.' });
+    } catch (e: any) {
+        console.error('Error deleting account:', e);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
