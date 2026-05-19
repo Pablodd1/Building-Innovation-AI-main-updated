@@ -2046,21 +2046,28 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
             return res.status(400).json({ error: 'Invalid generation count' });
         }
 
-        if (process.env.DB_HOST && process.env.DB_HOST !== 'localhost') {
-            await query(
-                'UPDATE users SET generations_used = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        try {
+            const result = await query(
+                'UPDATE users SET generations_used = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
                 [generations_used, id]
             );
-        } else {
-            const users = await getUsers();
-            const index = users.findIndex((u: any) => String(u.id) === String(id));
-            if (index !== -1) {
-                users[index].generations_used = generations_used;
-                saveToJSON(JSON_USERS_PATH, users);
+            if (result.rows.length > 0) {
+                return res.json({ success: true });
             }
+        } catch (dbErr: any) {
+            console.warn('DB update generations failed, continuing to JSON fallback:', dbErr.message);
         }
 
-        res.json({ success: true });
+        // Fallback to JSON database
+        const users = await getUsers();
+        const index = users.findIndex((u: any) => String(u.id) === String(id));
+        if (index !== -1) {
+            users[index].generations_used = generations_used;
+            saveToJSON(JSON_USERS_PATH, users);
+            return res.json({ success: true });
+        }
+
+        return res.status(404).json({ error: 'User not found' });
     } catch (error: any) {
         console.error('Update generations error:', error);
         res.status(500).json({ error: 'Internal server error' });
