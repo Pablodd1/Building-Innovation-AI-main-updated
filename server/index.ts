@@ -90,7 +90,7 @@ const pool = isPostgres
     ? new Pool({ ...dbConfig, ssl: { rejectUnauthorized: false } })
     : null;
 
-const mysqlPool = !isPostgres 
+const mysqlPool = (!isPostgres && process.env.DB_HOST) 
     ? mysql.createPool({
         host: process.env.DB_HOST,
         user: process.env.DB_USER,
@@ -360,6 +360,9 @@ class SystemMonitor {
         await testPool.end();
         return { ok: true, message: 'PostgreSQL connected' };
       } else {
+        if (!process.env.DB_HOST) {
+          return { ok: false, message: 'MySQL host not configured (running in high-fidelity local JSON mode)' };
+        }
         const connection = await mysql.createConnection({
           host: process.env.DB_HOST,
           user: process.env.DB_USER,
