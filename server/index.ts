@@ -108,9 +108,9 @@ async function runMigrations() {
             ALTER TABLE materials ADD COLUMN IF NOT EXISTS price_contractor DECIMAL(10, 2);
             CREATE TABLE IF NOT EXISTS user_memories (
                 user_id INTEGER PRIMARY KEY,
-                last_state JSONB DEFAULT '{}',
-                history JSONB DEFAULT '[]',
-                behaviors JSONB DEFAULT '{}',
+                last_state JSON DEFAULT ('{}'),
+                history JSON DEFAULT ('[]'),
+                behaviors JSON DEFAULT ('{}'),
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -2213,15 +2213,18 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
 
         // Save back to DB
         try {
-            await query(`
-                INSERT INTO user_memories (user_id, last_state, history, behaviors, updated_at)
-                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id) DO UPDATE
-                SET last_state = EXCLUDED.last_state,
-                    history = EXCLUDED.history,
-                    behaviors = EXCLUDED.behaviors,
-                    updated_at = CURRENT_TIMESTAMP
-            `, [userId, JSON.stringify(currentMemory.lastState), JSON.stringify(currentMemory.history), JSON.stringify(currentMemory.behaviors)]);
+            if (source === 'DB') {
+                await query(`
+                    UPDATE user_memories
+                    SET last_state = $1, history = $2, behaviors = $3, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = $4
+                `, [JSON.stringify(currentMemory.lastState), JSON.stringify(currentMemory.history), JSON.stringify(currentMemory.behaviors), userId]);
+            } else {
+                await query(`
+                    INSERT INTO user_memories (user_id, last_state, history, behaviors, updated_at)
+                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                `, [userId, JSON.stringify(currentMemory.lastState), JSON.stringify(currentMemory.history), JSON.stringify(currentMemory.behaviors)]);
+            }
         } catch (dbErr: any) {
             console.warn('DB save memory failed, writing to JSON fallback:', dbErr.message);
         }
