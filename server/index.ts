@@ -2524,6 +2524,35 @@ app.get('/api/debug', async (req: Request, res: Response) => {
         debugInfo.json_users = `error: ${e.message}`;
     }
 
+    try {
+        const cwd = process.cwd();
+        debugInfo.cwd = cwd;
+        debugInfo.has_env_file = fs.existsSync(path.join(cwd, '.env'));
+        if (fs.existsSync(cwd)) {
+            debugInfo.files = fs.readdirSync(cwd).map(f => {
+                try {
+                    const stat = fs.statSync(path.join(cwd, f));
+                    return `${f} (${stat.isDirectory() ? 'dir' : 'file'}, ${stat.size} bytes)`;
+                } catch (err) {
+                    return `${f} (error: ${err.message})`;
+                }
+            });
+        }
+        const dataPath = path.join(cwd, 'data');
+        if (fs.existsSync(dataPath)) {
+            debugInfo.data_files = fs.readdirSync(dataPath).map(f => {
+                try {
+                    const stat = fs.statSync(path.join(dataPath, f));
+                    return `${f} (${stat.isDirectory() ? 'dir' : 'file'}, ${stat.size} bytes)`;
+                } catch (err) {
+                    return `${f} (error: ${err.message})`;
+                }
+            });
+        }
+    } catch (err) {
+        debugInfo.files_error = err.message;
+    }
+
     res.json(debugInfo);
 });
 
