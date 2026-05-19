@@ -2148,9 +2148,13 @@ app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
 
         // JSON fallback
         if (fs.existsSync(JSON_MEMORIES_PATH)) {
-            const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-            if (data[id]) {
-                memory = data[id];
+            try {
+                const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+                if (data[id]) {
+                    memory = data[id];
+                }
+            } catch (parseErr) {
+                console.warn('Failed to parse memories JSON:', parseErr);
             }
         }
         res.json(memory);
@@ -2230,11 +2234,16 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
         }
 
         // Always save to JSON fallback
+        let data: any = {};
         if (fs.existsSync(JSON_MEMORIES_PATH)) {
-            const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-            data[id] = currentMemory;
-            fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
+            try {
+                data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+            } catch (parseErr) {
+                console.warn('Failed to parse memories JSON during save:', parseErr);
+            }
         }
+        data[id] = currentMemory;
+        fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
 
         res.json({ success: true, memory: currentMemory });
     } catch (e: any) {
@@ -2287,8 +2296,10 @@ app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
             }
         } catch (e) {
             if (fs.existsSync(JSON_MEMORIES_PATH)) {
-                const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-                if (data[id]) memory = data[id];
+                try {
+                    const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+                    if (data[id]) memory = data[id];
+                } catch (parseErr) {}
             }
         }
 
