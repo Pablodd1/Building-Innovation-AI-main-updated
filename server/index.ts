@@ -2721,6 +2721,14 @@ app.use((req: Request, res: Response, next) => {
         return next();
     }
 
+    // If the request is for a static asset that does not exist, return a clean 404
+    // (ends with an extension or resides in /assets/ folder)
+    const hasExtension = path.extname(req.path) !== '';
+    if (hasExtension || req.path.startsWith('/assets/')) {
+        res.status(404).send('Asset not found');
+        return;
+    }
+
     // Otherwise, serve index.html for SPA routing
     res.sendFile(path.join(distPath, 'index.html'));
 });
