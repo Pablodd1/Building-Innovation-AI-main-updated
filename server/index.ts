@@ -19,6 +19,34 @@ import mysql from 'mysql2/promise';
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
 const SERVER_DIR = path.resolve();
 
+// Manually load .env file if it exists (highly robust for Hostinger and local environments)
+try {
+    const envPath = path.join(process.cwd(), '.env');
+    if (fs.existsSync(envPath)) {
+        const envConfig = fs.readFileSync(envPath, 'utf8');
+        envConfig.split(/\r?\n/).forEach(line => {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('#')) {
+                const firstEquals = trimmed.indexOf('=');
+                if (firstEquals !== -1) {
+                    const key = trimmed.substring(0, firstEquals).trim();
+                    let value = trimmed.substring(firstEquals + 1).trim();
+                    // Remove enclosing quotes if any
+                    value = value.replace(/^['"]|['"]$/g, '');
+                    if (key && !process.env[key]) {
+                        process.env[key] = value;
+                    }
+                }
+            }
+        });
+        console.log('[Server Boot] Loaded environment variables from .env file successfully');
+    } else {
+        console.warn('[Server Boot] No .env file found at: ' + envPath);
+    }
+} catch (e) {
+    console.error('[Server Boot] Error reading .env file manually:', e.message);
+}
+
 // [SystemMonitor class moved to after config definitions]
 
 
@@ -2465,7 +2493,20 @@ app.get('/api/debug', async (req: Request, res: Response) => {
         env: {
             node_env: process.env.NODE_ENV,
             has_db_url: !!process.env.DATABASE_URL,
-            port: PORT
+            port: PORT,
+            has_db_host: !!process.env.DB_HOST,
+            db_host_val: process.env.DB_HOST ? `${process.env.DB_HOST.substring(0, 3)}...` : null,
+            has_db_user: !!process.env.DB_USER,
+            db_user_val: process.env.DB_USER ? `${process.env.DB_USER.substring(0, 3)}...` : null,
+            has_db_password: !!process.env.DB_PASSWORD,
+            has_db_name: !!process.env.DB_NAME,
+            db_name_val: process.env.DB_NAME ? `${process.env.DB_NAME.substring(0, 3)}...` : null,
+            has_db_port: !!process.env.DB_PORT,
+            db_port: process.env.DB_PORT || null,
+            has_telegram_token: !!process.env.TELEGRAM_BOT_TOKEN,
+            telegram_token_len: process.env.TELEGRAM_BOT_TOKEN ? process.env.TELEGRAM_BOT_TOKEN.length : 0,
+            has_telegram_chat_id: !!process.env.TELEGRAM_CHAT_ID,
+            telegram_chat_id_val: process.env.TELEGRAM_CHAT_ID ? `${process.env.TELEGRAM_CHAT_ID.substring(0, 4)}...` : null
         }
     };
 

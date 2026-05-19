@@ -28,12 +28,29 @@ export class TelegramAlerts {
 
   constructor(botToken?: string, chatId?: string) {
     this.botToken = botToken || TELEGRAM_BOT_TOKEN;
-    this.chatId = chatId || TELEGRAM_CHAT_ID;
+    
+    // Validate chatId to ensure it doesn't match the bot's own ID
+    const selectedChatId = chatId || TELEGRAM_CHAT_ID;
+    const botId = this.botToken.split(':')[0];
+    if (selectedChatId && selectedChatId !== botId) {
+      this.chatId = selectedChatId;
+    } else {
+      this.chatId = OWNER_CHAT_ID;
+      console.warn(`[Telegram] Invalid chatId (matching bot ID) detected in constructor, falling back to OWNER_CHAT_ID: ${OWNER_CHAT_ID}`);
+    }
   }
 
   updateToken(botToken: string, chatId?: string) {
     this.botToken = botToken;
-    if (chatId) this.chatId = chatId;
+    if (chatId) {
+      const botId = botToken.split(':')[0];
+      if (chatId !== botId) {
+        this.chatId = chatId;
+      } else {
+        this.chatId = OWNER_CHAT_ID;
+        console.warn(`[Telegram] Invalid chatId (matching bot ID) detected in updateToken, falling back to OWNER_CHAT_ID: ${OWNER_CHAT_ID}`);
+      }
+    }
   }
 
   private async sendRequest(path: string, body: any): Promise<any> {
