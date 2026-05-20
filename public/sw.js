@@ -1,89 +1,105 @@
-const CACHE_NAME = 'building-ai-cache-v3';
-const ASSETS_TO_CACHE = [
+// BuildingApp Service Worker v5
+// Network-First for HTML, Cache-First for assets, bulletproof clone handling
+const CACHE_NAME = 'building-ai-cache-v5';
+const PRECACHE_ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json',
-  '/favicon.ico'
+  '/manifest.json'
 ];
 
+// ── Install: pre-cache core shell ────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
+      // addAll can fail if network is down during install — that's ok
+      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
+        console.warn('[SW] Pre-cache failed (non-fatal):', err);
+      });
     })
   );
-  // Force active service worker to update immediately
+  // Activate immediately without waiting for old tabs to close
   self.skipWaiting();
 });
 
+// ── Activate: purge old caches ────────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
-          }
-        })
-      );
-    }).then(() => {
-      // Direct clients to take control immediately without reload
-      return self.clients.claim();
-    })
+    caches.keys()
+      .then((names) =>
+        Promise.all(
+          names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))
+        )
+      )
+      .then(() => self.clients.claim())
   );
 });
 
+// ── Fetch: smart routing ──────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
-  // Let browser handle API calls directly, only cache static files
-  if (event.request.url.includes('/api/')) {
+  const { request } = event;
+
+  // Only handle GET requests
+  if (request.method !== 'GET') return;
+
+  // Never intercept API calls — let them go straight to the server
+  if (request.url.includes('/api/')) return;
+
+  // Only intercept same-origin requests
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch (_) {
     return;
   }
+  if (url.origin !== self.location.origin) return;
 
-  const url = new URL(event.request.url);
-  const isHtmlPage = url.pathname === '/' || url.pathname === '/index.html';
+  const isHtmlRequest =
+    request.headers.get('accept')?.includes('text/html') ||
+    url.pathname === '/' ||
+    url.pathname === '/index.html';
 
-  if (isHtmlPage) {
-    // Network-First strategy for HTML pages to ensure updates are served instantly
+  if (isHtmlRequest) {
+    // ── Network-First for HTML: always get latest app shell ──────────────────
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
+      fetch(request)
+        .then((networkResponse) => {
+          // Clone BEFORE doing anything with the response
+          if (networkResponse && networkResponse.ok) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           }
-          return response;
+          return networkResponse;
         })
         .catch(() => {
-          // Serve offline fallback copy from cache
-          return caches.match(event.request);
+          // Offline: serve cached shell
+          return caches.match('/index.html').then(
+            (cached) => cached || new Response('<h1>Offline</h1>', { headers: { 'Content-Type': 'text/html' } })
+          );
         })
     );
   } else {
-    // Cache-First strategy for other static assets (images, manifests, bundled JS/CSS)
+    // ── Cache-First for static assets (JS, CSS, images) ─────────────────────
     event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        return fetch(event.request).then((response) => {
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
 
-          const contentType = response.headers.get('content-type');
-          // Do not cache SPA HTML fallbacks under asset file names
-          if (contentType && contentType.includes('text/html')) {
-            return response;
-          }
+        return fetch(request)
+          .then((networkResponse) => {
+            if (!networkResponse || !networkResponse.ok) return networkResponse;
 
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
+            // Do NOT cache if server returned an HTML fallback for a JS/CSS path
+            const ct = networkResponse.headers.get('content-type') || '';
+            if (ct.includes('text/html')) return networkResponse;
+
+            // Clone BEFORE returning
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            return networkResponse;
+          })
+          .catch(() => {
+            // Return whatever we have, or a 404
+            return cached || new Response('Not found', { status: 404 });
           });
-          return response;
-        });
       })
     );
   }
