@@ -1803,6 +1803,24 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
                 [name, email, phone || null, address || null, hashedPassword, 'customer', 'Free', 0]
             );
 
+            // Send Telegram notification for new user signup
+            try {
+                await telegramAlerts.sendMessage({
+                    text: `<b>👤 New User Registered</b>\n\n` +
+                          `<b>Name:</b> ${name}\n` +
+                          `<b>Email:</b> ${email}\n` +
+                          `<b>Phone:</b> ${phone || 'N/A'}\n` +
+                          `<b>Address:</b> ${address || 'N/A'}\n` +
+                          `<b>Tier:</b> Free\n` +
+                          `<b>Database:</b> PostgreSQL\n` +
+                          `<b>Time:</b> ${new Date().toLocaleTimeString()}\n\n` +
+                          `<a href="https://buildingapp.us/api/admin/dashboard">View Dashboard</a>`,
+                    parse_mode: 'HTML'
+                });
+            } catch (tgError) {
+                console.error('Failed to send signup Telegram alert:', tgError);
+            }
+
             res.status(201).json({ user: result.rows[0] });
         } catch (dbError) {
             console.warn('Signup DB unavailable, using JSON fallback...');
@@ -1831,6 +1849,24 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
 
             users.push(newUser);
             saveToJSON(JSON_USERS_PATH, users);
+
+            // Send Telegram notification for new user signup (JSON fallback)
+            try {
+                await telegramAlerts.sendMessage({
+                    text: `<b>👤 New User Registered</b>\n\n` +
+                          `<b>Name:</b> ${name}\n` +
+                          `<b>Email:</b> ${email}\n` +
+                          `<b>Phone:</b> ${phone || 'N/A'}\n` +
+                          `<b>Address:</b> ${address || 'N/A'}\n` +
+                          `<b>Tier:</b> Free\n` +
+                          `<b>Database:</b> High-Fidelity JSON Fallback\n` +
+                          `<b>Time:</b> ${new Date().toLocaleTimeString()}\n\n` +
+                          `<a href="https://buildingapp.us/api/admin/dashboard">View Dashboard</a>`,
+                    parse_mode: 'HTML'
+                });
+            } catch (tgError) {
+                console.error('Failed to send signup Telegram alert (fallback):', tgError);
+            }
 
             // Don't return password hash
             const { password_hash, ...userResponse } = newUser;
