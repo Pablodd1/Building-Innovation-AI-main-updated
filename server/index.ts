@@ -276,7 +276,7 @@ class SystemMonitor {
       checks: {
         apiKey: config,
         database: db,
-        configFile: { ok: !!findConfigPath(), path: findConfigPath() },
+        configFile: { ok: !!findConfigPath() || config.ok, path: findConfigPath() },
         staticFiles,
         serverBundle: bundle,
       },
@@ -775,7 +775,7 @@ app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
                 </div>
                 <div class="status">
                     <span class="status-dot ${health.checks.configFile.ok ? 'ok' : 'fail'}"></span>
-                    <span>Config File: ${health.checks.configFile.path ? 'Found' : 'Missing'}</span>
+                    <span>Config File: ${health.checks.configFile.path ? 'Found' : (health.checks.apiKey.ok ? 'Missing (Using environment variables)' : 'Missing')}</span>
                 </div>
                 <div class="status">
                     <span class="status-dot ${health.checks.staticFiles.ok ? 'ok' : 'fail'}"></span>
