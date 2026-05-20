@@ -95,6 +95,86 @@ const App: React.FC = () => {
     const [lang, setLang] = useState<Language>("en");
     const [unitSystem, setUnitSystem] = useState<"latam" | "usa">("usa");
 
+    // Authentication State
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [showMockCheckout, setShowMockCheckout] = useState(false);
+    const [checkoutTier, setCheckoutTier] = useState<string | null>(null);
+    const [selectedUserDetail, setSelectedUserDetail] = useState<any>(null);
+    const [showUserDetailModal, setShowUserDetailModal] = useState(false);
+    const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
+
+    const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+    const [authForm, setAuthForm] = useState({
+        name: "",
+        email: "",
+        email_phone: "",
+        address: "",
+        password: "",
+    });
+    const [authError, setAuthError] = useState("");
+    const [authLoading, setAuthLoading] = useState(false);
+
+    // Dynamic Data State
+    const [materials, setMaterials] = useState<Material[]>([]);
+    const [materialsLoading, setMaterialsLoading] = useState(true);
+    const [contractors, setContractors] = useState<Contractor[]>([]);
+    const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+    const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">("USD");
+    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+
+    // Search State
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+
+    // Admin Form State
+    const [adminTab, setAdminTab] = useState<"MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS">("MATERIALS");
+    const [analyticsData, setAnalyticsData] = useState<any>(null);
+    const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+    const [newAdminForm, setNewAdminForm] = useState({ name: "", email: "", password: "" });
+    const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [editForm, setEditForm] = useState<Partial<Material>>({});
+
+    const [contractorForm, setContractorForm] = useState<Partial<Contractor>>({});
+    const [originalImage, setOriginalImage] = useState<string | null>(null);
+    const [customPrompt, setCustomPrompt] = useState<string>("");
+
+    const [renderOptions, setRenderOptions] = useState<RenderOptions>({
+        lighting: "NATURAL",
+        viewAngle: "PERSPECTIVE",
+        declutter: false,
+    });
+
+    const [editorTab, setEditorTab] = useState<"CONFIGURE" | "ANALYZE">("CONFIGURE");
+
+    const [generationState, setGenerationState] = useState<GenerationState>({
+        isGenerating: false,
+        isAnalyzing: false,
+        error: null,
+        resultImage: null,
+        resultVideo: null,
+        analysis: null,
+        materialProbe: null,
+    });
+    const [cartCount, setCartCount] = useState<number>(0);
+
+    const [showProbeModal, setShowProbeModal] = useState(false);
+    const [history, setHistory] = useState<HistoryItem[]>([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
+
+    const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+    const [checkoutBody, setCheckoutBody] = useState("");
+
+    const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(new Set());
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+    const [adminCollectionFilter, setAdminCollectionFilter] = useState<"All" | "Interior" | "Exterior">("All");
+
     // Sync unit system with language
     useEffect(() => {
         setUnitSystem(lang === "es" ? "latam" : "usa");
@@ -147,14 +227,6 @@ const App: React.FC = () => {
         }
     }, [lang]);
     
-    // Authentication State
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [showMockCheckout, setShowMockCheckout] = useState(false);
-    const [checkoutTier, setCheckoutTier] = useState<string | null>(null);
-    const [selectedUserDetail, setSelectedUserDetail] = useState<any>(null);
-    const [showUserDetailModal, setShowUserDetailModal] = useState(false);
-    const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
-
     // Persist user changes across refreshes
     useEffect(() => {
         if (currentUser) {
@@ -163,29 +235,6 @@ const App: React.FC = () => {
             localStorage.removeItem('constructviz_user');
         }
     }, [currentUser]);
-
-    const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-    const [authForm, setAuthForm] = useState({
-        name: "",
-        email: "",
-        email_phone: "",
-        address: "",
-        password: "",
-    });
-    const [authError, setAuthError] = useState("");
-    const [authLoading, setAuthLoading] = useState(false);
-
-    // Dynamic Data State
-    const [materials, setMaterials] = useState<Material[]>([]);
-    const [materialsLoading, setMaterialsLoading] = useState(true);
-    const [contractors, setContractors] = useState<Contractor[]>([]);
-    const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
-        null,
-    );
-    const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">(
-        "USD",
-    );
-    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
 
     // Detect location on mount
     useEffect(() => {
@@ -234,18 +283,6 @@ const App: React.FC = () => {
         }
     };
 
-    // Search State
-    const [searchQuery, setSearchQuery] = useState("");
-
-    const [allUsers, setAllUsers] = useState<User[]>([]);
-    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-
-    // Admin Form State
-    const [adminTab, setAdminTab] = useState<
-        "MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS"
-    >("MATERIALS");
-
     useEffect(() => {
         if (view === AppView.ADMIN && adminTab === "USERS") {
             fetchAllUsers();
@@ -254,9 +291,6 @@ const App: React.FC = () => {
             fetchAnalytics();
         }
     }, [view, adminTab]);
-
-    const [analyticsData, setAnalyticsData] = useState<any>(null);
-    const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
 
     // --- User Memory & Behavioral Analytics Helpers ---
     
@@ -368,9 +402,6 @@ const App: React.FC = () => {
         }
     };
 
-    const [newAdminForm, setNewAdminForm] = useState({ name: "", email: "", password: "" });
-    const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
-
     const handleCreateAdmin = async () => {
         if (!newAdminForm.name || !newAdminForm.email || !newAdminForm.password) {
             alert(lang === 'es' ? "Todos los campos son obligatorios" : "All fields are required");
@@ -468,8 +499,6 @@ const App: React.FC = () => {
         };
         img.src = imgSrc;
     };
-    const [isEditing, setIsEditing] = useState(false);
-    const [editForm, setEditForm] = useState<Partial<Material>>({});
 
     const handleSelectPlan = async (newTier: string) => {
         if (!currentUser) return;
@@ -516,49 +545,6 @@ const App: React.FC = () => {
             alert(lang === 'es' ? `Error en la suscripción: ${e.message}` : `Subscription error: ${e.message}`);
         }
     };
-    const [contractorForm, setContractorForm] = useState<Partial<Contractor>>(
-        {},
-    );
-    const [originalImage, setOriginalImage] = useState<string | null>(null);
-    const [customPrompt, setCustomPrompt] = useState<string>("");
-
-    const [renderOptions, setRenderOptions] = useState<RenderOptions>({
-        lighting: "NATURAL",
-        viewAngle: "PERSPECTIVE",
-        declutter: false,
-    });
-
-    const [editorTab, setEditorTab] = useState<"CONFIGURE" | "ANALYZE">(
-        "CONFIGURE",
-    );
-
-    const [generationState, setGenerationState] = useState<GenerationState>({
-        isGenerating: false,
-        isAnalyzing: false,
-        error: null,
-        resultImage: null,
-        resultVideo: null,
-        analysis: null,
-        materialProbe: null,
-    });
-    const [cartCount, setCartCount] = useState<number>(0);
-
-    const [showProbeModal, setShowProbeModal] = useState(false);
-    const [history, setHistory] = useState<HistoryItem[]>([]);
-    const [historyIndex, setHistoryIndex] = useState(-1);
-
-    const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-    const [checkoutBody, setCheckoutBody] = useState("");
-
-    // Admin pagination and multi-select state
-    const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(
-        new Set(),
-    );
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
-    const [adminCollectionFilter, setAdminCollectionFilter] = useState<
-        "All" | "Interior" | "Exterior"
-    >("All");
 
     const t = TRANSLATIONS[lang];
 
