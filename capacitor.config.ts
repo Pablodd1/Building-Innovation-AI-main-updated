@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.buildinginnovation.app',
   appName: 'Building Innovation AI',
   webDir: 'dist',
-  bundledWebRuntime: false,
   server: {
     androidScheme: 'https'
   }

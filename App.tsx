@@ -3297,22 +3297,26 @@ const App: React.FC = () => {
                             {editableTiers ? (
                                 <div className="space-y-8">
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                        {['FREE', 'PRO', 'ENTERPRISE'].map((tierKey) => {
+                                        {['FREE', 'STANDARD', 'PREMIUM', 'LUXURY'].map((tierKey) => {
                                             const tierData = editableTiers[tierKey];
                                             if (!tierData) return null;
                                             
                                             // Curated harmonized visual styles
                                             const cardStyle = tierKey === 'FREE' 
                                                 ? 'border-gray-200 bg-gray-50/50 shadow-sm' 
-                                                : tierKey === 'PRO' 
+                                                : tierKey === 'STANDARD' 
                                                 ? 'border-blue-200 bg-blue-50/10 shadow-md shadow-blue-500/5 hover:border-blue-400' 
-                                                : 'border-purple-200 bg-purple-50/10 shadow-md shadow-purple-500/5 hover:border-purple-400';
+                                                : tierKey === 'PREMIUM'
+                                                ? 'border-purple-200 bg-purple-50/10 shadow-md shadow-purple-500/5 hover:border-purple-400'
+                                                : 'border-amber-200 bg-amber-50/10 shadow-md shadow-amber-500/5 hover:border-amber-400';
                                                 
                                             const badgeStyle = tierKey === 'FREE' 
                                                 ? 'bg-gray-100 text-gray-600' 
-                                                : tierKey === 'PRO' 
+                                                : tierKey === 'STANDARD' 
                                                 ? 'bg-blue-100 text-blue-700' 
-                                                : 'bg-purple-100 text-purple-700';
+                                                : tierKey === 'PREMIUM'
+                                                ? 'bg-purple-100 text-purple-700'
+                                                : 'bg-amber-100 text-amber-700';
 
                                             return (
                                                 <div key={tierKey} className={`p-6 rounded-3xl border-2 ${cardStyle} transition-all duration-300 hover:shadow-lg space-y-4`}>
@@ -3320,7 +3324,7 @@ const App: React.FC = () => {
                                                         <span className={`text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider ${badgeStyle}`}>
                                                             {tierKey}
                                                         </span>
-                                                        {tierData.limit === 9999 ? (
+                                                        {tierData.limit >= 9999 ? (
                                                             <span className="text-[10px] bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full border border-green-200">
                                                                 Unlimited Limit
                                                             </span>
@@ -4249,115 +4253,97 @@ const App: React.FC = () => {
         );
     };
 
-    const renderSubscriptionModal = () => {
+        const renderSubscriptionModal = () => {
         const tier = currentUser?.tier || 'Free';
         const used = currentUser?.generations_used || 0;
         const limit = getTierLimit(tier);
         const remaining = Math.max(0, limit - used);
 
         const defaultTiers = {
-            FREE: { name: 'Free', price: 0, limit: 5 },
-            PRO: { name: 'Pro', price: 10, limit: 50 },
-            ENTERPRISE: { name: 'Enterprise', price: 50, limit: 9999 }
+            FREE: { name: 'FREE', price: 0, limit: 10 },
+            STANDARD: { name: 'STANDARD', price: 4.99, limit: 500 },
+            PREMIUM: { name: 'PREMIUM', price: 24.99, limit: 1000 },
+            LUXURY: { name: 'LUXURY', price: 49.99, limit: 999999 }
         };
         const config = tiersConfig || defaultTiers;
         const plans = [
             { 
-                key: 'Free',
-                name: config.FREE?.name || 'Free', 
-                price: `$${config.FREE?.price ?? 0}`, 
-                limit: config.FREE?.limit === 9999 ? '∞' : (config.FREE?.limit ?? 5), 
+                key: 'FREE',
+                name: config.FREE?.name || 'FREE', 
+                price: config.FREE?.price === 0 ? 'SIN COSTO' : `${config.FREE?.price} USD`, 
+                limit: config.FREE?.limit >= 9999 ? 'ILIMITADOS' : (config.FREE?.limit ?? 10),
+                features: ['10 creditos para fotos', 'Usabilidad en 1 dispositivo'],
                 color: 'gray' 
             },
             { 
-                key: 'Pro',
-                name: config.PRO?.name || 'Pro', 
-                price: `$${config.PRO?.price ?? 10}`, 
-                limit: config.PRO?.limit === 9999 ? '∞' : (config.PRO?.limit ?? 50), 
-                color: 'blue', 
-                featured: true 
+                key: 'STANDARD',
+                name: config.STANDARD?.name || 'STANDARD', 
+                price: `${config.STANDARD?.price ?? 4.99} USD`, 
+                limit: config.STANDARD?.limit >= 9999 ? 'ILIMITADOS' : (config.STANDARD?.limit ?? 500),
+                features: ['1 mes de Servicio', 'Descarga de imagen HD', '500 creditos para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 2 dispositivos'],
+                color: 'blue' 
             },
             { 
-                key: 'Enterprise',
-                name: config.ENTERPRISE?.name || 'Enterprise', 
-                price: `$${config.ENTERPRISE?.price ?? 50}`, 
-                limit: config.ENTERPRISE?.limit === 9999 ? '∞' : (config.ENTERPRISE?.limit ?? 9999), 
-                color: 'purple' 
+                key: 'PREMIUM',
+                name: config.PREMIUM?.name || 'PREMIUM', 
+                price: `${config.PREMIUM?.price ?? 24.99} USD`, 
+                limit: config.PREMIUM?.limit >= 9999 ? 'ILIMITADOS' : (config.PREMIUM?.limit ?? 1000),
+                features: ['6 meses de Servicio', 'Descarga de imagen HD', '1000 creditos para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 2 dispositivos'],
+                color: 'purple',
+                featured: true
+            },
+            { 
+                key: 'LUXURY',
+                name: config.LUXURY?.name || 'LUXURY', 
+                price: `${config.LUXURY?.price ?? 49.99} USD`, 
+                limit: config.LUXURY?.limit >= 9999 ? 'ILIMITADOS' : (config.LUXURY?.limit ?? 999999),
+                features: ['12 meses de Servicio', 'Descarga de imagen HD', 'Creditos ILIMITADOS para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 3 dispositivos'],
+                color: 'amber' 
             },
         ];
 
         return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fadeIn">
-                <div className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col md:flex-row h-full max-h-[80vh]">
-                    <div className="flex-1 p-8 bg-gray-50 overflow-y-auto">
-                        <div className="flex justify-between items-start mb-8">
-                            <div>
-                                <h2 className="text-3xl font-black text-gray-700 uppercase tracking-tighter">Your Plan</h2>
-                                <p className="text-gray-500">Manage your subscription and credits</p>
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 lg:p-8 animate-fadeIn">
+                <div className="bg-[#0b0c10] rounded-[2rem] max-w-7xl w-full overflow-hidden shadow-2xl shadow-purple-900/20 flex flex-col h-full max-h-[95vh] border border-[#1f2833]">
+                    <div className="flex-1 p-8 lg:p-12 overflow-y-auto">
+                        <div className="flex justify-between items-start mb-12 relative">
+                            <div className="w-full text-center">
+                                <h2 className="text-3xl md:text-4xl font-black text-white tracking-[0.3em] uppercase">Planes Disponibles</h2>
                             </div>
-                            <button onClick={() => setShowSubscriptionModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                            <button onClick={() => setShowSubscriptionModal(false)} className="absolute right-0 top-0 p-3 hover:bg-white/10 rounded-full transition-colors text-white">
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                             {plans.map((p) => {
                                 const isCurrent = p.key.toLowerCase() === tier.toLowerCase();
                                 return (
-                                    <div key={p.key} className={`relative p-6 rounded-2xl border-2 transition-all ${isCurrent ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'} ${p.featured ? 'scale-105 shadow-xl z-10 border-blue-400' : ''}`}>
-                                        {p.featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Most Popular</div>}
-                                        <div className="text-xl font-black text-gray-700 mb-1">{p.name}</div>
-                                        <div className="text-3xl font-black text-blue-600 mb-4">{p.price}<span className="text-xs text-gray-400 font-normal">/mo</span></div>
-                                        <ul className="space-y-2 mb-6">
-                                            <li className="text-xs text-gray-500 flex items-center gap-2">
-                                                <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
-                                                {p.limit} AI Generations
-                                            </li>
-                                            <li className="text-xs text-gray-500 flex items-center gap-2">
-                                                <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
-                                                High-Fidelity Export
-                                            </li>
-                                        </ul>
-                                        <button 
-                                            disabled={isCurrent}
-                                            onClick={() => handleSelectPlan(p.key)}
-                                            className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${isCurrent ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20 active:scale-95'}`}
-                                        >
-                                            {isCurrent ? 'Current Plan' : 'Select Plan'}
-                                        </button>
+                                    <div key={p.key} className={`relative flex flex-col p-[2px] transition-all bg-gradient-to-b from-[#b340eb] to-[#450a80] ${p.featured ? 'scale-105 shadow-[0_0_40px_rgba(179,64,235,0.4)] z-10' : ''}`} style={{ clipPath: 'polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%)' }}>
+                                        <div className="bg-[#0b0c10] h-full flex flex-col text-center" style={{ clipPath: 'polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%)' }}>
+                                            <div className="p-8 flex-1 flex flex-col items-center">
+                                                <div className="text-2xl font-black text-white mb-10 tracking-[0.2em]">{p.name}</div>
+                                                
+                                                <div className="flex-1 flex flex-col justify-center space-y-8 mb-8 w-full">
+                                                    {p.features.map((feat, idx) => (
+                                                        <div key={idx} className="text-sm text-gray-300 font-medium">{feat}</div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-auto">
+                                                <button 
+                                                    disabled={isCurrent}
+                                                    onClick={() => handleSelectPlan(p.key)}
+                                                    className={`w-full py-5 font-black tracking-widest text-lg transition-all ${isCurrent ? 'bg-purple-900/50 text-white/50 cursor-default' : 'bg-[#c75af6] text-white hover:bg-[#d67bf9] shadow-[0_0_20px_rgba(199,90,246,0.5)] active:scale-95'}`}
+                                                >
+                                                    {isCurrent ? 'PLAN ACTUAL' : p.price}
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 );
                             })}
-                        </div>
-                    </div>
-
-                    <div className="w-full md:w-80 bg-white border-l border-gray-200 p-8 flex flex-col">
-                        <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest mb-6">Usage Summary</h3>
-                        <div className="flex-1">
-                            <div className="mb-6">
-                                <div className="flex justify-between text-xs font-bold mb-2">
-                                    <span className="text-gray-500">GENERATIONS</span>
-                                    <span className="text-gray-700">{used} / {limit === 9999 ? '∞' : limit}</span>
-                                </div>
-                                <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                                    <div 
-                                        className="bg-blue-500 h-full transition-all duration-1000" 
-                                        style={{ width: `${Math.min(100, (used / limit) * 100)}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-
-                            <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
-                                <div className="text-[10px] font-bold text-blue-500 mb-1 uppercase">Remaining</div>
-                                <div className="text-4xl font-black text-blue-600">{limit === 9999 ? '∞' : remaining}</div>
-                                <div className="text-[10px] text-blue-400">Renders available this month</div>
-                            </div>
-                        </div>
-
-                        <div className="mt-auto pt-6 border-t border-gray-100">
-                            <p className="text-[10px] text-gray-400 leading-relaxed">
-                                Generations reset on the 1st of every month. Unused credits do not roll over.
-                            </p>
                         </div>
                     </div>
                 </div>

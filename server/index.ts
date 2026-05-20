@@ -140,14 +140,16 @@ interface TierInfo {
 
 interface TiersConfig {
     FREE: TierInfo;
-    PRO: TierInfo;
-    ENTERPRISE: TierInfo;
+    STANDARD: TierInfo;
+    PREMIUM: TierInfo;
+    LUXURY: TierInfo;
 }
 
 const DEFAULT_TIERS: TiersConfig = {
-    FREE: { name: 'Tier 1 (Free)', limit: 5, price: 0, stripePriceId: '' },
-    PRO: { name: 'Tier 2 (Pro)', limit: 50, price: 10, stripePriceId: 'price_123_pro' },
-    ENTERPRISE: { name: 'Tier 3 (Enterprise)', limit: 9999, price: 50, stripePriceId: 'price_123_enterprise' }
+    FREE: { name: 'FREE', limit: 10, price: 0, stripePriceId: '' },
+    STANDARD: { name: 'STANDARD', limit: 500, price: 4.99, stripePriceId: 'price_standard_placeholder' },
+    PREMIUM: { name: 'PREMIUM', limit: 1000, price: 24.99, stripePriceId: 'price_premium_placeholder' },
+    LUXURY: { name: 'LUXURY', limit: 999999, price: 49.99, stripePriceId: 'price_luxury_placeholder' }
 };
 
 const JSON_TIERS_PATH = path.join(process.cwd(), 'data', 'tiers.persistent.json');
@@ -166,7 +168,7 @@ async function getTiers(): Promise<TiersConfig> {
                 };
             });
             // Ensure all default keys exist
-            for (const key of ['FREE', 'PRO', 'ENTERPRISE']) {
+            for (const key of ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY']) {
                 if (!config[key]) {
                     config[key] = { ...DEFAULT_TIERS[key as keyof TiersConfig] };
                 }
@@ -354,6 +356,7 @@ interface HealthStatus {
     materialViews: number;
     errors: number;
     startTime: string;
+    totalUsers: number;
   };
 }
 
@@ -650,7 +653,7 @@ async function getUsers() {
 // Middleware + Monitoring + Security
 app.use(cors());
 // Stripe Webhook Endpoint (Must use raw body for signature verification)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_123', { apiVersion: '2025-02-24.acacia' });
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_123', { apiVersion: '2025-02-24.acacia' as any });
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
 
 app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req: Request, res: Response) => {
@@ -1347,7 +1350,7 @@ STRICT RENDERING RULES:
         res.json({ success: true, image: resultImage });
         
     } catch (error: any) {
-        const durationMs = Date.now() - (genStartTime || Date.now());
+        const durationMs = 0;
         
         // Log failed generation
         generationLog.push({
@@ -1542,7 +1545,7 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
             // Try deleting by numeric ID or by RefCode (SKU)
-            const result = await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2 RETURNING id', [id, id]);
+            const result = await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2 RETURNING id', [id, (id as string)]);
             
             // Sync to JSON fallback if we have a DB connection
             const all = await query('SELECT * FROM materials ORDER BY category, name');
@@ -1806,17 +1809,17 @@ app.get('/api/purchase-requests', async (req: Request, res: Response) => {
     try {
         const { status } = req.query;
 
-        let query = 'SELECT * FROM purchase_requests';
+        let sqlQuery = 'SELECT * FROM purchase_requests';
         const params: any[] = [];
 
         if (status) {
-            query += ' WHERE status = $1';
+            sqlQuery += ' WHERE status = $1';
             params.push(status);
         }
 
-        query += ' ORDER BY created_at DESC';
+        sqlQuery += ' ORDER BY created_at DESC';
 
-        const result = await query(query, params);
+        const result = await query(sqlQuery, params);
 
         // Parse cart_items JSON
         const requests = result.rows.map(row => ({
@@ -1835,7 +1838,7 @@ app.get('/api/purchase-requests', async (req: Request, res: Response) => {
 app.get('/api/purchase-requests/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const result = await query('SELECT * FROM purchase_requests WHERE id = $1', [id]);
+        const result = await query('SELECT * FROM purchase_requests WHERE id = $1', [(id as string)]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Purchase request not found' });
@@ -2264,7 +2267,7 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
         try {
             const result = await query(
                 'UPDATE users SET generations_used = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
-                [generations_used, id]
+                [generations_used, (id as string)]
             );
             if (result.rows.length > 0) {
                 return res.json({ success: true });
@@ -2300,7 +2303,7 @@ app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
 
         const result = await query(
             'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, email, tier',
-            [tier, id]
+            [tier, (id as string)]
         );
 
         if (result.rows.length === 0) {
@@ -2331,7 +2334,7 @@ app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
 app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = parseInt(id as string);
 
         let memory = { lastState: {}, history: [], behaviors: {} };
         
@@ -2353,8 +2356,8 @@ app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
         if (fs.existsSync(JSON_MEMORIES_PATH)) {
             try {
                 const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-                if (data[id]) {
-                    memory = data[id];
+                if (data[id as string]) {
+                    memory = data[id as string];
                 }
             } catch (parseErr) {
                 console.warn('Failed to parse memories JSON:', parseErr);
@@ -2371,7 +2374,7 @@ app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
 app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = parseInt(id as string);
         const { lastState, historyItem, behaviorEvent } = req.body;
 
         // Fetch existing memory
@@ -2392,8 +2395,8 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
 
         if (source === 'JSON' && fs.existsSync(JSON_MEMORIES_PATH)) {
             const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-            if (data[id]) {
-                currentMemory = data[id];
+            if (data[id as string]) {
+                currentMemory = data[id as string];
             }
         }
 
@@ -2445,7 +2448,7 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
                 console.warn('Failed to parse memories JSON during save:', parseErr);
             }
         }
-        data[id] = currentMemory;
+        data[id as string] = currentMemory;
         fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
 
         res.json({ success: true, memory: currentMemory });
@@ -2459,7 +2462,7 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
 app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = parseInt(id as string);
 
         let userProfile: any = null;
         
@@ -2494,14 +2497,14 @@ app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
                 // Check JSON fallback
                 if (fs.existsSync(JSON_MEMORIES_PATH)) {
                     const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-                    if (data[id]) memory = data[id];
+                    if (data[id as string]) memory = data[id as string];
                 }
             }
         } catch (e) {
             if (fs.existsSync(JSON_MEMORIES_PATH)) {
                 try {
                     const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-                    if (data[id]) memory = data[id];
+                    if (data[id as string]) memory = data[id as string];
                 } catch (parseErr) {}
             }
         }
@@ -2520,7 +2523,7 @@ app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
 app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = parseInt(id as string);
 
         // Delete from database
         try {
@@ -2539,8 +2542,8 @@ app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) 
 
         if (fs.existsSync(JSON_MEMORIES_PATH)) {
             const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-            if (data[id]) {
-                delete data[id];
+            if (data[id as string]) {
+                delete data[id as string];
                 fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
             }
         }
