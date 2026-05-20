@@ -128,6 +128,38 @@ const App: React.FC = () => {
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+    const [tiersConfig, setTiersConfig] = useState<any>(null);
+    const [editableTiers, setEditableTiers] = useState<any>(null);
+    const [isSavingTiers, setIsSavingTiers] = useState(false);
+
+    const fetchTiers = async () => {
+        try {
+            const res = await fetch('/api/tiers');
+            if (res.ok) {
+                const data = await res.json();
+                setTiersConfig(data);
+                setEditableTiers(data);
+            }
+        } catch (e) {
+            console.error('Failed to fetch tiers:', e);
+        }
+    };
+
+    const getTierLimit = (tierName: string) => {
+        const tiers = tiersConfig || {
+            FREE: { name: 'Tier 1 (Free)', limit: 5 },
+            PRO: { name: 'Tier 2 (Pro)', limit: 50 },
+            ENTERPRISE: { name: 'Tier 3 (Enterprise)', limit: 9999 }
+        };
+        const matched = Object.values(tiers).find(
+            (t: any) => t.name.toLowerCase() === tierName.toLowerCase() || 
+                       t.name.split(' ')[0].toLowerCase() === tierName.toLowerCase() ||
+                       t.name.includes(`(${tierName})`) ||
+                       (tierName.toLowerCase() === 'pro' && t.name.toLowerCase().includes('pro')) ||
+                       (tierName.toLowerCase() === 'enterprise' && t.name.toLowerCase().includes('enterprise'))
+        ) || (tiers as any)[tierName.toUpperCase()] || tiers.FREE;
+        return matched ? matched.limit : 5;
+    };
 
     // Admin Form State
     const [adminTab, setAdminTab] = useState<"MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS">("MATERIALS");
@@ -546,6 +578,60 @@ const App: React.FC = () => {
         }
     };
 
+    const handleUpdateTierField = (tierKey: string, field: string, value: any) => {
+        if (!editableTiers) return;
+        setEditableTiers((prev: any) => ({
+            ...prev,
+            [tierKey]: {
+                ...prev[tierKey],
+                [field]: value
+            }
+        }));
+    };
+
+    const handleSaveTiers = async () => {
+        if (!editableTiers) return;
+        
+        // Basic validation
+        for (const [key, info] of Object.entries(editableTiers)) {
+            const tInfo = info as any;
+            if (!tInfo.name.trim()) {
+                alert(lang === 'es' ? `El nombre para la tarifa ${key} no puede estar vacío` : `Name for tier ${key} cannot be empty`);
+                return;
+            }
+            if (isNaN(tInfo.limit) || tInfo.limit < 0) {
+                alert(lang === 'es' ? `Límite inválido para la tarifa ${key}` : `Invalid limit for tier ${key}`);
+                return;
+            }
+            if (isNaN(tInfo.price) || tInfo.price < 0) {
+                alert(lang === 'es' ? `Precio inválido para la tarifa ${key}` : `Invalid price for tier ${key}`);
+                return;
+            }
+        }
+
+        setIsSavingTiers(true);
+        try {
+            const res = await fetch('/api/admin/tiers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editableTiers),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTiersConfig(data.config);
+                alert(lang === 'es' ? '¡Tarifas actualizadas con éxito!' : 'Tiers configuration saved successfully!');
+            } else {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to save tiers');
+            }
+        } catch (e: any) {
+            console.error('Failed to save tiers:', e);
+            alert(lang === 'es' ? `Error al guardar tarifas: ${e.message}` : `Failed to save tiers: ${e.message}`);
+        } finally {
+            setIsSavingTiers(false);
+        }
+    };
+
     const t = TRANSLATIONS[lang];
 
     // Memoized filtered materials for admin panel
@@ -693,6 +779,7 @@ const App: React.FC = () => {
 
     useEffect(() => {
         loadMaterialsFromDB();
+        fetchTiers();
 
         const savedContractors = localStorage.getItem(
             "constructVizContractors",
@@ -1202,7 +1289,7 @@ const App: React.FC = () => {
 
         // Pre-check quota
         if (currentUser && currentUser.role !== 'admin') {
-            const limit = currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999;
+            const limit = getTierLimit(currentUser.tier || 'Free');
             if ((currentUser.generations_used || 0) >= limit) {
                 setShowSubscriptionModal(true);
                 return;
@@ -1713,13 +1800,13 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center w-24">
                                     <span className="text-[9px] font-bold text-blue-600 uppercase">{currentUser.tier}</span>
                                     <span className="text-[9px] font-bold text-blue-400">
-                                        {currentUser.generations_used} / {currentUser.tier === 'Free' ? '5' : currentUser.tier === 'Pro' ? '50' : '∞'}
+                                        {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') === 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
                                     </span>
                                 </div>
                                 <div className="w-24 h-1 bg-blue-200 rounded-full overflow-hidden mt-0.5">
                                     <div 
                                         className="h-full bg-blue-600 transition-all duration-500" 
-                                        style={{ width: `${Math.min(100, (currentUser.generations_used / (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999)) * 100)}%` }}
+                                        style={{ width: `${Math.min(100, (currentUser.generations_used / getTierLimit(currentUser.tier || 'Free')) * 100)}%` }}
                                     ></div>
                                 </div>
                             </div>
@@ -3153,7 +3240,7 @@ const App: React.FC = () => {
                                                 <div className="w-24 bg-gray-200 rounded-full h-1.5 mb-1">
                                                     <div 
                                                         className="bg-blue-500 h-1.5 rounded-full" 
-                                                        style={{ width: `${Math.min(100, (u.generations_used / (u.tier === 'Free' ? 5 : u.tier === 'Pro' ? 50 : 9999)) * 100)}%` }}
+                                                        style={{ width: `${Math.min(100, (u.generations_used / getTierLimit(u.tier || 'Free')) * 100)}%` }}
                                                     ></div>
                                                 </div>
                                                 <input 
@@ -3191,18 +3278,173 @@ const App: React.FC = () => {
                 )}
 
                 {adminTab === "SETTINGS" && (
-                    <div className="max-w-xl">
-                        <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
-                            <h3 className="text-lg font-bold text-gray-700 mb-4">
-                                AI Configuration
+                    <div className="max-w-5xl space-y-8 animate-fadeIn">
+                        {/* Tiers Manager */}
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50">
+                            <div className="flex justify-between items-start mb-6">
+                                <div>
+                                    <h3 className="text-2xl font-black text-gray-700 uppercase tracking-tighter">
+                                        Subscription Tiers & Pricing Manager
+                                    </h3>
+                                    <p className="text-sm text-gray-400">
+                                        {lang === "es"
+                                            ? "Personaliza los nombres de planes, límites de renderizado por IA, precios mensuales y Stripe IDs."
+                                            : "Customize display names, AI render limits, monthly pricing, and Stripe IDs for subscription plans."}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {editableTiers ? (
+                                <div className="space-y-8">
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {['FREE', 'PRO', 'ENTERPRISE'].map((tierKey) => {
+                                            const tierData = editableTiers[tierKey];
+                                            if (!tierData) return null;
+                                            
+                                            // Curated harmonized visual styles
+                                            const cardStyle = tierKey === 'FREE' 
+                                                ? 'border-gray-200 bg-gray-50/50 shadow-sm' 
+                                                : tierKey === 'PRO' 
+                                                ? 'border-blue-200 bg-blue-50/10 shadow-md shadow-blue-500/5 hover:border-blue-400' 
+                                                : 'border-purple-200 bg-purple-50/10 shadow-md shadow-purple-500/5 hover:border-purple-400';
+                                                
+                                            const badgeStyle = tierKey === 'FREE' 
+                                                ? 'bg-gray-100 text-gray-600' 
+                                                : tierKey === 'PRO' 
+                                                ? 'bg-blue-100 text-blue-700' 
+                                                : 'bg-purple-100 text-purple-700';
+
+                                            return (
+                                                <div key={tierKey} className={`p-6 rounded-3xl border-2 ${cardStyle} transition-all duration-300 hover:shadow-lg space-y-4`}>
+                                                    <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                                                        <span className={`text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider ${badgeStyle}`}>
+                                                            {tierKey}
+                                                        </span>
+                                                        {tierData.limit === 9999 ? (
+                                                            <span className="text-[10px] bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full border border-green-200">
+                                                                Unlimited Limit
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] text-gray-400 font-medium">
+                                                                {tierData.limit} max renders
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                Display Name
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={tierData.name}
+                                                                onChange={(e) => handleUpdateTierField(tierKey, 'name', e.target.value)}
+                                                                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                AI Render Limit
+                                                            </label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="number"
+                                                                    value={tierData.limit}
+                                                                    onChange={(e) => handleUpdateTierField(tierKey, 'limit', parseInt(e.target.value, 10) || 0)}
+                                                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                                                />
+                                                            </div>
+                                                            <p className="text-[9px] text-gray-400 mt-1 italic">
+                                                                Use 9999 to configure unlimited quota.
+                                                            </p>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                Price ($USD / month)
+                                                            </label>
+                                                            <div className="relative rounded-xl shadow-sm">
+                                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                                    <span className="text-gray-400 text-xs font-bold">$</span>
+                                                                </div>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    value={tierData.price}
+                                                                    onChange={(e) => handleUpdateTierField(tierKey, 'price', parseFloat(e.target.value) || 0)}
+                                                                    className="w-full bg-white border border-gray-200 rounded-xl pl-6 pr-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                Stripe Price ID
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="e.g. price_1Hh1..."
+                                                                value={tierData.stripePriceId || ''}
+                                                                onChange={(e) => handleUpdateTierField(tierKey, 'stripePriceId', e.target.value)}
+                                                                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                                            />
+                                                            <p className="text-[9px] text-gray-400 mt-1">
+                                                                Leave blank or configure Stripe catalog item.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="flex justify-end pt-6 border-t border-gray-100">
+                                        <button
+                                            onClick={handleSaveTiers}
+                                            disabled={isSavingTiers}
+                                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:shadow-blue-500/35 active:scale-95 transition-all flex items-center gap-2"
+                                        >
+                                            {isSavingTiers ? (
+                                                <>
+                                                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                    </svg>
+                                                    {lang === "es" ? "Guardando..." : "Saving..."}
+                                                </>
+                                            ) : (
+                                                lang === "es" ? "Guardar Configuración" : "Save Plans Configuration"
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="py-12 flex justify-center items-center">
+                                    <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Secure AI Server Config Card */}
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50">
+                            <h3 className="text-xl font-bold text-gray-700 mb-4">
+                                Secure AI Engine Server Configuration
                             </h3>
-                            <p className="text-sm text-gray-500 mb-4">
+                            <p className="text-sm text-gray-500 mb-4 leading-relaxed">
                                 {lang === "es"
-                                    ? "La IA está configurada en el servidor. No se requiere clave de API en el navegador."
-                                    : "AI is configured server-side. No API key required in the browser."}
+                                    ? "La IA de visualización está configurada de forma segura en el backend del servidor. No se requiere ninguna clave de API o credencial en el navegador cliente."
+                                    : "The rendering AI visual engine is securely loaded in the backend server. No API key or system credential is required or exposed in the client browser."}
                             </p>
-                            <div className="bg-green-100 border border-green-300 rounded p-3 text-sm text-green-800">
-                                ✅ {lang === "es" ? "Protección activa: la clave nunca se expone al cliente." : "Secure: key never exposed to client."}
+                            <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-xs font-semibold text-green-700 flex items-center gap-3">
+                                <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                                <span>{lang === "es" ? "Protección Activa de Credenciales: la clave de la API está cifrada en el servidor." : "Active Credential Guard: System API tokens are hidden and protected from developer inspection."}</span>
                             </div>
                         </div>
                     </div>
@@ -3257,7 +3499,7 @@ const App: React.FC = () => {
                                 >
                                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                                     <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
-                                        {currentUser.tier === 'Enterprise' ? 'Unlimited' : `${(currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999) - (currentUser.generations_used || 0)} Renders`}
+                                        {getTierLimit(currentUser.tier || 'Free') === 9999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
                                     </span>
                                     <svg className="w-3 h-3 text-blue-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                 </button>
@@ -3424,7 +3666,7 @@ const App: React.FC = () => {
                                     className="flex items-center gap-2 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"
                                 >
                                     <span className="text-[9px] font-black text-blue-600 uppercase">
-                                        {currentUser.tier === 'Enterprise' ? '∞' : (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999) - (currentUser.generations_used || 0)} Renders
+                                        {getTierLimit(currentUser.tier || 'Free') === 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders
                                     </span>
                                 </button>
                             )}
@@ -4010,8 +4252,39 @@ const App: React.FC = () => {
     const renderSubscriptionModal = () => {
         const tier = currentUser?.tier || 'Free';
         const used = currentUser?.generations_used || 0;
-        const limit = tier === 'Free' ? 5 : tier === 'Pro' ? 50 : 9999;
+        const limit = getTierLimit(tier);
         const remaining = Math.max(0, limit - used);
+
+        const defaultTiers = {
+            FREE: { name: 'Free', price: 0, limit: 5 },
+            PRO: { name: 'Pro', price: 10, limit: 50 },
+            ENTERPRISE: { name: 'Enterprise', price: 50, limit: 9999 }
+        };
+        const config = tiersConfig || defaultTiers;
+        const plans = [
+            { 
+                key: 'Free',
+                name: config.FREE?.name || 'Free', 
+                price: `$${config.FREE?.price ?? 0}`, 
+                limit: config.FREE?.limit === 9999 ? '∞' : (config.FREE?.limit ?? 5), 
+                color: 'gray' 
+            },
+            { 
+                key: 'Pro',
+                name: config.PRO?.name || 'Pro', 
+                price: `$${config.PRO?.price ?? 10}`, 
+                limit: config.PRO?.limit === 9999 ? '∞' : (config.PRO?.limit ?? 50), 
+                color: 'blue', 
+                featured: true 
+            },
+            { 
+                key: 'Enterprise',
+                name: config.ENTERPRISE?.name || 'Enterprise', 
+                price: `$${config.ENTERPRISE?.price ?? 50}`, 
+                limit: config.ENTERPRISE?.limit === 9999 ? '∞' : (config.ENTERPRISE?.limit ?? 9999), 
+                color: 'purple' 
+            },
+        ];
 
         return (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fadeIn">
@@ -4028,34 +4301,33 @@ const App: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            {[
-                                { name: 'Free', price: '$0', limit: 5, color: 'gray' },
-                                { name: 'Pro', price: '$10', limit: 50, color: 'blue', featured: true },
-                                { name: 'Enterprise', price: '$50', limit: '∞', color: 'purple' },
-                            ].map((p) => (
-                                <div key={p.name} className={`relative p-6 rounded-2xl border-2 transition-all ${p.name === tier ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'} ${p.featured ? 'scale-105 shadow-xl z-10 border-blue-400' : ''}`}>
-                                    {p.featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Most Popular</div>}
-                                    <div className="text-xl font-black text-gray-700 mb-1">{p.name}</div>
-                                    <div className="text-3xl font-black text-blue-600 mb-4">{p.price}<span className="text-xs text-gray-400 font-normal">/mo</span></div>
-                                    <ul className="space-y-2 mb-6">
-                                        <li className="text-xs text-gray-500 flex items-center gap-2">
-                                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
-                                            {p.limit} AI Generations
-                                        </li>
-                                        <li className="text-xs text-gray-500 flex items-center gap-2">
-                                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
-                                            High-Fidelity Export
-                                        </li>
-                                    </ul>
-                                    <button 
-                                        disabled={p.name === tier}
-                                        onClick={() => handleSelectPlan(p.name)}
-                                        className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${p.name === tier ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20 active:scale-95'}`}
-                                    >
-                                        {p.name === tier ? 'Current Plan' : 'Select Plan'}
-                                    </button>
-                                </div>
-                            ))}
+                            {plans.map((p) => {
+                                const isCurrent = p.key.toLowerCase() === tier.toLowerCase();
+                                return (
+                                    <div key={p.key} className={`relative p-6 rounded-2xl border-2 transition-all ${isCurrent ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'} ${p.featured ? 'scale-105 shadow-xl z-10 border-blue-400' : ''}`}>
+                                        {p.featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Most Popular</div>}
+                                        <div className="text-xl font-black text-gray-700 mb-1">{p.name}</div>
+                                        <div className="text-3xl font-black text-blue-600 mb-4">{p.price}<span className="text-xs text-gray-400 font-normal">/mo</span></div>
+                                        <ul className="space-y-2 mb-6">
+                                            <li className="text-xs text-gray-500 flex items-center gap-2">
+                                                <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
+                                                {p.limit} AI Generations
+                                            </li>
+                                            <li className="text-xs text-gray-500 flex items-center gap-2">
+                                                <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
+                                                High-Fidelity Export
+                                            </li>
+                                        </ul>
+                                        <button 
+                                            disabled={isCurrent}
+                                            onClick={() => handleSelectPlan(p.key)}
+                                            className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${isCurrent ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20 active:scale-95'}`}
+                                        >
+                                            {isCurrent ? 'Current Plan' : 'Select Plan'}
+                                        </button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 

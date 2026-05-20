@@ -131,11 +131,93 @@ async function query(text: string, params: any[] = []) {
 // In-memory error log for debugging
 const errorLog: any[] = [];
 
-const TIERS = {
-    FREE: { name: 'Tier 1 (Free)', limit: 5 },
-    PRO: { name: 'Tier 2 (Pro)', limit: 50 },
-    ENTERPRISE: { name: 'Tier 3 (Enterprise)', limit: 9999 }
+interface TierInfo {
+    name: string;
+    limit: number;
+    price: number;
+    stripePriceId: string;
+}
+
+interface TiersConfig {
+    FREE: TierInfo;
+    PRO: TierInfo;
+    ENTERPRISE: TierInfo;
+}
+
+const DEFAULT_TIERS: TiersConfig = {
+    FREE: { name: 'Tier 1 (Free)', limit: 5, price: 0, stripePriceId: '' },
+    PRO: { name: 'Tier 2 (Pro)', limit: 50, price: 10, stripePriceId: 'price_123_pro' },
+    ENTERPRISE: { name: 'Tier 3 (Enterprise)', limit: 9999, price: 50, stripePriceId: 'price_123_enterprise' }
 };
+
+const JSON_TIERS_PATH = path.join(process.cwd(), 'data', 'tiers.persistent.json');
+
+async function getTiers(): Promise<TiersConfig> {
+    try {
+        const result = await query('SELECT id, name, "limit", price, stripe_price_id FROM tiers_config');
+        if (result && result.rows && result.rows.length > 0) {
+            const config: any = {};
+            result.rows.forEach((row: any) => {
+                config[row.id.toUpperCase()] = {
+                    name: row.name,
+                    limit: parseInt(row.limit, 10),
+                    price: parseFloat(row.price),
+                    stripePriceId: row.stripe_price_id || ''
+                };
+            });
+            // Ensure all default keys exist
+            for (const key of ['FREE', 'PRO', 'ENTERPRISE']) {
+                if (!config[key]) {
+                    config[key] = { ...DEFAULT_TIERS[key as keyof TiersConfig] };
+                }
+            }
+            return config;
+        }
+    } catch (e: any) {
+        console.warn('⚠️ SQL query for tiers_config failed, falling back to JSON:', e.message);
+    }
+
+    // JSON fallback
+    try {
+        if (fs.existsSync(JSON_TIERS_PATH)) {
+            const content = fs.readFileSync(JSON_TIERS_PATH, 'utf8');
+            const parsed = JSON.parse(content);
+            if (parsed.FREE && parsed.PRO && parsed.ENTERPRISE) {
+                return parsed as TiersConfig;
+            }
+        }
+    } catch (jsonErr: any) {
+        console.error('Failed to read tiers.persistent.json:', jsonErr.message);
+    }
+
+    return { ...DEFAULT_TIERS };
+}
+
+async function saveTiers(config: TiersConfig): Promise<void> {
+    // 1. Save to JSON fallback
+    try {
+        fs.writeFileSync(JSON_TIERS_PATH, JSON.stringify(config, null, 2), 'utf8');
+        console.log('✅ Saved tiers to tiers.persistent.json');
+    } catch (jsonErr: any) {
+        console.error('Failed to write to tiers.persistent.json:', jsonErr.message);
+    }
+
+    // 2. Save to database
+    try {
+        for (const [id, info] of Object.entries(config)) {
+            await query(
+                `INSERT INTO tiers_config (id, name, "limit", price, stripe_price_id) 
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (id) DO UPDATE 
+                 SET name = EXCLUDED.name, "limit" = EXCLUDED.limit, price = EXCLUDED.price, stripe_price_id = EXCLUDED.stripe_price_id`,
+                [id.toUpperCase(), info.name, info.limit, info.price, info.stripePriceId]
+            );
+        }
+        console.log('✅ Saved tiers to database');
+    } catch (e: any) {
+        console.warn('⚠️ Failed to save tiers to database, relying on JSON fallback:', e.message);
+    }
+}
 
 // HA VERSINE FORMULA: Calculate distance between two coordinates in km
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -164,10 +246,36 @@ async function runMigrations() {
                 behaviors JSON DEFAULT ('{}'),
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS tiers_config (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                "limit" INTEGER NOT NULL,
+                price DECIMAL(10, 2) NOT NULL,
+                stripe_price_id VARCHAR(255) DEFAULT ''
+            );
         `);
         console.log('✅ Database migrations applied');
+        
+        // Seed initial tiers config
+        const current = await getTiers();
+        await saveTiers(current);
+        console.log('✅ Pricing tiers initialized');
     } catch (e: any) {
         console.warn('⚠️ Migration failed (likely no DB connection):', e.message);
+        
+        // Ensure local folder and fallback file are initialized anyway
+        try {
+            const dataDir = path.join(process.cwd(), 'data');
+            if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+            }
+            if (!fs.existsSync(JSON_TIERS_PATH)) {
+                fs.writeFileSync(JSON_TIERS_PATH, JSON.stringify(DEFAULT_TIERS, null, 2), 'utf8');
+                console.log('✅ Persistent JSON tiers created as fallback');
+            }
+        } catch (dirErr) {
+            console.error('Failed to create local tiers backup:', dirErr);
+        }
     }
 }
 runMigrations();
@@ -606,8 +714,19 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
 
         const secretKey = process.env.STRIPE_SECRET_KEY;
 
-        // If key is missing or is the default placeholder, use mock mode
-        if (!secretKey || secretKey === 'sk_test_123') {
+        const tiers = await getTiers();
+        const matchedTier = Object.values(tiers).find(
+            (t: any) => t.name.toLowerCase() === tier.toLowerCase() || 
+                       t.name.split(' ')[0].toLowerCase() === tier.toLowerCase() ||
+                       t.name.includes(`(${tier})`) ||
+                       (tier.toLowerCase() === 'pro' && t.name.toLowerCase().includes('pro')) ||
+                       (tier.toLowerCase() === 'enterprise' && t.name.toLowerCase().includes('enterprise'))
+        ) || (tiers as any)[tier.toUpperCase()];
+
+        const stripePriceId = matchedTier ? matchedTier.stripePriceId : '';
+
+        // If key is missing, placeholder, or the Price ID is not configured, fall back to mock mode
+        if (!secretKey || secretKey === 'sk_test_123' || !stripePriceId) {
             return res.json({
                 isMock: true,
                 sessionId: `mock_${Date.now()}`,
@@ -615,18 +734,12 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
             });
         }
 
-        // Real Stripe Session creation
-        const priceMap: Record<string, string> = {
-            'Pro': process.env.STRIPE_PRICE_PRO || 'price_123_pro',
-            'Enterprise': process.env.STRIPE_PRICE_ENTERPRISE || 'price_123_enterprise'
-        };
-
         const baseUrl = req.headers.origin || req.headers.referer || 'http://localhost:3000';
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: [
                 {
-                    price: priceMap[tier],
+                    price: stripePriceId,
                     quantity: 1,
                 },
             ],
@@ -2510,7 +2623,9 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
 
         const { tier, generations_used } = result.rows[0];
         const tierKey = (tier || 'FREE').toUpperCase();
-        const tierConfig = (TIERS as any)[tierKey] || TIERS.FREE;
+        
+        const tiers = await getTiers();
+        const tierConfig = tiers[tierKey as keyof TiersConfig] || tiers.FREE;
 
         if (generations_used >= tierConfig.limit) {
             return { allowed: false, limit: tierConfig.limit, used: generations_used };
@@ -2528,7 +2643,8 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
             if (!user) return { allowed: true }; // Allow if user not found to avoid blocking
 
             const tier = user.tier || 'Free';
-            const tierConfig = TIERS[tier.toUpperCase() as keyof typeof TIERS] || TIERS.FREE;
+            const tiers = await getTiers();
+            const tierConfig = tiers[tier.toUpperCase() as keyof TiersConfig] || tiers.FREE;
             const used = user.generations_used || 0;
 
             if (used >= tierConfig.limit) {
@@ -2722,6 +2838,29 @@ app.post('/api/admin/config', async (req: Request, res: Response) => {
         saveToJSON(JSON_CONFIG_PATH, config);
         
         res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Dynamic Tiers Endpoints
+app.get('/api/tiers', async (req: Request, res: Response) => {
+    try {
+        const tiers = await getTiers();
+        res.json(tiers);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/admin/tiers', express.json(), async (req: Request, res: Response) => {
+    try {
+        const config = req.body;
+        if (!config || !config.FREE || !config.PRO || !config.ENTERPRISE) {
+            return res.status(400).json({ error: 'Invalid tiers configuration structure' });
+        }
+        await saveTiers(config);
+        res.json({ success: true, config });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
