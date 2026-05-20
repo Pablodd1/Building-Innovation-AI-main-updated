@@ -68,6 +68,18 @@ function logCrash(error: any) {
         fs.appendFileSync(path.join(process.cwd(), 'crash.log'), msg);
     } catch (e) {}
     console.error('CRITICAL STARTUP ERROR:', error);
+
+    // Send Telegram alert
+    try {
+        telegramAlerts.sendMessage({
+            text: `<b>🚨 CRITICAL STARTUP ERROR</b>\n\n` +
+                  `<b>Error:</b> <code>${(error.message || String(error)).substring(0, 200)}</code>\n` +
+                  `<b>Stack:</b> <pre>${(error.stack || 'No stack').substring(0, 500)}</pre>`,
+            parse_mode: 'HTML'
+        });
+    } catch (tgErr) {
+        console.error('Failed to send crash to Telegram:', tgErr);
+    }
 }
 
 try {
@@ -2626,6 +2638,18 @@ app.post('/api/log-error', (req: Request, res: Response) => {
     errorLog.unshift(entry);
     if (errorLog.length > 50) errorLog.pop();
     console.error('Frontend Error:', entry);
+
+    // Dispatch error alert to Telegram
+    try {
+        const errorObj = new Error(typeof error === 'string' ? error : (error?.message || JSON.stringify(error)));
+        telegramAlerts.sendErrorAlert(
+            errorObj,
+            `Frontend Error (User ID: ${userId || 'Guest'})\nContext: ${context || 'N/A'}`
+        );
+    } catch (tgErr) {
+        console.error('Failed to send frontend error to Telegram:', tgErr);
+    }
+
     res.json({ status: 'logged' });
 });
 

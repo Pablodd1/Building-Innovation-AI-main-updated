@@ -5,6 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Building Innovation</title>
     
+    <!-- Global Error Reporting to Telegram via Backend -->
+    <script>
+      window.addEventListener('error', function(event) {
+        var errorMsg = event.error ? (event.error.stack || event.error.message) : event.message;
+        var errorFile = event.filename || '';
+        var errorLine = event.lineno || '';
+        var errorCol = event.colno || '';
+        
+        fetch('/api/log-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: errorMsg,
+            context: 'Global Uncaught Exception',
+            userId: localStorage.getItem('constructviz_user') ? JSON.parse(localStorage.getItem('constructviz_user')).id : 'Guest'
+          })
+        }).catch(function() {});
+      });
+
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason;
+        var errorMsg = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+        
+        fetch('/api/log-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: errorMsg,
+            context: 'Global Unhandled Promise Rejection',
+            userId: localStorage.getItem('constructviz_user') ? JSON.parse(localStorage.getItem('constructviz_user')).id : 'Guest'
+          })
+        }).catch(function() {});
+      });
+    </script>
+    
     <!-- PWA Meta Tags -->
     <meta name="description" content="AI-powered material visualization tool for construction and design" />
     <meta name="theme-color" content="#0f172a" />
