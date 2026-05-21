@@ -49,12 +49,14 @@ jobs:
           echo "restart" > tmp_restart.txt
           lftp -c "
           set ssl:verify-certificate no;
-          set ftp:ssl-allow no;
+          set ftp:ssl-allow true;
+          set ftp:ssl-force true;
           set ftp:passive-mode true;
+          set ftp:list-options -a;
           set net:timeout 15;
-          set net:max-retries 5;
-          set net:reconnect-interval-base 10;
-          set net:reconnect-interval-max 60;
+          set net:max-retries 3;
+          set net:reconnect-interval-base 5;
+          set net:reconnect-interval-max 15;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
           mkdir -f nodejs/dist nodejs/dist-server nodejs/data nodejs/tmp;
           mirror -Rnv ./dist/ nodejs/dist/ --parallel=3 --no-perms --ignore-time;
