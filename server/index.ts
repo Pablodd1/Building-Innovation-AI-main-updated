@@ -184,7 +184,7 @@ async function getTiers(): Promise<TiersConfig> {
         if (fs.existsSync(JSON_TIERS_PATH)) {
             const content = fs.readFileSync(JSON_TIERS_PATH, 'utf8');
             const parsed = JSON.parse(content);
-            if (parsed.FREE && parsed.PRO && parsed.ENTERPRISE) {
+            if (parsed.FREE) {
                 return parsed as TiersConfig;
             }
         }
@@ -2597,7 +2597,12 @@ app.patch('/api/admin/users/:id/tier', requireAdmin, async (req: Request, res: R
         const { id } = req.params;
         const { tier } = req.body;
 
-        if (!['Free', 'Pro', 'Enterprise'].includes(tier)) {
+        const tiers = await getTiers();
+        const validTiers = Object.keys(tiers).map(k => k.toUpperCase());
+        const isTierValid = validTiers.includes(tier.toUpperCase()) || 
+                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier.toUpperCase()) ||
+                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier);
+        if (!isTierValid) {
             return res.status(400).json({ error: 'Invalid tier' });
         }
 
@@ -3229,7 +3234,7 @@ app.get('/api/tiers', async (req: Request, res: Response) => {
 app.post('/api/admin/tiers', requireAdmin, express.json(), async (req: Request, res: Response) => {
     try {
         const config = req.body;
-        if (!config || !config.FREE || !config.PRO || !config.ENTERPRISE) {
+        if (!config || !config.FREE) {
             return res.status(400).json({ error: 'Invalid tiers configuration structure' });
         }
         await saveTiers(config);
