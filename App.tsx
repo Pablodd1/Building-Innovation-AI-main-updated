@@ -3511,8 +3511,8 @@ const App: React.FC = () => {
                             <LanguageToggle />
                             <input
                                 type="text"
-                                placeholder="Search..."
-                                className="hidden md:block bg-gray-200 border-none rounded-full px-4 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500"
+                                placeholder={lang === "es" ? "Buscar..." : "Search..."}
+                                className="w-28 sm:w-auto bg-gray-200 border-none rounded-full px-3 py-2 text-xs sm:text-sm text-gray-700 focus:ring-2 focus:ring-blue-500"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
