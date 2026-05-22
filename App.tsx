@@ -3529,8 +3529,8 @@ const App: React.FC = () => {
                                 className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 border border-gray-300 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all text-left"
                             >
                                 <img
-                                    src={material.imageUrl}
-                                    data-original-src={material.imageUrl}
+                                    src={proxyImageUrl(material.imageUrl)}
+                                    data-original-src={proxyImageUrl(material.imageUrl)}
                                     alt={material.name}
                                     onError={handleImageError}
                                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -3687,8 +3687,8 @@ const App: React.FC = () => {
                                 <div className="flex items-center gap-3 bg-gray-100 p-3 rounded-xl border border-gray-200">
                                     <div className="relative group cursor-pointer shrink-0" onClick={handleGenerateProbe}>
                                         <img
-                                            src={selectedMaterial.imageUrl}
-                                            data-original-src={selectedMaterial.imageUrl}
+                                            src={proxyImageUrl(selectedMaterial.imageUrl)}
+                                            data-original-src={proxyImageUrl(selectedMaterial.imageUrl)}
                                             onError={handleImageError}
                                             className="w-12 h-12 rounded-lg object-cover border border-gray-300"
                                         />
@@ -3838,7 +3838,7 @@ const App: React.FC = () => {
                                     className="bg-gray-200 p-4 rounded-xl border border-gray-300 flex gap-4 items-center"
                                 >
                                     <img
-                                        src={item.material.imageUrl}
+                                        src={proxyImageUrl(item.material.imageUrl)}
                                         className="w-16 h-16 rounded object-cover"
                                     />
                                     <div className="flex-1">
@@ -3994,7 +3994,7 @@ const App: React.FC = () => {
                     <div className="bg-black flex items-center justify-center min-h-[200px] max-h-[50vh] relative overflow-hidden">
                         {selectedMaterial ? (
                             <img
-                                src={selectedMaterial.imageUrl}
+                                src={proxyImageUrl(selectedMaterial.imageUrl)}
                                 className="w-full h-full object-contain max-h-[50vh]"
                             />
                         ) : (
