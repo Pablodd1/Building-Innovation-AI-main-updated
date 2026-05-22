@@ -64,7 +64,7 @@ jobs:
           # Sync server.js root entrypoint
           put ./server.js -o nodejs/server.js;
           # Force overwrite config.json every deploy (no --only-newer)
-          mirror -Rnv ./data/ nodejs/data/ --parallel=1 --no-perms --ignore-time;
+          mirror -Rnv ./data/ nodejs/data/ --parallel=1 --no-perms --ignore-time --exclude products.json;
           # Force Passenger restart by touching restart.txt
           put ./tmp_restart.txt -o nodejs/tmp/restart.txt;
           # Verify

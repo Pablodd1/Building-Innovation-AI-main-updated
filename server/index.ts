@@ -729,7 +729,7 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
         const stripePriceId = matchedTier ? matchedTier.stripePriceId : '';
 
         // If key is missing, placeholder, or the Price ID is not configured, fall back to mock mode
-        if (!secretKey || secretKey === 'sk_test_123' || !stripePriceId) {
+        if (!secretKey || secretKey === 'sk_test_123' || !stripePriceId || stripePriceId.startsWith('price_') && stripePriceId.includes('_placeholder')) {
             return res.json({
                 isMock: true,
                 sessionId: `mock_${Date.now()}`,
@@ -1310,21 +1310,21 @@ STRICT RENDERING RULES:
 
         // Generate with image-capable model (Nano Banana)
         const genStartTime = Date.now();
-        let usedModel = "gemini-2.5-flash-image";
+        let usedModel = "gemini-2.0-flash-exp-image-generation";
         let response;
         try {
             response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-image",
+                model: "gemini-2.0-flash-exp-image-generation",
                 contents,
                 config: {
                     responseModalities: ["TEXT", "IMAGE"],
                 },
             });
         } catch (primaryError: any) {
-            console.warn("gemini-2.5-flash-image failed, trying fallback (gemini-3.1-flash-image-preview):", getErrorMessage(primaryError));
-            usedModel = "gemini-3.1-flash-image-preview";
+            console.warn("gemini-2.0-flash-exp-image-generation failed, trying fallback (gemini-2.5-flash-preview-05-20):", getErrorMessage(primaryError));
+            usedModel = "gemini-2.5-flash-preview-05-20";
             response = await ai.models.generateContent({
-                model: "gemini-3.1-flash-image-preview",
+                model: "gemini-2.5-flash-preview-05-20",
                 contents,
                 config: {
                     responseModalities: ["TEXT", "IMAGE"],
