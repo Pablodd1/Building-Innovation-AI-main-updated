@@ -1543,6 +1543,27 @@ app.post('/api/marketplace/installers', async (req: Request, res: Response) => {
 app.delete('/api/materials/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
+        let deletedLocally = false;
+        
+        // Helper to sync deletions to the original tracked JSON seed file
+        const syncToTrackedJSON = (deletedId: string) => {
+            try {
+                if (fs.existsSync(JSON_PRODUCTS_TRACKED)) {
+                    const trackedData = JSON.parse(fs.readFileSync(JSON_PRODUCTS_TRACKED, 'utf8'));
+                    const filteredTracked = trackedData.filter((m: any) => 
+                        String(m.id) !== String(deletedId) && 
+                        String(m.refCode || m.ref_code || '') !== String(deletedId)
+                    );
+                    if (filteredTracked.length < trackedData.length) {
+                        fs.writeFileSync(JSON_PRODUCTS_TRACKED, JSON.stringify(filteredTracked, null, 2), 'utf8');
+                        deletedLocally = true;
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to sync deletion to tracked JSON:', e);
+            }
+        };
+
         try {
             // Try deleting by numeric ID or by RefCode (SKU)
             const result = await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2 RETURNING id', [id, (id as string)]);
@@ -1552,10 +1573,13 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
             const mapped = all.rows.map(mapDBToMaterial);
             saveToJSON(JSON_DB_PATH, mapped);
             
+            // Sync to original tracked file to ensure permanence across repo clones
+            syncToTrackedJSON(id);
+            
             if (result.rows.length === 0) {
                 throw new Error('Not found in DB');
             }
-            res.json({ success: true, id: result.rows[0].id });
+            res.json({ success: true, id: result.rows[0].id, permanentlyDeleted: deletedLocally });
         } catch (dbError: any) {
             console.warn('DB delete failed or not found, checking JSON fallback:', dbError.message);
             const materials = await getMaterials();
@@ -1572,7 +1596,8 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
             }
             
             saveToJSON(JSON_DB_PATH, filtered);
-            res.json({ success: true, id, note: 'Deleted from JSON fallback' });
+            syncToTrackedJSON(id);
+            res.json({ success: true, id, note: 'Deleted from JSON fallback', permanentlyDeleted: deletedLocally });
         }
     } catch (error: any) {
         console.error('Delete material error:', error);
