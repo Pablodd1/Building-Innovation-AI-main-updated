@@ -43,6 +43,7 @@ jobs:
         env:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+        timeout-minutes: 20
         run: |
           sudo apt-get update --fix-missing || true
           sudo apt-get install -y lftp
@@ -53,21 +54,20 @@ jobs:
           set ftp:ssl-force true;
           set ftp:passive-mode true;
           set ftp:list-options -a;
-          set net:timeout 15;
-          set net:max-retries 3;
+          set net:timeout 30;
+          set net:max-retries 5;
           set net:reconnect-interval-base 5;
-          set net:reconnect-interval-max 15;
+          set net:reconnect-interval-max 30;
+          set mirror:parallel-transfer-count 3;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
-          mkdir -f nodejs/dist nodejs/dist-server nodejs/data nodejs/tmp;
-          mirror -Rnv ./dist/ nodejs/dist/ --parallel=3 --no-perms --ignore-time;
-          mirror -Rnv ./dist-server/ nodejs/dist-server/ --parallel=3 --no-perms --ignore-time;
-          # Sync server.js root entrypoint
+          mkdir -fp nodejs/dist;
+          mkdir -fp nodejs/dist-server;
+          mkdir -fp nodejs/data;
+          mkdir -fp nodejs/tmp;
+          mirror -Rn --no-perms --ignore-time --parallel=3 ./dist/ nodejs/dist/;
+          mirror -Rn --no-perms --ignore-time --parallel=3 ./dist-server/ nodejs/dist-server/;
           put ./server.js -o nodejs/server.js;
-          # Force overwrite config.json every deploy (no --only-newer)
-          mirror -Rnv ./data/ nodejs/data/ --parallel=1 --no-perms --ignore-time --exclude products.json;
-          # Force Passenger restart by touching restart.txt
+          mirror -Rn --no-perms --ignore-time --parallel=1 --exclude products.json ./data/ nodejs/data/;
           put ./tmp_restart.txt -o nodejs/tmp/restart.txt;
-          # Verify
-          ls -la nodejs/data/config.json;
-          ls -la nodejs/dist-server/app.cjs;
+          echo 'Deploy complete';
           "
