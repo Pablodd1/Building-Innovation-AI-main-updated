@@ -110,94 +110,6 @@
     }
   },
   {
-    "id": "14032001",
-    "refCode": "14032001",
-    "name": "CORNISA PVC BLANCA BRILLANTE AM1001",
-    "category": "CIELO RASO PVC",
-    "subcategory": "CIELO RASO PVC",
-    "description": "Cornisa Pvc Blanca Brillante Am1001. Producto de la categoría cielo raso pvc, subcategoría techos, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 30 x 595 cm, espesor de 8.5 mm.",
-    "imageUrl": "/products/14032001.webp",
-    "usage": "INTERIOR",
-    "promptModifier": "CORNISA PVC BLANCA BRILLANTE AM1001, CIELO RASO PVC CIELO RASO PVC",
-    "dimensions": {
-      "width": 30,
-      "length": 595,
-      "thickness": 8.5
-    },
-    "pricing": {
-      "pricePerUnit": 14.999,
-      "currency": "COP",
-      "unitLabel": "Paquete / Package",
-      "itemsPerBox": 32
-    }
-  },
-  {
-    "id": "14032002",
-    "refCode": "14032002",
-    "name": "CORNISA PVC BLANCO MADERA BRILLANTE AM1002",
-    "category": "CIELO RASO PVC",
-    "subcategory": "CIELO RASO PVC",
-    "description": "Cornisa Pvc Blanco Madera Brillante Am1002. Producto de la categoría cielo raso pvc, subcategoría techos, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 30 x 595 cm, espesor de 8.5 mm.",
-    "imageUrl": "/products/14032002.webp",
-    "usage": "INTERIOR",
-    "promptModifier": "CORNISA PVC BLANCO MADERA BRILLANTE AM1002, CIELO RASO PVC CIELO RASO PVC",
-    "dimensions": {
-      "width": 30,
-      "length": 595,
-      "thickness": 8.5
-    },
-    "pricing": {
-      "pricePerUnit": 14.999,
-      "currency": "COP",
-      "unitLabel": "Paquete / Package",
-      "itemsPerBox": 32
-    }
-  },
-  {
-    "id": "14032004",
-    "refCode": "14032004",
-    "name": "CORNISA PVC BEIGE BRILLANTE AM1004",
-    "category": "CIELO RASO PVC",
-    "subcategory": "CIELO RASO PVC",
-    "description": "Cornisa Pvc Beige Brillante Am1004. Producto de la categoría cielo raso pvc, subcategoría techos, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 30 x 595 cm, espesor de 8.5 mm.",
-    "imageUrl": "/products/14032004.webp",
-    "usage": "INTERIOR",
-    "promptModifier": "CORNISA PVC BEIGE BRILLANTE AM1004, CIELO RASO PVC CIELO RASO PVC",
-    "dimensions": {
-      "width": 30,
-      "length": 595,
-      "thickness": 8.5
-    },
-    "pricing": {
-      "pricePerUnit": 14.999,
-      "currency": "COP",
-      "unitLabel": "Paquete / Package",
-      "itemsPerBox": 32
-    }
-  },
-  {
-    "id": "14032014",
-    "refCode": "14032014",
-    "name": "CORNISA PVC BLANCO EJECUTIVO AM1014",
-    "category": "CIELO RASO PVC",
-    "subcategory": "CIELO RASO PVC",
-    "description": "Cornisa Pvc Blanco Ejecutivo Am1014. Producto de la categoría cielo raso pvc, subcategoría techos, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 30 x 595 cm, espesor de 8.5 mm.",
-    "imageUrl": "/products/14032014.webp",
-    "usage": "INTERIOR",
-    "promptModifier": "CORNISA PVC BLANCO EJECUTIVO AM1014, CIELO RASO PVC CIELO RASO PVC",
-    "dimensions": {
-      "width": 30,
-      "length": 595,
-      "thickness": 8.5
-    },
-    "pricing": {
-      "pricePerUnit": 14.999,
-      "currency": "COP",
-      "unitLabel": "Paquete / Package",
-      "itemsPerBox": 32
-    }
-  },
-  {
     "id": "14201001",
     "refCode": "14201001",
     "name": "CINTA ADHESIVA DE PAPEL DORADA",
@@ -446,7 +358,7 @@
     "category": "PAREDES",
     "subcategory": "FACHADA DECK",
     "description": "Fachada Deck Roble. Producto de la categoría paredes, subcategoría fachada, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 15 x 290 cm, espesor de 15.0 mm.",
-    "imageUrl": "/products/14091101.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1Bqt1s5eta-qFLvYKPHxpDY0n1Rgy-I_R",
     "usage": "EXTERIOR",
     "promptModifier": "FACHADA DECK ROBLE, PAREDES FACHADA DECK",
     "dimensions": {
@@ -2580,7 +2492,7 @@
     "category": "LAMINAS",
     "subcategory": "LAMINAS PVC BOARD",
     "description": "Pvc Board Madera Mediana (Ms84306-131). Producto de la categoría laminas, subcategoría pvc board, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 122 x 244 cm, espesor de 15.0 mm.",
-    "imageUrl": "/products/14181602.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1Hn-jGPmgImJTau09_3T90zw7rL2hpctu",
     "usage": "INTERIOR",
     "promptModifier": "PVC BOARD MADERA MEDIANA (MS84306-131), LAMINAS LAMINAS PVC BOARD",
     "dimensions": {
@@ -2712,7 +2624,7 @@
     "category": "LAMINAS",
     "subcategory": "LAMINAS SINTETICAS",
     "description": "Lamina Sintetica Piedra Del Sol. Producto de la categoría laminas, subcategoría paredes, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 122 x 244 cm, espesor de 6.0 mm.",
-    "imageUrl": "/products/14121501.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1hJkpUl2byLgxtOB4_lCJslEnHk-iE55A",
     "usage": "INTERIOR",
     "promptModifier": "LAMINA SINTETICA PIEDRA DEL SOL, LAMINAS LAMINAS SINTETICAS",
     "dimensions": {
@@ -2822,7 +2734,7 @@
     "category": "LISTONES",
     "subcategory": "LISTONES PVC INTERIOR ESTRUCTURAL",
     "description": "Liston Pvc Interior Estructural Cedro Claro. Producto de la categoría listones, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 10 x 290 cm, espesor de 20.0 mm.",
-    "imageUrl": "/products/14122805.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1hHUUc7srbVL4oz93A2bXH6ppGpSlUayi",
     "usage": "INTERIOR",
     "promptModifier": "LISTON PVC INTERIOR ESTRUCTURAL CEDRO CLARO, LISTONES LISTONES PVC INTERIOR ESTRUCTURAL",
     "dimensions": {
@@ -2910,7 +2822,7 @@
     "category": "LISTONES",
     "subcategory": "LISTONES WPC EXTERIOR",
     "description": "Liston Wpc Exterior Nogal (Tube). Producto de la categoría listones, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 6 x 560 cm, espesor de 66.0 mm.",
-    "imageUrl": "/products/14123002.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1huflrL4iAbN-bHpVEJIXXl4I8-T8xmTQ",
     "usage": "EXTERIOR",
     "promptModifier": "LISTON WPC EXTERIOR NOGAL (TUBE), LISTONES LISTONES WPC EXTERIOR",
     "dimensions": {
@@ -2954,7 +2866,7 @@
     "category": "LISTONES",
     "subcategory": "LISTONES WPC EXTERIOR",
     "description": "Liston Wpc Exterior Cedro (Tube). Producto de la categoría listones, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 6 x 560 cm, espesor de 66.0 mm.",
-    "imageUrl": "/products/14123005.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1llz_DBt772oKbnhTyrps-juX84ouIdnB",
     "usage": "EXTERIOR",
     "promptModifier": "LISTON WPC EXTERIOR CEDRO (TUBE), LISTONES LISTONES WPC EXTERIOR",
     "dimensions": {
@@ -3042,7 +2954,7 @@
     "category": "PAREDES",
     "subcategory": "PANEL PS",
     "description": "Panel Ps Luxury Negro Hh24105. Producto de la categoría paredes, subcategoría panel ps, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 15 x 290 cm, espesor de 12.0 mm.",
-    "imageUrl": "/products/14122504.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1iTHSacZHKHd-dMgBBykLmCmf8WOVDgik",
     "usage": "INTERIOR",
     "promptModifier": "PANEL PS LUXURY NEGRO HH24105, PAREDES PANEL PS",
     "dimensions": {
@@ -3152,7 +3064,7 @@
     "category": "PAREDES",
     "subcategory": "PANEL PS",
     "description": "Panel Ps Muralla Café  Hh24115. Producto de la categoría paredes, subcategoría panel ps, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 15 x 290 cm, espesor de 12.0 mm.",
-    "imageUrl": "/products/14122509.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=14SEdkuvazKiWu6fdyA1jba6KNvRTajBu",
     "usage": "INTERIOR",
     "promptModifier": "PANEL PS MURALLA CAFÉ  HH24115, PAREDES PANEL PS",
     "dimensions": {
@@ -3262,7 +3174,7 @@
     "category": "PAREDES",
     "subcategory": "PANEL PS",
     "description": "Panel Ps Estuario Gris Hh24110. Producto de la categoría paredes, subcategoría panel ps, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 290 cm, espesor de 12.0 mm.",
-    "imageUrl": "/products/14122514.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=19_Tm1Ynke7lwbzsnbrA0VXV4G-paZACK",
     "usage": "INTERIOR",
     "promptModifier": "PANEL PS ESTUARIO GRIS HH24110, PAREDES PANEL PS",
     "dimensions": {
@@ -3372,7 +3284,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACOLCHADOS",
     "description": "Panel Acolchado Duobig Gris Luminoso (041). Producto de la categoría paredes, subcategoría acolchado, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 40 x 120 cm, espesor de 35.0 mm.",
-    "imageUrl": "/products/14126302.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1C6TS6ktvTVUh0nMwJppbwUD0jGqhPMuW",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACOLCHADO DUOBIG GRIS LUMINOSO (041), PAREDES PANELES ACOLCHADOS",
     "dimensions": {
@@ -3482,7 +3394,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACOLCHADOS",
     "description": "Panel Acolchado Duosmall Azul  Fractal (806). Producto de la categoría paredes, subcategoría acolchado, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 20 x 110 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14126404.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1k6lef03jzqEqZLhP8gWCoNTElKgmjfZ0",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACOLCHADO DUOSMALL AZUL  FRACTAL (806), PAREDES PANELES ACOLCHADOS",
     "dimensions": {
@@ -3614,7 +3526,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACRILICOS MARMOL",
     "description": "Panel Acrilico Marmol Legacy (Zs3D029 J). Producto de la categoría paredes, subcategoría marmol, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 122 x 244 cm, espesor de 2.0 mm, presentación en Unit.",
-    "imageUrl": "/products/14121404.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1N8-2hgRTYRvI2XzZGC_njU94PxH2Dyb8",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACRILICO MARMOL LEGACY (ZS3D029 J), PAREDES PANELES ACRILICOS MARMOL",
     "dimensions": {
@@ -3724,7 +3636,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACRILICOS MARMOL",
     "description": "Panel Acrilico Marmol Magna (Zs3D039 J). Producto de la categoría paredes, subcategoría marmol, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 122 x 244 cm, espesor de 2.0 mm, presentación en Unit.",
-    "imageUrl": "/products/14121409.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=15W6sQmbGUFPit6O8eT10fzPa11AmC4vn",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACRILICO MARMOL MAGNA (ZS3D039 J), PAREDES PANELES ACRILICOS MARMOL",
     "dimensions": {
@@ -3834,7 +3746,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACUSTICOS",
     "description": "Panel Acustico Tipo 1 Walnut 8292C. Producto de la categoría paredes, subcategoría acustico, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 240 cm, espesor de 14.0 mm.",
-    "imageUrl": "/products/14124304.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1EcWKOE5j0UaGbqXHI1BiGPx_IGQIW7JR",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACUSTICO TIPO 1 WALNUT 8292C, PAREDES PANELES ACUSTICOS",
     "dimensions": {
@@ -3966,7 +3878,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACUSTICOS",
     "description": "Panel Acustico Tipo 3 Yellow Oak 8438S. Producto de la categoría paredes, subcategoría acustico, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 56 x 125 cm, espesor de 21.0 mm.",
-    "imageUrl": "/products/14124502.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1Za0kwXgVBgKQEZ2dC1lh_tFu_qkC-uLw",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACUSTICO TIPO 3 YELLOW OAK 8438S, PAREDES PANELES ACUSTICOS",
     "dimensions": {
@@ -4076,7 +3988,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACUSTICOS",
     "description": "Panel Acustico Tipo 4 Black Oak 8210C. Producto de la categoría paredes, subcategoría acustico, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 56 x 270 cm, espesor de 21.0 mm.",
-    "imageUrl": "/products/14124603.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1uqinDVNxX_2T6TGtUGpbgF9ACFxIrKYI",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACUSTICO TIPO 4 BLACK OAK 8210C, PAREDES PANELES ACUSTICOS",
     "dimensions": {
@@ -4186,7 +4098,7 @@
     "category": "PAREDES",
     "subcategory": "PANELES ACUSTICOS",
     "description": "Panel Acustico Tipo 5 Walnut 8292C. Producto de la categoría paredes, subcategoría acustico, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 240 cm, espesor de 16.0 mm.",
-    "imageUrl": "/products/14124704.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1EphkevEesqKALlwsETulbVvuKRpijHsf",
     "usage": "INTERIOR",
     "promptModifier": "PANEL ACUSTICO TIPO 5 WALNUT 8292C, PAREDES PANELES ACUSTICOS",
     "dimensions": {
@@ -4318,7 +4230,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC EXTERIOR",
     "description": "Panel Wpc Ext Nogal (02). Producto de la categoría paneles wpc y angulos, subcategoría wpc exterior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 21 x 290 cm, espesor de 26.0 mm.",
-    "imageUrl": "/products/14122202.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=18UgjVaKqtN5nUEanDN8WSqAsSfY7N2Ww",
     "usage": "EXTERIOR",
     "promptModifier": "PANEL WPC EXT NOGAL (02), PANELES WPC Y ANGULOS PANELES WPC EXTERIOR",
     "dimensions": {
@@ -4560,7 +4472,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC INTERIOR",
     "description": "Panel Wpc Roble Claro (05). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14122005.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1XM3XqGmSHgAa57W0eQQcJ9iYi3Ihnmo_",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC ROBLE CLARO (05), PANELES WPC Y ANGULOS PANELES WPC INTERIOR",
     "dimensions": {
@@ -4692,7 +4604,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC INTERIOR",
     "description": "Panel Wpc Viena Gris (11). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14122011.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1WpWFxZQDJdxS4eiOBrw6_L_ztqE4Stl5",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC VIENA GRIS (11), PANELES WPC Y ANGULOS PANELES WPC INTERIOR",
     "dimensions": {
@@ -4824,7 +4736,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC INTERIOR",
     "description": "Panel Wpc Cocoa Fusion (18). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14122018.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=18MQtPzPjBgQUA6fJhqtEnf6KtH6cH4a3",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC COCOA FUSION (18), PANELES WPC Y ANGULOS PANELES WPC INTERIOR",
     "dimensions": {
@@ -4934,7 +4846,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC INTERIOR",
     "description": "Panel Wpc Negro Mate (23). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14122023.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1OsT_S8gC0f-BiBCHGV00_GyDyJxTPt_6",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC NEGRO MATE (23), PANELES WPC Y ANGULOS PANELES WPC INTERIOR",
     "dimensions": {
@@ -5066,7 +4978,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC INTERIOR",
     "description": "Panel Wpc Negro Imperial (29). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14122029.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1c2p8PpOq7F8shUYnIokGfdXXfibAVmRy",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC NEGRO IMPERIAL (29), PANELES WPC Y ANGULOS PANELES WPC INTERIOR",
     "dimensions": {
@@ -5154,7 +5066,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC REDONDOS",
     "description": "Panel Wpc Redondo Carrara Blanco (02). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14124902.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1edJ7Ddy2SXovXTCvQPAQg81nG_W7Nzwk",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC REDONDO CARRARA BLANCO (02), PANELES WPC Y ANGULOS PANELES WPC REDONDOS",
     "dimensions": {
@@ -5286,7 +5198,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC REDONDOS",
     "description": "Panel Wpc Redondo Marfil (16). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14124916.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1LwZUrDXUg00QovzHAUSPxwZkqdn6nEYN",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC REDONDO MARFIL (16), PANELES WPC Y ANGULOS PANELES WPC REDONDOS",
     "dimensions": {
@@ -5352,7 +5264,7 @@
     "category": "PANELES WPC Y ANGULOS",
     "subcategory": "PANELES WPC REDONDOS",
     "description": "Panel Wpc Redondo Azul Celeste New (25). Producto de la categoría paneles wpc y angulos, subcategoría wpc interior, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 16 x 295 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14124925.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1qsc_Kot-Oviirg2-czUga_wLsNUZmJP2",
     "usage": "INTERIOR",
     "promptModifier": "PANEL WPC REDONDO AZUL CELESTE NEW (25), PANELES WPC Y ANGULOS PANELES WPC REDONDOS",
     "dimensions": {
@@ -5484,7 +5396,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES ACOLCHADAS",
     "description": "Pared Acolchada Palma Sendero (854). Producto de la categoría paredes, subcategoría acolchado, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 295 cm, espesor de 5.0 mm.",
-    "imageUrl": "/products/14126008.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1b5OxzGGcUrNzvMqqO9hv_7cJE7SrZIc3",
     "usage": "INTERIOR",
     "promptModifier": "PARED ACOLCHADA PALMA SENDERO (854), PAREDES PAREDES ACOLCHADAS",
     "dimensions": {
@@ -5550,7 +5462,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES ACOLCHADAS",
     "description": "Pared Acolchada Trigo Vainilla (Harvest 820). Producto de la categoría paredes, subcategoría acolchado, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 295 cm, espesor de 5.5 mm.",
-    "imageUrl": "/products/14126106.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1hSw9sS4zO9_G5F31_qgXp5xVtqamGNfy",
     "usage": "INTERIOR",
     "promptModifier": "PARED ACOLCHADA TRIGO VAINILLA (HARVEST 820), PAREDES PAREDES ACOLCHADAS",
     "dimensions": {
@@ -5682,7 +5594,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES ACOLCHADAS",
     "description": "Pared Acolchada Aurora Brillo Plata (823). Producto de la categoría paredes, subcategoría acolchado, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 50 x 295 cm, espesor de 22.0 mm.",
-    "imageUrl": "/products/14126207.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1GYSEvQYd2GgI8gr_Tav8E_Br-5FrYhGj",
     "usage": "INTERIOR",
     "promptModifier": "PARED ACOLCHADA AURORA BRILLO PLATA (823), PAREDES PAREDES ACOLCHADAS",
     "dimensions": {
@@ -5792,7 +5704,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES MUROFLEX",
     "description": "Pared Muroflex Madera Teka (Wpc-10). Producto de la categoría paredes, subcategoría muroflex, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 50 x 290 cm, espesor de 18.0 mm.",
-    "imageUrl": "/products/14126023.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1kB2cMos0ZuVBJelV-S5AsMvJ5Y20wD1X",
     "usage": "INTERIOR",
     "promptModifier": "PARED MUROFLEX MADERA TEKA (WPC-10), PAREDES PAREDES MUROFLEX",
     "dimensions": {
@@ -5902,7 +5814,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES PU ARQUNITEC",
     "description": "Pared Arqunitec Gris Ceniza (03). Producto de la categoría paredes, subcategoría pu, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 120 cm, espesor de 30.0 mm.",
-    "imageUrl": "/products/14123403.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1xsY7jN4T1zURpe4YGyvf8v4p4Pa7d4Pj",
     "usage": "INTERIOR",
     "promptModifier": "PARED ARQUNITEC GRIS CENIZA (03), PAREDES PAREDES PU ARQUNITEC",
     "dimensions": {
@@ -6012,7 +5924,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES PU ARQUNITEC",
     "description": "Pared Arqunitec Recuadros Marfil 2-Cream. Producto de la categoría paredes, subcategoría pu, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 120 cm, espesor de 30.0 mm.",
-    "imageUrl": "/products/14123502.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1vpv6qnFJbrbxADA2qP9JKvveHiuI7x2i",
     "usage": "INTERIOR",
     "promptModifier": "PARED ARQUNITEC RECUADROS MARFIL 2-CREAM, PAREDES PAREDES PU ARQUNITEC",
     "dimensions": {
@@ -6122,7 +6034,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES UNIFLEX",
     "description": "Pared Uniflex Macadamia. Producto de la categoría paredes, subcategoría uniflex, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 120 cm, espesor de 2.0 mm.",
-    "imageUrl": "/products/14123206.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1OB-7s7r6wMG9MGENSjiWMZp2lH1S3IJQ",
     "usage": "INTERIOR",
     "promptModifier": "PARED UNIFLEX MACADAMIA, PAREDES PAREDES UNIFLEX",
     "dimensions": {
@@ -6232,7 +6144,7 @@
     "category": "PAREDES",
     "subcategory": "PAREDES UNIFLEX",
     "description": "Pared Uniflex Antrancita. Producto de la categoría paredes, subcategoría uniflex, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 120 cm, espesor de 2.0 mm.",
-    "imageUrl": "/products/14123302.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1Wt3wLQVwLekulGmzvgyDNTkpe0iMpKuK",
     "usage": "INTERIOR",
     "promptModifier": "PARED UNIFLEX ANTRANCITA, PAREDES PAREDES UNIFLEX",
     "dimensions": {
@@ -6342,7 +6254,7 @@
     "category": "PISOS",
     "subcategory": "PISOS DECK",
     "description": "Piso Deck Exterior Grafito. Producto de la categoría pisos, subcategoría deck, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 14 x 290 cm, espesor de 23.0 mm.",
-    "imageUrl": "/products/14113002.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=11Vt_ZPHeTSS91y5vqRgs98qs3gK_cHCB",
     "usage": "EXTERIOR",
     "promptModifier": "PISO DECK EXTERIOR GRAFITO, PISOS PISOS DECK",
     "dimensions": {
@@ -6452,7 +6364,7 @@
     "category": "PISOS",
     "subcategory": "PISOS DECK",
     "description": "Piso Deck Exterior Maple. Producto de la categoría pisos, subcategoría deck, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 14 x 290 cm, espesor de 23.0 mm.",
-    "imageUrl": "/products/14113008.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1ng63VfidEsqvJ7dH43IZQ7yDRBPF7nLD",
     "usage": "EXTERIOR",
     "promptModifier": "PISO DECK EXTERIOR MAPLE, PISOS PISOS DECK",
     "dimensions": {
@@ -6562,7 +6474,7 @@
     "category": "PISOS",
     "subcategory": "PISOS SPC",
     "description": "Piso Spc Avellana Ixpe. Producto de la categoría pisos, subcategoría spc, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 18 x 122 cm, espesor de 4.0 mm.",
-    "imageUrl": "/products/14112013.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1a7iqrCGYjgATVDvSn3PgKUfxq4vPtaDz",
     "usage": "INTERIOR",
     "promptModifier": "PISO SPC AVELLANA IXPE, PISOS PISOS SPC",
     "dimensions": {
@@ -6650,7 +6562,7 @@
     "category": "PISOS",
     "subcategory": "PISOS SPC",
     "description": "Piso Spc Nogal Ixpe. Producto de la categoría pisos, subcategoría spc, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 23 x 152 cm, espesor de 5.5 mm.",
-    "imageUrl": "/products/14112312.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1fvvCyjEvotLpsPH7GPvmj-Cq476ESPEO",
     "usage": "INTERIOR",
     "promptModifier": "PISO SPC NOGAL IXPE, PISOS PISOS SPC",
     "dimensions": {
@@ -6694,7 +6606,7 @@
     "category": "PAREDES",
     "subcategory": "POLIFACHADA",
     "description": "Polifachada Unitec Piedra Tex. Producto de la categoría paredes, subcategoría polifachada, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 38 x 380 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14091002.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1HrE54KgZW_tVREt1AEMgoDhAQz46lVUe",
     "usage": "EXTERIOR",
     "promptModifier": "POLIFACHADA UNITEC PIEDRA TEX, PAREDES POLIFACHADA",
     "dimensions": {
@@ -6804,7 +6716,7 @@
     "category": "PAREDES",
     "subcategory": "POLIFACHADA",
     "description": "Polifachada Unitec Arena Bw004. Producto de la categoría paredes, subcategoría polifachada, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 38 x 380 cm, espesor de 25.0 mm.",
-    "imageUrl": "/products/14091009.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1UUgRHETWhvYP1uuVWALU1nPToiohsSY-",
     "usage": "EXTERIOR",
     "promptModifier": "POLIFACHADA UNITEC ARENA BW004, PAREDES POLIFACHADA",
     "dimensions": {
@@ -6914,7 +6826,7 @@
     "category": "PAREDES",
     "subcategory": "ROLLOS ADHESIVOS DE MARMOL",
     "description": "Adhesivo De Pared En Rollo Negro (1735). Producto de la categoría paredes, subcategoría rollo marmol, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 60 x 300 cm, espesor de 0.08 mm.",
-    "imageUrl": "/products/14121302.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=11n8IcqB6w4DkRLf0Ax6YvbnHVNzLtRLf",
     "usage": "INTERIOR",
     "promptModifier": "ADHESIVO DE PARED EN ROLLO NEGRO (1735), PAREDES ROLLOS ADHESIVOS DE MARMOL",
     "dimensions": {
@@ -7024,7 +6936,7 @@
     "category": "CUBIERTAS UPVC",
     "subcategory": "TEJA UPVC TIPO ZINC",
     "description": "Cubierta Tipo Zinc Upvc Verde. Producto de la categoría cubiertas upvc, subcategoría tejas, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 93 x 305 cm, espesor de 0.8 mm.",
-    "imageUrl": "/products/14081502.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1WEyORP8ITKQvdMoV4y9jtHUZoMAbFJ9Y",
     "usage": "EXTERIOR",
     "promptModifier": "CUBIERTA TIPO ZINC UPVC VERDE, CUBIERTAS UPVC TEJA UPVC TIPO ZINC",
     "dimensions": {
@@ -7134,7 +7046,7 @@
     "category": "ZOCALOS",
     "subcategory": "ZOCALOS SPC",
     "description": "Zocalo Spc Avellana Ixpe  S013. Producto de la categoría zocalos, subcategoría spc, desarrollado para aplicaciones arquitectónicas y de diseño interior. Fabricado con materiales de alto desempeño que garantizan estabilidad, resistencia y durabilidad. Permite una instalación eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones técnicas: dimensiones de 6 x 240 cm, espesor de 13.0 mm.",
-    "imageUrl": "/products/14112413.webp",
+    "imageUrl": "https://drive.google.com/uc?export=view&id=1XQvmEo65clTBNFfz8cSWfKorBYdR4zhD",
     "usage": "INTERIOR",
     "promptModifier": "ZOCALO SPC AVELLANA IXPE  S013, ZOCALOS ZOCALOS SPC",
     "dimensions": {

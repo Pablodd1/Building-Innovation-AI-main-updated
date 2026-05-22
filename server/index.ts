@@ -240,6 +240,7 @@ async function runMigrations() {
         await query(`
             ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'Free';
             ALTER TABLE users ADD COLUMN IF NOT EXISTS generations_used INTEGER DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS session_token VARCHAR(255);
             ALTER TABLE materials ADD COLUMN IF NOT EXISTS price_contractor DECIMAL(10, 2);
             CREATE TABLE IF NOT EXISTS user_memories (
                 user_id INTEGER PRIMARY KEY,
@@ -650,6 +651,161 @@ async function getUsers() {
     }
 }
 
+// ===== SECURITY AUDIT LOGGING & AUTHORIZATION MIDDLEWARE =====
+
+// Define persistent untracked fallback path for audit logs
+const JSON_AUDIT_LOGS_PATH = path.join(process.cwd(), 'data', 'audit_logs.persistent.json');
+try {
+    if (!fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+        fs.writeFileSync(JSON_AUDIT_LOGS_PATH, JSON.stringify([], null, 2), 'utf8');
+        console.log('✅ Initialized audit_logs.persistent.json');
+    }
+} catch (e: any) {
+    console.error('Failed to initialize audit_logs.persistent.json:', e.message);
+}
+
+// Log admin action to JSON file and send Telegram alert
+async function logAdminAction(req: Request, user: any, action: string, details: string) {
+    try {
+        const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+        const logEntry = {
+            id: `audit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            timestamp: new Date().toISOString(),
+            adminEmail: user?.email || 'system@buildingapp.us',
+            adminName: user?.name || 'System',
+            action,
+            details,
+            ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : String(ipAddress)
+        };
+
+        // 1. Append to JSON
+        let logs: any[] = [];
+        if (fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+            try {
+                const content = fs.readFileSync(JSON_AUDIT_LOGS_PATH, 'utf8');
+                logs = JSON.parse(content || '[]');
+            } catch (err) {
+                logs = [];
+            }
+        }
+        logs.unshift(logEntry);
+        if (logs.length > 1000) logs = logs.slice(0, 1000);
+        fs.writeFileSync(JSON_AUDIT_LOGS_PATH, JSON.stringify(logs, null, 2), 'utf8');
+
+        // 2. Send Telegram notification
+        try {
+            await telegramAlerts.sendMessage({
+                text: `<b>⚠️ [Admin Security Audit]</b>\n\n` +
+                      `<b>Admin:</b> ${logEntry.adminName} (${logEntry.adminEmail})\n` +
+                      `<b>Action:</b> <code>${logEntry.action}</code>\n` +
+                      `<b>Details:</b> ${logEntry.details}\n` +
+                      `<b>IP Address:</b> <code>${logEntry.ipAddress}</code>\n` +
+                      `<b>Time:</b> ${new Date(logEntry.timestamp).toLocaleString()}\n\n` +
+                      `<a href="https://buildingapp.us/api/admin/dashboard?token=${user?.session_token || 'session_admin_fallback'}">Go to Admin Dashboard</a>`,
+                parse_mode: 'HTML'
+            });
+        } catch (tgErr) {
+            console.error('Failed to send audit log Telegram alert:', tgErr);
+        }
+    } catch (e: any) {
+        console.error('Failed to log admin action:', e);
+    }
+}
+
+// Security Middleware: Require standard authorization (matching user OR admin)
+const requireAuth = async (req: Request, res: Response, next: any) => {
+    try {
+        let token = '';
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            token = req.headers.authorization.substring(7);
+        } else if (req.query.token) {
+            token = req.query.token as string;
+        }
+
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized. No session token provided.' });
+        }
+
+        // Hardcoded admin fallback
+        if (token === 'session_admin_fallback') {
+            (req as any).user = { id: 999, name: 'Super Admin', email: 'admin@gmail.com', role: 'admin', tier: 'Enterprise' };
+            return next();
+        }
+
+        let user: any = null;
+        try {
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1', [token]);
+            if (result.rows.length > 0) {
+                user = result.rows[0];
+            }
+        } catch (dbErr) {}
+
+        if (!user) {
+            const users = await getUsers();
+            user = users.find((u: any) => u.session_token === token);
+        }
+
+        if (!user) {
+            return res.status(401).json({ error: 'Unauthorized. Invalid session token.' });
+        }
+
+        (req as any).user = user;
+        next();
+    } catch (error: any) {
+        console.error('requireAuth middleware error:', error);
+        res.status(500).json({ error: 'Internal server error during authorization' });
+    }
+};
+
+// Security Middleware: Require admin role
+const requireAdmin = async (req: Request, res: Response, next: any) => {
+    try {
+        let token = '';
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            token = req.headers.authorization.substring(7);
+        } else if (req.query.token) {
+            token = req.query.token as string;
+        }
+
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized. No session token provided.' });
+        }
+
+        // Hardcoded admin fallback
+        if (token === 'session_admin_fallback') {
+            (req as any).user = { id: 999, name: 'Super Admin', email: 'admin@gmail.com', role: 'admin', tier: 'Enterprise' };
+            return next();
+        }
+
+        let user: any = null;
+        try {
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1', [token]);
+            if (result.rows.length > 0) {
+                user = result.rows[0];
+            }
+        } catch (dbErr) {}
+
+        if (!user) {
+            const users = await getUsers();
+            user = users.find((u: any) => u.session_token === token);
+        }
+
+        if (!user) {
+            return res.status(401).json({ error: 'Unauthorized. Invalid session token.' });
+        }
+
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Forbidden. Admin privileges required.' });
+        }
+
+        (req as any).user = user;
+        next();
+    } catch (error: any) {
+        console.error('requireAdmin middleware error:', error);
+        res.status(500).json({ error: 'Internal server error during authorization' });
+    }
+};
+
 // Middleware + Monitoring + Security
 app.use(cors());
 // Stripe Webhook Endpoint (Must use raw body for signature verification)
@@ -841,7 +997,7 @@ app.get('/api/build', (req: Request, res: Response) => {
 // ===== ADMIN HEALTH & DASHBOARD ENDPOINTS =====
 
 // Full health status (JSON)
-app.get('/api/admin/health', async (req: Request, res: Response) => {
+app.get('/api/admin/health', requireAdmin, async (req: Request, res: Response) => {
     try {
         const health = await monitor.getHealth();
         res.json(health);
@@ -851,9 +1007,58 @@ app.get('/api/admin/health', async (req: Request, res: Response) => {
 });
 
 // Visual HTML dashboard
-app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
+app.get('/api/admin/dashboard', requireAdmin, async (req: Request, res: Response) => {
     try {
         const health = await monitor.getHealth();
+        
+        // Read recent 15 audit logs
+        let logs: any[] = [];
+        if (fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+            try {
+                const content = fs.readFileSync(JSON_AUDIT_LOGS_PATH, 'utf8');
+                logs = JSON.parse(content || '[]');
+            } catch (err) {}
+        }
+        const recentLogs = logs.slice(0, 15);
+
+        // Generate logs HTML
+        let logsHtml = '';
+        if (recentLogs.length === 0) {
+            logsHtml = '<div style="color: #666; font-style: italic; padding: 10px 0;">No audit logs recorded yet.</div>';
+        } else {
+            logsHtml = `
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #222; color: #888; font-weight: bold; text-transform: uppercase; font-size: 11px;">
+                        <th style="padding: 10px 5px;">Time</th>
+                        <th style="padding: 10px 5px;">Admin</th>
+                        <th style="padding: 10px 5px;">Action</th>
+                        <th style="padding: 10px 5px;">Details</th>
+                        <th style="padding: 10px 5px;">IP</th>
+                    </tr>
+                </thead>
+                <tbody style="color: #ccc;">
+                    ${recentLogs.map((l: any) => {
+                        let color = '#a8a29e';
+                        if (l.action.includes('DELETE')) color = '#ef4444';
+                        else if (l.action.includes('CREATE') || l.action.includes('ADD')) color = '#10b981';
+                        else if (l.action.includes('UPDATE')) color = '#f59e0b';
+                        else if (l.action.includes('CONFIG')) color = '#3b82f6';
+                        
+                        return `
+                        <tr style="border-bottom: 1px solid #1c1c1c;">
+                            <td style="padding: 10px 5px; font-family: monospace; font-size: 11px; color: #666; white-space: nowrap;">${new Date(l.timestamp).toLocaleString()}</td>
+                            <td style="padding: 10px 5px; font-weight: bold;">${l.adminName}<br><span style="font-size: 11px; color: #666; font-weight: normal;">${l.adminEmail}</span></td>
+                            <td style="padding: 10px 5px;"><span style="color: ${color}; font-family: monospace; font-weight: bold; font-size: 11px;">${l.action}</span></td>
+                            <td style="padding: 10px 5px; color: #aaa;">${l.details}</td>
+                            <td style="padding: 10px 5px; font-family: monospace; font-size: 11px; color: #666;">${l.ipAddress}</td>
+                        </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>`;
+        }
+
         const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -937,8 +1142,16 @@ app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
                 <div class="metric"><a href="/api/health" style="color:#2563eb">/api/health</a></div>
                 <div class="metric"><a href="/api/build" style="color:#2563eb">/api/build</a></div>
                 <div class="metric"><a href="/api/debug/config-path" style="color:#2563eb">/api/debug/config-path</a></div>
-                <div class="metric"><a href="/api/admin/health" style="color:#2563eb">/api/admin/health (JSON)</a></div>
+                <div class="metric"><a href="/api/admin/health?token=${req.query.token}" style="color:#2563eb">/api/admin/health (JSON)</a></div>
             </div>
+        </div>
+
+        <div class="card" style="margin-top: 30px; grid-column: span 1 / -1; width: 100%;">
+            <h3 style="color: #ef4444; border-bottom: 1px solid #222; padding-bottom: 10px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                <svg style="width: 18px; height: 18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                Security Audit Log (Last 15 Entries)
+            </h3>
+            ${logsHtml}
         </div>
         
         <p style="color:#555; text-align:center; margin-top:40px;">BuildingApp Admin Dashboard — Auto-refreshes on page reload</p>
@@ -953,13 +1166,13 @@ app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
 });
 
 // Daily report endpoint (for cron jobs or scheduled emails)
-app.get('/api/admin/report', (req: Request, res: Response) => {
+app.get('/api/admin/report', requireAdmin, (req: Request, res: Response) => {
     const report = monitor.getDailyReport();
     res.json(report);
 });
 
 // Test Telegram configuration
-app.get('/api/admin/test-telegram', async (req: Request, res: Response) => {
+app.get('/api/admin/test-telegram', requireAdmin, async (req: Request, res: Response) => {
     try {
         const token = process.env.TELEGRAM_BOT_TOKEN;
         if (!token) {
@@ -986,7 +1199,7 @@ app.get('/api/admin/test-telegram', async (req: Request, res: Response) => {
 });
 
 // Production status endpoint
-app.get('/api/admin/status', (req: Request, res: Response) => {
+app.get('/api/admin/status', requireAdmin, (req: Request, res: Response) => {
     res.json({
         app: {
             name: 'BuildingApp',
@@ -1027,7 +1240,7 @@ const generationLog: Array<{
     error?: string;
 }> = [];
 
-app.get('/api/admin/analytics', async (req: Request, res: Response) => {
+app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response) => {
     try {
         const health = await monitor.getHealth();
         
@@ -1432,7 +1645,7 @@ app.get('/api/materials', async (req: Request, res: Response) => {
 });
 
 // Create material
-app.post('/api/materials', async (req: Request, res: Response) => {
+app.post('/api/materials', requireAdmin, async (req: Request, res: Response) => {
     try {
         const {
             ref_code, name, category, subcategory, price, price_contractor, currency, unit,
@@ -1452,6 +1665,8 @@ app.post('/api/materials', async (req: Request, res: Response) => {
                     items_per_box || 1, width_cm, length_cm, thickness_m,
                     description, image_url, usage, prompt_modifier]
             );
+            
+            await logAdminAction(req, (req as any).user, 'CREATE_MATERIAL', `Created material: ${name} (SKU: ${ref_code})`);
             return res.status(201).json(result.rows[0]);
         } catch (dbError) {
             console.warn('DB Insert failed, updating JSON fallback...');
@@ -1459,6 +1674,8 @@ app.post('/api/materials', async (req: Request, res: Response) => {
             const newItem = { id: `mat-${Date.now()}`, ...req.body, created_at: new Date().toISOString() };
             materials.unshift(newItem);
             saveToJSON(JSON_DB_PATH, materials);
+            
+            await logAdminAction(req, (req as any).user, 'CREATE_MATERIAL', `Created material (fallback): ${name} (SKU: ${ref_code})`);
             return res.status(201).json(newItem);
         }
     } catch (error: any) {
@@ -1468,7 +1685,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
 });
 
 // Update material
-app.put('/api/materials/:id', async (req: Request, res: Response) => {
+app.put('/api/materials/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const {
@@ -1494,6 +1711,8 @@ app.put('/api/materials/:id', async (req: Request, res: Response) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Material not found' });
         }
+        
+        await logAdminAction(req, (req as any).user, 'UPDATE_MATERIAL', `Updated material ID ${id} (${name}, SKU: ${ref_code})`);
         res.json(result.rows[0]);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -1540,7 +1759,7 @@ app.post('/api/marketplace/installers', async (req: Request, res: Response) => {
 
 
 // Delete material
-app.delete('/api/materials/:id', async (req: Request, res: Response) => {
+app.delete('/api/materials/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         let deletedLocally = false;
@@ -1576,6 +1795,8 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
             // Sync to original tracked file to ensure permanence across repo clones
             syncToTrackedJSON(id);
             
+            await logAdminAction(req, (req as any).user, 'DELETE_MATERIAL', `Deleted material ID/SKU ${id}`);
+            
             if (result.rows.length === 0) {
                 throw new Error('Not found in DB');
             }
@@ -1597,6 +1818,8 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
             
             saveToJSON(JSON_DB_PATH, filtered);
             syncToTrackedJSON(id);
+            
+            await logAdminAction(req, (req as any).user, 'DELETE_MATERIAL', `Deleted material ID/SKU ${id} (fallback)`);
             res.json({ success: true, id, note: 'Deleted from JSON fallback', permanentlyDeleted: deletedLocally });
         }
     } catch (error: any) {
@@ -1606,7 +1829,7 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
 });
 
 // Bulk import materials
-app.post('/api/materials/bulk', async (req: Request, res: Response) => {
+app.post('/api/materials/bulk', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { materials } = req.body;
 
@@ -1633,6 +1856,7 @@ app.post('/api/materials/bulk', async (req: Request, res: Response) => {
             imported++;
         }
 
+        await logAdminAction(req, (req as any).user, 'BULK_CREATE_MATERIALS', `Imported ${materials.length} materials via bulk upload`);
         res.json({ success: true, imported });
     } catch (error: any) {
         console.error('Bulk import error:', error);
@@ -1641,9 +1865,11 @@ app.post('/api/materials/bulk', async (req: Request, res: Response) => {
 });
 
 // Delete all materials (factory reset)
-app.delete('/api/materials', async (req: Request, res: Response) => {
+app.delete('/api/materials', requireAdmin, async (req: Request, res: Response) => {
     try {
         await query('DELETE FROM materials');
+        
+        await logAdminAction(req, (req as any).user, 'RESET_ALL_DATA', 'Factory reset: Deleted all materials from the database');
         res.json({ success: true, message: 'All materials deleted' });
     } catch (error: any) {
         console.error('Delete all materials error:', error);
@@ -1938,6 +2164,8 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Name, email, and password required' });
         }
 
+        const sessionToken = 'session_' + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
+
         try {
             // Check if email already exists
             const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
@@ -1950,10 +2178,10 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             const hashedPassword = await bcrypt.hash(password, salt);
 
             const result = await query(
-                `INSERT INTO users (name, email, phone, address, password_hash, role, tier, generations_used)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           RETURNING id, name, email, phone, address, role, tier, generations_used, created_at`,
-                [name, email, phone || null, address || null, hashedPassword, 'customer', 'Free', 0]
+                `INSERT INTO users (name, email, phone, address, password_hash, role, tier, generations_used, session_token)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id, name, email, phone, address, role, tier, generations_used, session_token, created_at`,
+                [name, email, phone || null, address || null, hashedPassword, 'customer', 'Free', 0, sessionToken]
             );
 
             // Send Telegram notification for new user signup
@@ -1967,7 +2195,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
                           `<b>Tier:</b> Free\n` +
                           `<b>Database:</b> PostgreSQL\n` +
                           `<b>Time:</b> ${new Date().toLocaleTimeString()}\n\n` +
-                          `<a href="https://buildingapp.us/api/admin/dashboard">View Dashboard</a>`,
+                          `<a href="https://buildingapp.us/api/admin/dashboard?token=session_admin_fallback">View Dashboard</a>`,
                     parse_mode: 'HTML'
                 });
             } catch (tgError) {
@@ -1997,6 +2225,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
                 role: 'customer',
                 tier: 'Free',
                 generations_used: 0,
+                session_token: sessionToken,
                 created_at: new Date().toISOString()
             };
 
@@ -2014,7 +2243,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
                           `<b>Tier:</b> Free\n` +
                           `<b>Database:</b> High-Fidelity JSON Fallback\n` +
                           `<b>Time:</b> ${new Date().toLocaleTimeString()}\n\n` +
-                          `<a href="https://buildingapp.us/api/admin/dashboard">View Dashboard</a>`,
+                          `<a href="https://buildingapp.us/api/admin/dashboard?token=session_admin_fallback">View Dashboard</a>`,
                     parse_mode: 'HTML'
                 });
             } catch (tgError) {
@@ -2049,10 +2278,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
                     email: 'admin@gmail.com', 
                     role: 'admin',
                     tier: 'Enterprise',
-                    generations_used: 0
+                    generations_used: 0,
+                    session_token: 'session_admin_fallback'
                 } 
             });
         }
+
+        const sessionToken = 'session_' + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
 
         try {
             const result = await query(
@@ -2066,8 +2298,21 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
                 if (!isMatch) {
                     return res.status(401).json({ error: 'Invalid credentials' });
                 }
+
+                // Save session token to DB
+                try {
+                    await query('UPDATE users SET session_token = $1 WHERE id = $2', [sessionToken, user.id]);
+                } catch (updateErr: any) {
+                    console.warn('Failed to save session token to DB:', updateErr.message);
+                }
+
                 const { password_hash, ...userResponse } = user;
-                return res.json({ user: userResponse });
+                return res.json({ 
+                    user: { 
+                        ...userResponse, 
+                        session_token: sessionToken 
+                    } 
+                });
             }
             
             // If not in DB, check JSON fallback anyway (might be newly signed up in fallback)
@@ -2076,19 +2321,29 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         } catch (dbError) {
             console.warn('Login DB unavailable or user not found, checking JSON fallback...');
             const users = await getUsers();
-            const user = users.find((u: any) => u.email === email);
+            const index = users.findIndex((u: any) => u.email === email);
 
-            if (!user) {
+            if (index === -1) {
                 return res.status(401).json({ error: 'Invalid credentials' });
             }
 
+            const user = users[index];
             const isMatch = await bcrypt.compare(password, user.password_hash);
             if (!isMatch) {
                 return res.status(401).json({ error: 'Invalid credentials' });
             }
 
+            // Save session token in JSON
+            user.session_token = sessionToken;
+            saveToJSON(JSON_USERS_PATH, users);
+
             const { password_hash, ...userResponse } = user;
-            return res.json({ user: userResponse });
+            return res.json({ 
+                user: { 
+                    ...userResponse, 
+                    session_token: sessionToken 
+                } 
+            });
         }
     } catch (error: any) {
         console.error('Login error:', error);
@@ -2121,7 +2376,7 @@ app.get('/api/materials', async (req: Request, res: Response) => {
 });
 
 // Create/Update material
-app.post('/api/materials', async (req: Request, res: Response) => {
+app.post('/api/materials', requireAdmin, async (req: Request, res: Response) => {
     try {
         const m = req.body;
         const result = await query(
@@ -2159,6 +2414,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
         const all = await query('SELECT * FROM materials ORDER BY category, name');
         fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
 
+        await logAdminAction(req, (req as any).user, 'CREATE_MATERIAL', `Created/Updated material: ${m.name} (SKU: ${m.ref_code})`);
         res.json(result.rows[0]);
     } catch (error: any) {
         console.warn('DB update failed, updating JSON directly:', error.message);
@@ -2204,6 +2460,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
             }
             
             fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
+            await logAdminAction(req, (req as any).user, 'CREATE_MATERIAL', `Created/Updated material (fallback): ${m.name} (SKU: ${m.ref_code})`);
             return res.json(newMaterial);
         } catch (jsonError: any) {
             return res.status(500).json({ error: 'Failed to update both DB and JSON: ' + jsonError.message });
@@ -2212,7 +2469,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
 });
  
  // Update material by ID
- app.put('/api/materials/:id', async (req: Request, res: Response) => {
+ app.put('/api/materials/:id', requireAdmin, async (req: Request, res: Response) => {
      try {
          const { id } = req.params;
          const m = req.body;
@@ -2234,6 +2491,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
          const all = await query('SELECT * FROM materials ORDER BY category, name');
          fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
  
+         await logAdminAction(req, (req as any).user, 'UPDATE_MATERIAL', `Updated material: ${m.name} (SKU: ${m.ref_code}, ID: ${id})`);
          res.json(result.rows[0]);
      } catch (error: any) {
          console.warn('DB update failed, updating JSON directly:', error.message);
@@ -2270,6 +2528,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
                      }
                  };
                  fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
+                 await logAdminAction(req, (req as any).user, 'UPDATE_MATERIAL', `Updated material (fallback): ${m.name} (SKU: ${m.ref_code}, ID: ${id})`);
                  return res.json(data[index]);
              }
              res.status(404).json({ error: 'Material not found in JSON' });
@@ -2280,7 +2539,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
  });
 
 
-app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response) => {
+app.patch('/api/admin/users/:id/generations', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { generations_used } = req.body;
@@ -2289,12 +2548,27 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
             return res.status(400).json({ error: 'Invalid generation count' });
         }
 
+        // Get user email for audit log
+        let userEmail = 'unknown';
+        try {
+            const uResult = await query('SELECT email FROM users WHERE id = $1', [id]);
+            if (uResult.rows.length > 0) userEmail = uResult.rows[0].email;
+        } catch (e) {}
+        if (userEmail === 'unknown') {
+            try {
+                const fallbackUsers = await getUsers();
+                const foundU = fallbackUsers.find((u: any) => String(u.id) === String(id));
+                if (foundU) userEmail = foundU.email;
+            } catch (e) {}
+        }
+
         try {
             const result = await query(
                 'UPDATE users SET generations_used = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
                 [generations_used, (id as string)]
             );
             if (result.rows.length > 0) {
+                await logAdminAction(req, (req as any).user, 'UPDATE_USER_GENERATIONS', `Updated generations used for user ID ${id} (${userEmail}) to ${generations_used}`);
                 return res.json({ success: true });
             }
         } catch (dbErr: any) {
@@ -2307,6 +2581,7 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
         if (index !== -1) {
             users[index].generations_used = generations_used;
             saveToJSON(JSON_USERS_PATH, users);
+            await logAdminAction(req, (req as any).user, 'UPDATE_USER_GENERATIONS', `Updated generations used for user ID ${id} (${userEmail}) to ${generations_used} (fallback)`);
             return res.json({ success: true });
         }
 
@@ -2317,7 +2592,7 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
     }
 });
 
-app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
+app.patch('/api/admin/users/:id/tier', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { tier } = req.body;
@@ -2326,32 +2601,53 @@ app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid tier' });
         }
 
-        const result = await query(
-            'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, email, tier',
-            [tier, (id as string)]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+        // Get user email for audit log
+        let userEmail = 'unknown';
+        try {
+            const uResult = await query('SELECT email FROM users WHERE id = $1', [id]);
+            if (uResult.rows.length > 0) userEmail = uResult.rows[0].email;
+        } catch (e) {}
+        if (userEmail === 'unknown') {
+            try {
+                const fallbackUsers = await getUsers();
+                const foundU = fallbackUsers.find((u: any) => String(u.id) === String(id));
+                if (foundU) userEmail = foundU.email;
+            } catch (e) {}
         }
 
-        res.json(result.rows[0]);
+        try {
+            const result = await query(
+                'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, email, tier',
+                [tier, (id as string)]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            await logAdminAction(req, (req as any).user, 'UPDATE_USER_TIER', `Updated tier for user ID ${id} (${userEmail}) to ${tier}`);
+            res.json(result.rows[0]);
+        } catch (dbError: any) {
+            console.error('Update tier DB error, trying fallback:', dbError.message);
+            
+            // Fallback to JSON
+            try {
+                const users = await getUsers();
+                const index = users.findIndex((u: any) => String(u.id) === String(id));
+                if (index !== -1) {
+                    users[index].tier = tier;
+                    saveToJSON(JSON_USERS_PATH, users);
+                    await logAdminAction(req, (req as any).user, 'UPDATE_USER_TIER', `Updated tier for user ID ${id} (${userEmail}) to ${tier} (fallback)`);
+                    return res.json(users[index]);
+                }
+                res.status(404).json({ error: 'User not found in JSON' });
+            } catch (jsonError: any) {
+                res.status(500).json({ error: jsonError.message });
+            }
+        }
     } catch (error: any) {
         console.error('Update tier error:', error);
-        
-        // Fallback to JSON
-        try {
-            const users = await getUsers();
-            const index = users.findIndex((u: any) => String(u.id) === String(req.params.id));
-            if (index !== -1) {
-                users[index].tier = req.body.tier;
-                saveToJSON(JSON_USERS_PATH, users);
-                return res.json(users[index]);
-            }
-            res.status(404).json({ error: 'User not found in JSON' });
-        } catch (jsonError) {
-            res.status(500).json({ error: error.message });
-        }
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -2484,7 +2780,7 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
 });
 
 // Admin endpoint: Get rich user detail including profile and memory
-app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
+app.get('/api/admin/users/:id/detail', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const userId = parseInt(id as string);
@@ -2545,10 +2841,29 @@ app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
 });
 
 // Account Deletion Endpoint (App Store & Play Store compliance)
-app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) => {
+app.delete('/api/users/:id/delete-account', requireAuth, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const userId = parseInt(id as string);
+        const requestingUser = (req as any).user;
+
+        if (String(requestingUser.id) !== String(id) && requestingUser.role !== 'admin') {
+            return res.status(403).json({ error: 'Forbidden. You do not have permission to delete this account.' });
+        }
+
+        // Get user email for audit log
+        let userEmail = 'unknown';
+        try {
+            const uResult = await query('SELECT email FROM users WHERE id = $1', [userId]);
+            if (uResult.rows.length > 0) userEmail = uResult.rows[0].email;
+        } catch (e) {}
+        if (userEmail === 'unknown') {
+            try {
+                const fallbackUsers = await getUsers();
+                const foundU = fallbackUsers.find((u: any) => String(u.id) === String(id));
+                if (foundU) userEmail = foundU.email;
+            } catch (e) {}
+        }
 
         // Delete from database
         try {
@@ -2573,6 +2888,14 @@ app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) 
             }
         }
 
+        // Log the action!
+        await logAdminAction(
+            req, 
+            requestingUser.role === 'admin' ? requestingUser : { name: 'User Self', email: userEmail, session_token: requestingUser.session_token }, 
+            'DELETE_USER', 
+            `Deleted user account ID ${id} (${userEmail})`
+        );
+
         res.json({ success: true, message: 'Account and associated data deleted successfully.' });
     } catch (e: any) {
         console.error('Error deleting account:', e);
@@ -2581,7 +2904,7 @@ app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) 
 });
 
 // Create Admin User (Admin only)
-app.post('/api/admin/users/create-admin', async (req: Request, res: Response) => {
+app.post('/api/admin/users/create-admin', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { name, email, password } = req.body;
         if (!name || !email || !password) {
@@ -2598,6 +2921,8 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
                  RETURNING id, name, email, role, tier, created_at`,
                 [name, email, hashedPassword, 'admin', 'Enterprise']
             );
+            
+            await logAdminAction(req, (req as any).user, 'CREATE_ADMIN', `Created new admin user: ${name} (${email})`);
             res.status(201).json(result.rows[0]);
         } catch (dbError) {
             console.warn('DB down, creating Admin in JSON...');
@@ -2619,6 +2944,7 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
             users.push(newAdmin);
             saveToJSON(JSON_USERS_PATH, users);
             
+            await logAdminAction(req, (req as any).user, 'CREATE_ADMIN', `Created new admin user (fallback): ${name} (${email})`);
             const { password_hash, ...response } = newAdmin;
             res.status(201).json(response);
         }
@@ -2628,7 +2954,7 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
 });
 
 // Get all users (Admin only)
-app.get('/api/admin/users', async (req: Request, res: Response) => {
+app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await query('SELECT id, name, email, role, tier, generations_used, created_at FROM users ORDER BY created_at DESC');
         res.json(result.rows);
@@ -2829,9 +3155,27 @@ app.post('/api/ai/generate', async (req: Request, res: Response) => {
 });
 
 // Admin Config Endpoints
-app.get('/api/admin/config', async (req: Request, res: Response) => {
+app.get('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     const config = await getConfig();
     res.json({ hasKey: !!config.GEMINI_API_KEY });
+});
+
+// Admin Security Audit Logs Endpoint
+app.get('/api/admin/audit-logs', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        let logs: any[] = [];
+        if (fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+            try {
+                const content = fs.readFileSync(JSON_AUDIT_LOGS_PATH, 'utf8');
+                logs = JSON.parse(content || '[]');
+            } catch (err) {
+                logs = [];
+            }
+        }
+        res.json(logs);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Debug endpoint — helps diagnose path issues on Hostinger (safe: no key exposed)
@@ -2856,7 +3200,7 @@ app.get('/api/debug/config-path', async (req: Request, res: Response) => {
     });
 });
 
-app.post('/api/admin/config', async (req: Request, res: Response) => {
+app.post('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { apiKey } = req.body;
         if (!apiKey) return res.status(400).json({ error: 'API Key required' });
@@ -2865,6 +3209,7 @@ app.post('/api/admin/config', async (req: Request, res: Response) => {
         config.GEMINI_API_KEY = apiKey;
         saveToJSON(JSON_CONFIG_PATH, config);
         
+        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', 'Updated visual rendering engine server configuration');
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -2881,13 +3226,14 @@ app.get('/api/tiers', async (req: Request, res: Response) => {
     }
 });
 
-app.post('/api/admin/tiers', express.json(), async (req: Request, res: Response) => {
+app.post('/api/admin/tiers', requireAdmin, express.json(), async (req: Request, res: Response) => {
     try {
         const config = req.body;
         if (!config || !config.FREE || !config.PRO || !config.ENTERPRISE) {
             return res.status(400).json({ error: 'Invalid tiers configuration structure' });
         }
         await saveTiers(config);
+        await logAdminAction(req, (req as any).user, 'UPDATE_TIERS_CONFIG', 'Updated pricing tiers, limits, and Stripe IDs configuration');
         res.json({ success: true, config });
     } catch (e: any) {
         res.status(500).json({ error: e.message });

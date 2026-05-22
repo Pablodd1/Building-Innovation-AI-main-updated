@@ -162,9 +162,13 @@ const App: React.FC = () => {
     };
 
     // Admin Form State
-    const [adminTab, setAdminTab] = useState<"MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS">("MATERIALS");
+    const [adminTab, setAdminTab] = useState<"MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS" | "AUDIT_LOGS">("MATERIALS");
     const [analyticsData, setAnalyticsData] = useState<any>(null);
     const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false);
+    const [auditSearchQuery, setAuditSearchQuery] = useState("");
+    const [auditActionFilter, setAuditActionFilter] = useState("ALL");
 
     const [newAdminForm, setNewAdminForm] = useState({ name: "", email: "", password: "" });
     const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
@@ -214,6 +218,39 @@ const App: React.FC = () => {
 
     // Load persisted user on mount
     useEffect(() => {
+        // Install global fetch interceptor to automatically inject Authorization token
+        const originalFetch = window.fetch;
+        window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            const stored = localStorage.getItem('constructviz_user');
+            let token = '';
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed && parsed.session_token) {
+                        token = parsed.session_token;
+                    }
+                } catch (e) {}
+            }
+
+            if (token) {
+                init = init || {};
+                init.headers = init.headers || {};
+                if (init.headers instanceof Headers) {
+                    init.headers.set('Authorization', `Bearer ${token}`);
+                } else if (Array.isArray(init.headers)) {
+                    const hasAuth = init.headers.some(h => h[0].toLowerCase() === 'authorization');
+                    if (!hasAuth) {
+                        init.headers.push(['Authorization', `Bearer ${token}`]);
+                    }
+                } else {
+                    if (!init.headers['Authorization'] && !init.headers['authorization']) {
+                        init.headers['Authorization'] = `Bearer ${token}`;
+                    }
+                }
+            }
+            return originalFetch(input, init);
+        };
+
         try {
             const saved = localStorage.getItem('constructviz_user');
             if (saved) {
@@ -228,6 +265,10 @@ const App: React.FC = () => {
         } catch (e) {
             console.warn('Failed to load persisted user:', e);
         }
+
+        return () => {
+            window.fetch = originalFetch; // restore original fetch on unmount
+        };
     }, []);
     
     // Handle Stripe Success/Cancel return
@@ -321,6 +362,9 @@ const App: React.FC = () => {
         }
         if (view === AppView.ADMIN && adminTab === "ANALYTICS") {
             fetchAnalytics();
+        }
+        if (view === AppView.ADMIN && adminTab === "AUDIT_LOGS") {
+            fetchAuditLogs();
         }
     }, [view, adminTab]);
 
@@ -431,6 +475,21 @@ const App: React.FC = () => {
             console.error("Fetch users error:", e);
         } finally {
             setIsLoadingUsers(false);
+        }
+    };
+
+    const fetchAuditLogs = async () => {
+        setIsLoadingAuditLogs(true);
+        try {
+            const res = await fetch("/api/admin/audit-logs");
+            if (res.ok) {
+                const data = await res.json();
+                setAuditLogs(data);
+            }
+        } catch (e) {
+            console.error("Fetch audit logs error:", e);
+        } finally {
+            setIsLoadingAuditLogs(false);
         }
     };
 
@@ -1994,6 +2053,14 @@ const App: React.FC = () => {
                         >
                             {t.admin.settings}
                         </Button>
+                        <Button
+                            variant={
+                                adminTab === "AUDIT_LOGS" ? "primary" : "ghost"
+                            }
+                            onClick={() => setAdminTab("AUDIT_LOGS")}
+                        >
+                            {lang === "es" ? "Auditoría de Seguridad" : "Security Audit Logs"}
+                        </Button>
                     </div>
                 </div>
 
@@ -3453,6 +3520,8 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 )}
+
+                {adminTab === "AUDIT_LOGS" && renderAuditLogsComponent()}
             </div>
         </div>
     );
@@ -4039,6 +4108,245 @@ const App: React.FC = () => {
                             </Button>
                         </div>
                     </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderAuditLogsComponent = () => {
+        const filteredLogs = auditLogs.filter((log) => {
+            const matchesSearch = 
+                (log.adminName?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.adminEmail?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.action?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.details?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.ipAddress?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase());
+
+            if (!matchesSearch) return false;
+
+            if (auditActionFilter === "ALL") return true;
+            if (auditActionFilter === "DELETIONS") return log.action?.includes("DELETE") || log.action?.includes("RESET");
+            if (auditActionFilter === "MODIFICATIONS") return log.action?.includes("CREATE") || log.action?.includes("UPDATE");
+            if (auditActionFilter === "CONFIG") return log.action?.includes("CONFIG") || log.action?.includes("TIERS") || log.action?.includes("ADMIN");
+            return true;
+        });
+
+        const deleteCount = auditLogs.filter(l => l.action?.includes('DELETE') || l.action?.includes('RESET')).length;
+        const configCount = auditLogs.filter(l => l.action?.includes('CONFIG') || l.action?.includes('TIERS') || l.action?.includes('ADMIN')).length;
+
+        return (
+            <div className="space-y-6 animate-fadeIn max-w-5xl">
+                {/* Header Banner */}
+                <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                    <div className="space-y-1">
+                        <h2 className="text-2xl font-black text-gray-700 uppercase tracking-tighter flex items-center gap-2">
+                            <span className="p-2 bg-red-50 text-red-600 rounded-xl">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                            </span>
+                            {lang === "es" ? "Bitácora de Seguridad" : "Security Audit Logs"}
+                        </h2>
+                        <p className="text-gray-400 text-xs leading-relaxed max-w-xl">
+                            {lang === "es" 
+                                ? "Auditoría activa y persistente de todas las modificaciones críticas de la base de datos, configuraciones del motor visual de IA y eliminaciones de cuentas." 
+                                : "Active persistent auditing of all critical database operations, subscription tier updates, account deletions, and system configurations."}
+                        </p>
+                    </div>
+                    <div className="flex-shrink-0">
+                        <Button 
+                            variant="secondary"
+                            onClick={fetchAuditLogs} 
+                            disabled={isLoadingAuditLogs}
+                            className="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-xs font-bold uppercase tracking-wider px-4 py-2 text-gray-600 flex items-center gap-2 active:scale-95 transition-all"
+                        >
+                            {isLoadingAuditLogs ? (
+                                <>
+                                    <svg className="animate-spin h-3 w-3 text-gray-500" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    {lang === "es" ? "Actualizando..." : "Refreshing..."}
+                                </>
+                            ) : (
+                                <span>{lang === "es" ? "Actualizar Logs" : "Refresh Logs"}</span>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Metrics Stats Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/30 flex items-center gap-4">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                            </svg>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">
+                                {lang === "es" ? "Eventos Auditados" : "Audited Events"}
+                            </span>
+                            <span className="text-xl font-black text-gray-700">{auditLogs.length}</span>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/30 flex items-center gap-4">
+                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">
+                                {lang === "es" ? "Eliminaciones" : "Deletions"}
+                            </span>
+                            <span className="text-xl font-black text-red-600">{deleteCount}</span>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/30 flex items-center gap-4">
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">
+                                {lang === "es" ? "Ajustes de Config" : "Config Updates"}
+                            </span>
+                            <span className="text-xl font-black text-amber-600">{configCount}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Filters and Search Bar Card */}
+                <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 space-y-6">
+                    <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+                        {/* Search Input */}
+                        <div className="relative w-full lg:w-96">
+                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </span>
+                            <input
+                                type="text"
+                                placeholder={lang === "es" ? "Buscar por admin, acción, ip..." : "Search by admin, action, ip..."}
+                                value={auditSearchQuery}
+                                onChange={(e) => setAuditSearchQuery(e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                            />
+                        </div>
+
+                        {/* Action Filter Button Group */}
+                        <div className="flex flex-wrap gap-1.5 w-full lg:w-auto">
+                            {[
+                                { key: "ALL", label: lang === "es" ? "Todos" : "All" },
+                                { key: "DELETIONS", label: lang === "es" ? "Eliminaciones" : "Deletions" },
+                                { key: "MODIFICATIONS", label: lang === "es" ? "Modificaciones" : "Modifications" },
+                                { key: "CONFIG", label: lang === "es" ? "Configuración" : "Config" }
+                            ].map((btn) => (
+                                <button
+                                    key={btn.key}
+                                    onClick={() => setAuditActionFilter(btn.key)}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 border ${
+                                        auditActionFilter === btn.key
+                                            ? "bg-slate-900 border-slate-950 text-white shadow-md"
+                                            : "bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200"
+                                    }`}
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Audit Logs Table */}
+                    {isLoadingAuditLogs ? (
+                        <div className="py-20 flex flex-col items-center justify-center gap-3">
+                            <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest animate-pulse">
+                                {lang === "es" ? "Cargando Bitácoras..." : "Loading Secure Audits..."}
+                            </span>
+                        </div>
+                    ) : filteredLogs.length === 0 ? (
+                        <div className="py-16 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+                            <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <h4 className="text-sm font-bold text-gray-600 uppercase tracking-wider">
+                                {lang === "es" ? "No se encontraron registros" : "No logs found"}
+                            </h4>
+                            <p className="text-gray-400 text-xs mt-1">
+                                {lang === "es" ? "Intente ajustar la búsqueda o los filtros." : "Try adjusting your search query or filter options."}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-inner bg-gray-50/10">
+                            <table className="min-w-full divide-y divide-gray-200 text-left">
+                                <thead className="bg-gray-50/75 sticky top-0">
+                                    <tr className="border-b border-gray-200">
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                            {lang === "es" ? "Fecha" : "Date & Time"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                            {lang === "es" ? "Administrador" : "Admin User"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
+                                            {lang === "es" ? "Acción" : "Action"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                            {lang === "es" ? "Descripción" : "Description"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest font-mono">
+                                            IP ADDRESS
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-150">
+                                    {filteredLogs.map((log) => {
+                                        let badgeColor = "bg-blue-50 text-blue-700 border-blue-100";
+                                        if (log.action?.includes("DELETE") || log.action?.includes("RESET")) {
+                                            badgeColor = "bg-red-50 text-red-700 border-red-200 font-extrabold shadow-sm shadow-red-100";
+                                        } else if (log.action?.includes("CREATE")) {
+                                            badgeColor = "bg-green-50 text-green-700 border-green-200";
+                                        } else if (log.action?.includes("UPDATE")) {
+                                            badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
+                                        }
+
+                                        return (
+                                            <tr key={log.id} className="hover:bg-gray-50/50 transition-colors duration-150">
+                                                <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-gray-400 font-mono">
+                                                    {new Date(log.timestamp).toLocaleString()}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-bold text-gray-700">{log.adminName}</span>
+                                                        <span className="text-[10px] text-gray-400 font-mono mt-0.5">{log.adminEmail}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wider border ${badgeColor}`}>
+                                                        {log.action}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-xs font-semibold text-gray-600 max-w-sm break-words leading-normal">
+                                                    {log.details}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-400">
+                                                    {log.ipAddress}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             </div>
         );
