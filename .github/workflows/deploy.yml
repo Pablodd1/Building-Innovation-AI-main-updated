@@ -58,14 +58,14 @@ jobs:
           set net:max-retries 5;
           set net:reconnect-interval-base 5;
           set net:reconnect-interval-max 30;
-          set mirror:parallel-transfer-count 3;
+          set mirror:parallel-transfer-count 1;
           open -u $FTP_USERNAME,$FTP_PASSWORD 157.173.208.16;
           mkdir -fp nodejs/dist;
           mkdir -fp nodejs/dist-server;
           mkdir -fp nodejs/data;
           mkdir -fp nodejs/tmp;
-          mirror -Rn --no-perms --ignore-time --parallel=3 ./dist/ nodejs/dist/;
-          mirror -Rn --no-perms --ignore-time --parallel=3 ./dist-server/ nodejs/dist-server/;
+          mirror -Rn --no-perms --ignore-time --parallel=1 ./dist/ nodejs/dist/;
+          mirror -Rn --no-perms --ignore-time --parallel=1 ./dist-server/ nodejs/dist-server/;
           put ./server.js -o nodejs/server.js;
           mirror -Rn --no-perms --ignore-time --parallel=1 --exclude products.json ./data/ nodejs/data/;
           put ./tmp_restart.txt -o nodejs/tmp/restart.txt;
