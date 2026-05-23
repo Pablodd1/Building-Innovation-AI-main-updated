@@ -40,47 +40,25 @@ const BrandLogoSmall = ({ className = "stroke-white print:stroke-black" }: { cla
   </svg>
 );
 
-// Colombian Address Geocoder & Distance Estimator (Haversine Formula)
-const geocodeColombiaAddress = (address: string) => {
-    const addr = address.toLowerCase();
-    let lat = 4.6097; // Default Bogotá D.C.
-    let lon = -74.0817;
-    let city = 'Bogotá';
-
-    if (addr.includes('medellin') || addr.includes('medellín') || addr.includes('antioquia')) {
-        lat = 6.2442;
-        lon = -75.5812;
-        city = 'Medellín';
-    } else if (addr.includes('cali') || addr.includes('valle')) {
-        lat = 3.4516;
-        lon = -76.5320;
-        city = 'Cali';
-    } else if (addr.includes('barranquilla') || addr.includes('atlantico') || addr.includes('atlántico')) {
-        lat = 10.9685;
-        lon = -74.7813;
-        city = 'Barranquilla';
-    } else if (addr.includes('cartagena') || addr.includes('bolivar') || addr.includes('bolívar')) {
-        lat = 10.3910;
-        lon = -75.4794;
-        city = 'Cartagena';
-    } else if (addr.includes('bucaramanga') || addr.includes('santander')) {
-        lat = 7.1193;
-        lon = -73.1227;
-        city = 'Bucaramanga';
+const geocodeColombiaAddress = async (address: string) => {
+    try {
+        const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(address + ', Colombia'));
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.length > 0) {
+                return { 
+                    lat: parseFloat(data[0].lat), 
+                    lon: parseFloat(data[0].lon), 
+                    city: data[0].display_name.split(',')[0] 
+                };
+            }
+        }
+    } catch (e) {
+        console.error('Nominatim Geocoding error:', e);
     }
-
-    // Add a high-fidelity offset based on Calle/Carrera numbers for realistic distances
-    const match = addr.match(/(calle|carrera|cll|cra|av|avenida)\s+(\d+)/);
-    if (match && match[2]) {
-        const num = parseInt(match[2], 10);
-        const multiplier = num % 2 === 0 ? 1 : -1;
-        lat += (num / 8000) * multiplier;
-        lon += ((num % 50) / 8000) * multiplier;
-    }
-    
-    return { lat, lon, city };
+    // Fallback if API fails or no result
+    return { lat: 4.6097, lon: -74.0817, city: 'Bogotá (Fallback)' };
 };
-
 const calculateHaversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // Radius of Earth in km
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -168,13 +146,12 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     }
   };
 
-  const handleAddressChange = (address: string) => {
-      setUserAddress(address);
+  const handleAddressChange = async (address: string) => {
       if (!address || address.trim().length < 5) {
           setGeocodedLocation(null);
           return;
       }
-      const loc = geocodeColombiaAddress(address);
+      const loc = await geocodeColombiaAddress(address);
       setGeocodedLocation(loc);
   };
 
@@ -777,7 +754,8 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                     <input 
                         type="text"
                         value={userAddress}
-                        onChange={(e) => handleAddressChange(e.target.value)}
+                        onChange={(e) => setUserAddress(e.target.value)}
+                        onBlur={(e) => handleAddressChange(e.target.value)}
                         placeholder={lang === 'es' ? 'Ej: Calle 100 # 15-30, Bogotá o El Poblado, Medellín' : 'e.g., Calle 100 # 15-30, Bogota or El Poblado, Medellin'}
                         className="w-full bg-black border border-slate-700 p-3 text-white rounded-xl text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all font-semibold"
                     />

@@ -601,7 +601,7 @@ function mapDBToMaterial(row: any) {
         refCode: row.ref_code || row.refCode || '',
         name: row.name || '',
         description: row.description || '',
-        imageUrl: row.image_url || row.imageUrl || '',
+        imageUrl: (row.image_url || row.imageUrl || '').startsWith('/products/') ? 'https://buildingapp.us' + (row.image_url || row.imageUrl) : (row.image_url || row.imageUrl || ''),
         category: row.category || '',
         subcategory: row.subcategory || '',
         usage: row.usage || 'Interior',
@@ -901,10 +901,20 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
                        (tier.toLowerCase() === 'enterprise' && t.name.toLowerCase().includes('enterprise'))
         ) || (tiers as any)[tier.toUpperCase()];
 
-        const stripePriceId = matchedTier ? matchedTier.stripePriceId : '';
+        let stripePriceId = matchedTier ? matchedTier.stripePriceId : '';
+
+        // Fallback to .env variables if the tier has a placeholder or empty ID
+        if (!stripePriceId || stripePriceId.includes('_placeholder')) {
+            const tierUpper = tier.toUpperCase();
+            if (tierUpper.includes('PREMIUM') || tierUpper.includes('PRO')) {
+                stripePriceId = process.env.STRIPE_PRICE_PRO || stripePriceId;
+            } else if (tierUpper.includes('LUXURY') || tierUpper.includes('ENTERPRISE')) {
+                stripePriceId = process.env.STRIPE_PRICE_ENTERPRISE || stripePriceId;
+            }
+        }
 
         // If key is missing, placeholder, or the Price ID is not configured, fall back to mock mode
-        if (!secretKey || secretKey === 'sk_test_123' || !stripePriceId || stripePriceId.startsWith('price_') && stripePriceId.includes('_placeholder')) {
+        if (!secretKey || secretKey === 'sk_test_123' || !stripePriceId || (stripePriceId.startsWith('price_') && stripePriceId.includes('_placeholder'))) {
             return res.json({
                 isMock: true,
                 sessionId: `mock_${Date.now()}`,
