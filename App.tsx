@@ -131,6 +131,9 @@ const App: React.FC = () => {
     const [tiersConfig, setTiersConfig] = useState<any>(null);
     const [editableTiers, setEditableTiers] = useState<any>(null);
     const [isSavingTiers, setIsSavingTiers] = useState(false);
+    const [secureConfig, setSecureConfig] = useState<{ hasKey: boolean; hasStripeSecretKey: boolean; hasStripeWebhookSecret: boolean } | null>(null);
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
+    const [configForm, setConfigForm] = useState({ apiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
 
     const fetchTiers = async () => {
         try {
@@ -366,6 +369,9 @@ const App: React.FC = () => {
         if (view === AppView.ADMIN && adminTab === "AUDIT_LOGS") {
             fetchAuditLogs();
         }
+        if (view === AppView.ADMIN && adminTab === "SETTINGS") {
+            fetchSecureConfig();
+        }
     }, [view, adminTab]);
 
     // --- User Memory & Behavioral Analytics Helpers ---
@@ -490,6 +496,51 @@ const App: React.FC = () => {
             console.error("Fetch audit logs error:", e);
         } finally {
             setIsLoadingAuditLogs(false);
+        }
+    };
+
+    const fetchSecureConfig = async () => {
+        try {
+            const res = await fetch("/api/admin/config");
+            if (res.ok) {
+                const data = await res.json();
+                setSecureConfig(data);
+            }
+        } catch (e) {
+            console.error("Fetch secure config error:", e);
+        }
+    };
+
+    const handleSaveSecureConfig = async () => {
+        if (!configForm.apiKey && !configForm.stripeSecretKey && !configForm.stripeWebhookSecret) {
+            alert(lang === 'es' ? "Por favor ingresa al menos un valor para actualizar." : "Please enter at least one value to update.");
+            return;
+        }
+        setIsSavingConfig(true);
+        try {
+            const body: any = {};
+            if (configForm.apiKey) body.apiKey = configForm.apiKey;
+            if (configForm.stripeSecretKey) body.stripeSecretKey = configForm.stripeSecretKey;
+            if (configForm.stripeWebhookSecret) body.stripeWebhookSecret = configForm.stripeWebhookSecret;
+
+            const res = await fetch("/api/admin/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (res.ok) {
+                alert(lang === 'es' ? "¡Configuración guardada exitosamente!" : "Configuration saved successfully!");
+                setConfigForm({ apiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
+                fetchSecureConfig();
+            } else {
+                const data = await res.json();
+                alert(data.error || "Failed to save configuration");
+            }
+        } catch (e) {
+            console.error("Save config error:", e);
+            alert("Failed to save configuration");
+        } finally {
+            setIsSavingConfig(false);
         }
     };
 
@@ -3501,21 +3552,126 @@ const App: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Secure AI Server Config Card */}
-                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50">
-                            <h3 className="text-xl font-bold text-gray-700 mb-4">
-                                Secure AI Engine Server Configuration
-                            </h3>
-                            <p className="text-sm text-gray-500 mb-4 leading-relaxed">
-                                {lang === "es"
-                                    ? "La IA de visualización está configurada de forma segura en el backend del servidor. No se requiere ninguna clave de API o credencial en el navegador cliente."
-                                    : "The rendering AI visual engine is securely loaded in the backend server. No API key or system credential is required or exposed in the client browser."}
-                            </p>
-                            <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-xs font-semibold text-green-700 flex items-center gap-3">
-                                <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                                </svg>
-                                <span>{lang === "es" ? "Protección Activa de Credenciales: la clave de la API está cifrada en el servidor." : "Active Credential Guard: System API tokens are hidden and protected from developer inspection."}</span>
+                        {/* Secure Credentials Manager Card */}
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 space-y-6 animate-fadeIn">
+                            <div>
+                                <h3 className="text-2xl font-black text-gray-700 uppercase tracking-tighter">
+                                    {lang === "es" ? "Gestor de Credenciales del Servidor" : "Server Credentials & Keys Manager"}
+                                </h3>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    {lang === "es"
+                                        ? "Configura las claves de API del servidor de forma segura. Las claves se guardan de forma encriptada en el servidor y nunca se exponen al navegador."
+                                        : "Securely configure server-side API keys and secrets. Credentials are stored securely on the server and are never exposed to the client browser."}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* Gemini status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gemini API Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasKey 
+                                                ? (lang === 'es' ? "Configurado (Activo)" : "Configured (Active)") 
+                                                : (lang === 'es' ? "No Configurado" : "Not Configured")}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Stripe Key status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Stripe Secret Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasStripeSecretKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasStripeSecretKey 
+                                                ? (lang === 'es' ? "Configurado (Activo)" : "Configured (Active)") 
+                                                : (lang === 'es' ? "No Configurado" : "Not Configured")}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Stripe Webhook status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Stripe Webhook Secret</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasStripeWebhookSecret ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasStripeWebhookSecret 
+                                                ? (lang === 'es' ? "Configurado (Activo)" : "Configured (Active)") 
+                                                : (lang === 'es' ? "No Configurado" : "Not Configured")}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 pt-2">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave de API Gemini" : "New Gemini API Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="AIzaSy..."
+                                            value={configForm.apiKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, apiKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave Secreta de Stripe" : "New Stripe Secret Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk_live_..."
+                                            value={configForm.stripeSecretKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, stripeSecretKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                        {lang === 'es' ? "Nuevo Secreto de Webhook Stripe" : "New Stripe Webhook Secret"}
+                                    </label>
+                                    <input
+                                        type="password"
+                                        placeholder="whsec_..."
+                                        value={configForm.stripeWebhookSecret}
+                                        onChange={(e) => setConfigForm({ ...configForm, stripeWebhookSecret: e.target.value })}
+                                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">
+                                        {lang === 'es' 
+                                            ? "Los campos en blanco no se modificarán para proteger tus credenciales guardadas." 
+                                            : "Fields left blank will remain unchanged to protect your existing credentials."}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-4 border-t border-gray-100">
+                                <button
+                                    onClick={handleSaveSecureConfig}
+                                    disabled={isSavingConfig}
+                                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:shadow-blue-500/35 active:scale-95 transition-all flex items-center gap-2"
+                                >
+                                    {isSavingConfig ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                            </svg>
+                                            {lang === "es" ? "Guardando..." : "Saving..."}
+                                        </>
+                                    ) : (
+                                        lang === "es" ? "Guardar Credenciales" : "Save Credentials"
+                                    )}
+                                </button>
                             </div>
                         </div>
                     </div>

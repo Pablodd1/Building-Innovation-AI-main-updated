@@ -809,15 +809,33 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
 // Middleware + Monitoring + Security
 app.use(cors());
 // Stripe Webhook Endpoint (Must use raw body for signature verification)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_123', { apiVersion: '2025-02-24.acacia' as any });
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
+let stripeInstance: Stripe | null = null;
+let lastStripeKey: string | null = null;
+
+async function getStripe() {
+    const config = await getConfig();
+    const key = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || 'sk_test_123';
+    
+    if (!stripeInstance || lastStripeKey !== key) {
+        stripeInstance = new Stripe(key, { apiVersion: '2025-02-24.acacia' as any });
+        lastStripeKey = key;
+    }
+    return stripeInstance;
+}
+
+async function getStripeWebhookSecret() {
+    const config = await getConfig();
+    return config.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
+}
 
 app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req: Request, res: Response) => {
     const sig = req.headers['stripe-signature'] as string;
     let event;
 
     try {
-        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+        const stripeObj = await getStripe();
+        const webhookSecret = await getStripeWebhookSecret();
+        event = stripeObj.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err: any) {
         console.error(`Webhook Error: ${err.message}`);
         return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -871,7 +889,8 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
             return res.status(400).json({ error: 'Missing userId or tier' });
         }
 
-        const secretKey = process.env.STRIPE_SECRET_KEY;
+        const config = await getConfig();
+        const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
 
         const tiers = await getTiers();
         const matchedTier = Object.values(tiers).find(
@@ -894,7 +913,8 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
         }
 
         const baseUrl = req.headers.origin || req.headers.referer || 'http://localhost:3000';
-        const session = await stripe.checkout.sessions.create({
+        const stripeObj = await getStripe();
+        const session = await stripeObj.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: [
                 {
@@ -3195,7 +3215,11 @@ app.post('/api/ai/generate', async (req: Request, res: Response) => {
 // Admin Config Endpoints
 app.get('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     const config = await getConfig();
-    res.json({ hasKey: !!config.GEMINI_API_KEY });
+    res.json({ 
+        hasKey: !!config.GEMINI_API_KEY,
+        hasStripeSecretKey: !!config.STRIPE_SECRET_KEY,
+        hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET
+    });
 });
 
 // Admin Security Audit Logs Endpoint
@@ -3240,14 +3264,16 @@ app.get('/api/debug/config-path', async (req: Request, res: Response) => {
 
 app.post('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { apiKey } = req.body;
-        if (!apiKey) return res.status(400).json({ error: 'API Key required' });
+        const { apiKey, stripeSecretKey, stripeWebhookSecret } = req.body;
         
         const config = await getConfig();
-        config.GEMINI_API_KEY = apiKey;
+        if (apiKey !== undefined) config.GEMINI_API_KEY = apiKey;
+        if (stripeSecretKey !== undefined) config.STRIPE_SECRET_KEY = stripeSecretKey;
+        if (stripeWebhookSecret !== undefined) config.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
+        
         saveToJSON(JSON_CONFIG_PATH, config);
         
-        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', 'Updated visual rendering engine server configuration');
+        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', 'Updated visual rendering engine and Stripe checkout server credentials');
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
