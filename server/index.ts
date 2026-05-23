@@ -1761,7 +1761,7 @@ app.post('/api/marketplace/installers', async (req: Request, res: Response) => {
 // Delete material
 app.delete('/api/materials/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         let deletedLocally = false;
         
         // Helper to sync deletions to the original tracked JSON seed file
@@ -2653,6 +2653,39 @@ app.patch('/api/admin/users/:id/tier', requireAdmin, async (req: Request, res: R
     } catch (error: any) {
         console.error('Update tier error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Secure User Profile endpoint: Get user profile details
+app.get('/api/users/:id', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const authUser = (req as any).user;
+
+        // Block regular users from fetching other users' profiles (only allow their own ID, unless they are admin)
+        if (String(authUser.id) !== String(id) && authUser.role !== 'admin') {
+            return res.status(403).json({ error: 'Forbidden. Access denied.' });
+        }
+
+        // 1. Try DB first
+        try {
+            const result = await query('SELECT id, name, email, role, tier, generations_used FROM users WHERE id = $1', [parseInt(id as string)]);
+            if (result.rows.length > 0) {
+                return res.json(result.rows[0]);
+            }
+        } catch (dbErr) {}
+
+        // 2. Fallback to JSON
+        const users = await getUsers();
+        const found = users.find((u: any) => String(u.id) === String(id));
+        if (found) {
+            const { password_hash, session_token, ...safeUser } = found;
+            return res.json(safeUser);
+        }
+
+        res.status(404).json({ error: 'User not found' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 

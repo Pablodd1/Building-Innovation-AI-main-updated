@@ -282,12 +282,12 @@ const App: React.FC = () => {
                 try {
                     const parsed = JSON.parse(stored);
                     if (parsed && parsed.id) {
-                        fetch(`/api/admin/users`)
+                        fetch(`/api/users/${parsed.id}`)
                             .then(res => res.json())
-                            .then(users => {
-                                const refreshedUser = users.find((u: any) => u.id === parsed.id);
-                                if (refreshedUser) {
-                                    setCurrentUser(refreshedUser);
+                            .then(refreshedUser => {
+                                if (refreshedUser && refreshedUser.tier) {
+                                    // Merge refreshed user profile fields into current session state
+                                    setCurrentUser(prev => prev ? { ...prev, ...refreshedUser } : refreshedUser);
                                 }
                             })
                             .catch(err => console.warn('Failed to refresh user tier', err));
