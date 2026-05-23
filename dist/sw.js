@@ -1,6 +1,6 @@
 // BuildingApp Service Worker v5
 // Network-First for HTML, Cache-First for assets, bulletproof clone handling
-const CACHE_NAME = 'building-ai-cache-v5';
+const CACHE_NAME = 'building-ai-cache-v7';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -41,8 +41,8 @@ self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (request.method !== 'GET') return;
 
-  // Never intercept API calls — let them go straight to the server
-  if (request.url.includes('/api/')) return;
+  // Never intercept API calls, products data, or product images — let them go straight to the server
+  if (request.url.includes('/api/') || request.url.includes('/data/') || request.url.includes('/products/')) return;
 
   // Only intercept same-origin requests
   let url;

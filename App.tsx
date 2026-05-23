@@ -783,10 +783,10 @@ const App: React.FC = () => {
             return;
         }
 
-        // For local paths that failed, try prepending origin
+        // For local paths that failed, try prepending the remote production CDN domain
         if (originalSrc.startsWith('/')) {
             target.setAttribute('data-error-fixed', 'true');
-            target.src = window.location.origin + originalSrc;
+            target.src = "https://buildingapp.us" + originalSrc;
             return;
         }
 
@@ -808,10 +808,10 @@ const App: React.FC = () => {
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
                         const refCode = m.ref_code || m.refCode || "";
                         
-                        // Prioritize local embedded high-fidelity images
+                        // Prioritize remote high-fidelity WebP CDN paths for universal resolution (Mobile/Web/Capacitor)
                         let imageUrl = m.image_url || m.imageUrl || "";
                         if (refCode) {
-                            imageUrl = `/products/${refCode}.webp`;
+                            imageUrl = `https://buildingapp.us/products/${refCode}.webp`;
                         } else {
                             imageUrl = proxyImageUrl(imageUrl);
                         }
@@ -849,8 +849,8 @@ const App: React.FC = () => {
         }
 
         try {
-            // Tier 2: Local embedded manifest — proxy image URLs for browser
-            const localRes = await fetch("/data/products.json");
+            // Tier 2: Local embedded manifest — query-param cache-busted CDN proxy
+            const localRes = await fetch("/data/products.json?v=" + Date.now());
             if (localRes.ok) {
                 const localData = await localRes.json();
                 if (Array.isArray(localData) && localData.length > 0) {
@@ -859,10 +859,10 @@ const App: React.FC = () => {
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
                         const refCode = m.ref_code || m.refCode || "";
                         
-                        // Prioritize local embedded high-fidelity images
+                        // Prioritize remote high-fidelity WebP CDN paths for universal resolution (Mobile/Web/Capacitor)
                         let imageUrl = m.image_url || m.imageUrl || "";
                         if (refCode) {
-                            imageUrl = `/products/${refCode}.webp`;
+                            imageUrl = `https://buildingapp.us/products/${refCode}.webp`;
                         } else {
                             imageUrl = proxyImageUrl(imageUrl);
                         }
