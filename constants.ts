@@ -125,9 +125,9 @@ export const MATERIALS: Material[] = [
 ];
 
 export const CONTRACTORS: Contractor[] = [
-    { id: 'c1', name: 'Elite Installers Inc.', phone: '(555) 123-4567', email: 'contact@eliteinstallers.com', region: 'North', laborRatePerSqm: 25, laborRatePerLinear: 15, laborRatePerPiece: 20 },
-    { id: 'c2', name: 'Modern Spaces LLC', phone: '(555) 987-6543', email: 'info@modernspaces.com', region: 'South', laborRatePerSqm: 22, laborRatePerLinear: 12, laborRatePerPiece: 18 },
-    { id: 'c3', name: 'Precision Floors & Walls', phone: '(555) 555-5555', email: 'quotes@precisionfw.com', region: 'East', laborRatePerSqm: 28, laborRatePerLinear: 18, laborRatePerPiece: 25 }
+    { id: 'c1', name: 'Instalaciones Elite Colombia S.A.S.', phone: '+57 310 123 4567', email: 'elite.colombia@instaladores.co', region: 'Bogotá D.C.', address: 'Calle 100 # 15-30, Bogotá D.C., Colombia', lat: 4.6974, lon: -74.0530, laborRatePerSqm: 25000, laborRatePerLinear: 15000, laborRatePerPiece: 20000 },
+    { id: 'c2', name: 'Espacios Modernos de Medellín S.A.S.', phone: '+57 315 987 6543', email: 'medellin@espaciosmodernos.co', region: 'Antioquia (Medellín)', address: 'Carrera 43A # 1 Sur-50, El Poblado, Medellín, Colombia', lat: 6.2081, lon: -75.5678, laborRatePerSqm: 22000, laborRatePerLinear: 12000, laborRatePerPiece: 18000 },
+    { id: 'c3', name: 'Acabados de Precisión de Occidente SAS', phone: '+57 320 555 5555', email: 'cali@precisionacabados.co', region: 'Valle del Cauca (Cali)', address: 'Avenida 6N # 20-40, Cali, Colombia', lat: 3.4690, lon: -76.5300, laborRatePerSqm: 28000, laborRatePerLinear: 18000, laborRatePerPiece: 25000 }
 ];
 
 export const TRANSLATIONS: Record<Language, any> = {

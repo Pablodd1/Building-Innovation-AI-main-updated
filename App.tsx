@@ -1330,6 +1330,7 @@ const App: React.FC = () => {
             email: contractorForm.email || "",
             phone: contractorForm.phone || "",
             region: contractorForm.region || "",
+            address: contractorForm.address || "",
         };
         setContractors([...contractors, newContractor]);
         setContractorForm({});
@@ -3225,15 +3226,15 @@ const App: React.FC = () => {
                 )}
 
                 {adminTab === "CONTRACTORS" && (
-                    <div className="space-y-6">
-                        <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
-                            <h3 className="text-lg font-bold text-gray-700 mb-4">
-                                Add Installer
+                    <div className="space-y-6 animate-fadeIn">
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50">
+                            <h3 className="text-xl font-black text-gray-700 uppercase tracking-tighter mb-4">
+                                {lang === "es" ? "Añadir Instalador Profesional" : "Add Professional Installer"}
                             </h3>
-                            <div className="flex gap-4 mb-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                                 <input
-                                    className="bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 flex-1"
-                                    placeholder="Company Name"
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Nombre de la Empresa" : "Company Name"}
                                     value={contractorForm.name || ""}
                                     onChange={(e) =>
                                         setContractorForm({
@@ -3243,8 +3244,8 @@ const App: React.FC = () => {
                                     }
                                 />
                                 <input
-                                    className="bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 flex-1"
-                                    placeholder="Region"
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Región / Departamento" : "Region / Department"}
                                     value={contractorForm.region || ""}
                                     onChange={(e) =>
                                         setContractorForm({
@@ -3253,25 +3254,77 @@ const App: React.FC = () => {
                                         })
                                     }
                                 />
+                                <input
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Correo Electrónico" : "Email Address"}
+                                    value={contractorForm.email || ""}
+                                    onChange={(e) =>
+                                        setContractorForm({
+                                            ...contractorForm,
+                                            email: e.target.value,
+                                        })
+                                    }
+                                />
+                                <input
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Número de Teléfono" : "Phone Number"}
+                                    value={contractorForm.phone || ""}
+                                    onChange={(e) =>
+                                        setContractorForm({
+                                            ...contractorForm,
+                                            phone: e.target.value,
+                                        })
+                                    }
+                                />
+                                <input
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold md:col-span-2"
+                                    placeholder={lang === "es" ? "Dirección Física (Ej: Calle 100 # 15-30, Bogotá)" : "Physical Address (e.g., Calle 100 # 15-30, Bogota)"}
+                                    value={contractorForm.address || ""}
+                                    onChange={(e) =>
+                                        setContractorForm({
+                                            ...contractorForm,
+                                            address: e.target.value,
+                                        })
+                                    }
+                                />
                             </div>
-                            <Button onClick={handleSaveContractor}>
-                                Add Installer
-                            </Button>
+                            <div className="flex justify-end">
+                                <button 
+                                    onClick={handleSaveContractor}
+                                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-md shadow-blue-500/10 hover:shadow-blue-500/20"
+                                >
+                                    {lang === "es" ? "Añadir Instalador" : "Add Installer"}
+                                </button>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {contractors.map((c) => (
                                 <div
                                     key={c.id}
-                                    className="bg-gray-200 p-4 rounded-xl border border-gray-300"
+                                    className="bg-white p-6 rounded-3xl border border-gray-200 shadow-lg shadow-gray-100/50 space-y-3 relative overflow-hidden group hover:border-blue-300 transition-all duration-300"
                                 >
-                                    <div className="font-bold text-gray-700">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -z-10 group-hover:bg-blue-100/70 transition-colors"></div>
+                                    <div className="font-black text-gray-700 text-lg uppercase tracking-tight">
                                         {c.name}
                                     </div>
-                                    <div className="text-sm text-blue-400">
-                                        {c.region}
+                                    <div className="inline-flex text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-200">
+                                        📍 {c.region}
                                     </div>
-                                    <div className="text-xs text-gray-500 mt-2">
-                                        {c.email}
+                                    
+                                    <div className="space-y-1.5 pt-3 border-t border-gray-100 text-xs font-semibold text-gray-500">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-400">📧</span>
+                                            <span>{c.email || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-400">📞</span>
+                                            <span>{c.phone || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-400">🏠</span>
+                                            <span>{c.address || (lang === 'es' ? 'Dirección no registrada' : 'No address registered')}</span>
+                                        </div>
                                     </div>
                                 </div>
                             ))}

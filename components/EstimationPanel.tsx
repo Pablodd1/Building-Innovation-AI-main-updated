@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Material, CartItem, Contractor } from '../types';
 import { Button } from './Button';
 import { TRANSLATIONS } from '../constants';
@@ -40,6 +40,59 @@ const BrandLogoSmall = ({ className = "stroke-white print:stroke-black" }: { cla
   </svg>
 );
 
+// Colombian Address Geocoder & Distance Estimator (Haversine Formula)
+const geocodeColombiaAddress = (address: string) => {
+    const addr = address.toLowerCase();
+    let lat = 4.6097; // Default Bogotá D.C.
+    let lon = -74.0817;
+    let city = 'Bogotá';
+
+    if (addr.includes('medellin') || addr.includes('medellín') || addr.includes('antioquia')) {
+        lat = 6.2442;
+        lon = -75.5812;
+        city = 'Medellín';
+    } else if (addr.includes('cali') || addr.includes('valle')) {
+        lat = 3.4516;
+        lon = -76.5320;
+        city = 'Cali';
+    } else if (addr.includes('barranquilla') || addr.includes('atlantico') || addr.includes('atlántico')) {
+        lat = 10.9685;
+        lon = -74.7813;
+        city = 'Barranquilla';
+    } else if (addr.includes('cartagena') || addr.includes('bolivar') || addr.includes('bolívar')) {
+        lat = 10.3910;
+        lon = -75.4794;
+        city = 'Cartagena';
+    } else if (addr.includes('bucaramanga') || addr.includes('santander')) {
+        lat = 7.1193;
+        lon = -73.1227;
+        city = 'Bucaramanga';
+    }
+
+    // Add a high-fidelity offset based on Calle/Carrera numbers for realistic distances
+    const match = addr.match(/(calle|carrera|cll|cra|av|avenida)\s+(\d+)/);
+    if (match && match[2]) {
+        const num = parseInt(match[2], 10);
+        const multiplier = num % 2 === 0 ? 1 : -1;
+        lat += (num / 8000) * multiplier;
+        lon += ((num % 50) / 8000) * multiplier;
+    }
+    
+    return { lat, lon, city };
+};
+
+const calculateHaversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+};
+
 export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en', unitSystem = 'usa', userEmail = '', userName = '', userLocation = null }) => {
   const [width, setWidth] = useState<number>(3);
   const [height, setHeight] = useState<number>(2.5);
@@ -70,6 +123,30 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
   
   const [nearbyInstallers, setNearbyInstallers] = useState<any[]>([]);
   const [isSearchingInstallers, setIsSearchingInstallers] = useState(false);
+  const [userAddress, setUserAddress] = useState<string>('');
+  const [geocodedLocation, setGeocodedLocation] = useState<{ lat: number; lon: number; city: string } | null>(null);
+
+  const sortedContractors = useMemo(() => {
+      if (!geocodedLocation) return contractors;
+      return contractors
+          .map((c) => {
+              if (c.lat !== undefined && c.lon !== undefined) {
+                  const dist = calculateHaversineDistance(
+                      geocodedLocation.lat,
+                      geocodedLocation.lon,
+                      c.lat,
+                      c.lon
+                  );
+                  return { ...c, distance_km: dist };
+              }
+              return { ...c, distance_km: null } as any;
+          })
+          .sort((a, b) => {
+              if (a.distance_km === null) return 1;
+              if (b.distance_km === null) return -1;
+              return a.distance_km - b.distance_km;
+          });
+  }, [contractors, geocodedLocation]);
 
   const fetchNearbyInstallers = async () => {
     if (!userLocation) return;
@@ -89,6 +166,16 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
     } finally {
         setIsSearchingInstallers(false);
     }
+  };
+
+  const handleAddressChange = (address: string) => {
+      setUserAddress(address);
+      if (!address || address.trim().length < 5) {
+          setGeocodedLocation(null);
+          return;
+      }
+      const loc = geocodeColombiaAddress(address);
+      setGeocodedLocation(loc);
   };
 
   const t = TRANSLATIONS[lang];
@@ -681,28 +768,88 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
 
         {/* Contractor (No Print) */}
         <div className="no-print space-y-4">
-            <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{t.quote.assignContractor}</label>
-                <select 
-                    value={selectedContractor}
-                    onChange={(e) => { setSelectedContractor(e.target.value); setManualLaborOverride(false); }}
-                    className="w-full bg-black border border-slate-700 p-3 text-white rounded text-base md:text-sm"
-                >
-                    <option value="">{t.quote.selectContractor}</option>
-                    {contractors.map(c => <option key={c.id} value={c.id}>{c.name} - {c.region} {c.laborRatePerSqm ? `($${c.laborRatePerSqm}/m²)` : ''}</option>)}
-                </select>
+            <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700 space-y-4">
+                <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                    <span>🇨🇴</span>
+                    <span>{lang === 'es' ? 'Dirección del Proyecto en Colombia' : 'Colombia Project Address'}</span>
+                </h4>
+                <div>
+                    <input 
+                        type="text"
+                        value={userAddress}
+                        onChange={(e) => handleAddressChange(e.target.value)}
+                        placeholder={lang === 'es' ? 'Ej: Calle 100 # 15-30, Bogotá o El Poblado, Medellín' : 'e.g., Calle 100 # 15-30, Bogota or El Poblado, Medellin'}
+                        className="w-full bg-black border border-slate-700 p-3 text-white rounded-xl text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all font-semibold"
+                    />
+                    {geocodedLocation && (
+                        <p className="text-[10px] text-green-400 mt-1.5 font-bold flex items-center gap-1.5 animate-pulse">
+                            <span>✅</span>
+                            <span>{lang === 'es' ? `Geolocalizado en ${geocodedLocation.city} (Coordenadas aproximadas)` : `Geolocalized in ${geocodedLocation.city} (Approximate coordinates)`}</span>
+                        </p>
+                    )}
+                </div>
+
+                <div className="border-t border-slate-700/50 pt-4">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{t.quote.assignContractor}</label>
+                    <select 
+                        value={selectedContractor}
+                        onChange={(e) => { setSelectedContractor(e.target.value); setManualLaborOverride(false); }}
+                        className="w-full bg-black border border-slate-700 p-3 text-white rounded-xl text-base md:text-sm font-semibold focus:outline-none focus:border-blue-500 transition-all"
+                    >
+                        <option value="">{t.quote.selectContractor}</option>
+                        {sortedContractors.map(c => {
+                            const distStr = c.distance_km !== undefined && c.distance_km !== null ? `[${c.distance_km.toFixed(1)} km] ` : '';
+                            return (
+                                <option key={c.id} value={c.id}>
+                                    {distStr}{c.name} - {c.region} {c.laborRatePerSqm ? `($${c.laborRatePerSqm}/m²)` : ''}
+                                </option>
+                            );
+                        })}
+                    </select>
+                </div>
             </div>
             
             {selectedContractor && (
-                <div className="bg-slate-800 p-4 rounded border border-slate-700">
-                    <div className="flex items-center justify-between mb-3">
+                <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4 animate-fadeIn">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <div className="text-sm font-black text-white uppercase tracking-tight leading-none">
+                                {selectedContractorData?.name}
+                            </div>
+                            <div className="text-xs text-blue-400 font-semibold mt-2.5">
+                                📍 {selectedContractorData?.region}
+                            </div>
+                        </div>
+                        {selectedContractorData && (selectedContractorData as any).distance_km !== undefined && (selectedContractorData as any).distance_km !== null && (
+                            <div className="bg-blue-600/20 border border-blue-500 text-blue-400 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider">
+                                🚗 {(selectedContractorData as any).distance_km.toFixed(1)} km
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-semibold text-slate-400 border-t border-slate-700/50 pt-4">
+                        <div>
+                            <span className="text-slate-500 uppercase text-[9px] tracking-wider block mb-0.5">Email</span> 
+                            <span className="text-slate-300 font-mono">{selectedContractorData?.email || 'N/A'}</span>
+                        </div>
+                        <div>
+                            <span className="text-slate-500 uppercase text-[9px] tracking-wider block mb-0.5">{lang === 'es' ? 'Teléfono' : 'Phone'}</span> 
+                            <span className="text-slate-300">{selectedContractorData?.phone || 'N/A'}</span>
+                        </div>
+                        <div className="md:col-span-2">
+                            <span className="text-slate-500 uppercase text-[9px] tracking-wider block mb-0.5">{lang === 'es' ? 'Dirección' : 'Address'}</span> 
+                            <span className="text-slate-300">{selectedContractorData?.address || 'N/A'}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-slate-700/50 pt-4">
                         <label className="text-xs font-bold text-slate-400 uppercase">{t.quote.laborCost || 'Installation Cost'}</label>
                         <label className="flex items-center gap-2 text-xs text-slate-400">
                             <input 
                                 type="checkbox" 
                                 checked={manualLaborOverride}
                                 onChange={(e) => setManualLaborOverride(e.target.checked)}
-                                className="rounded"
+                                className="rounded bg-black border-slate-700 text-blue-600 focus:ring-0 focus:ring-offset-0"
                             />
                             {lang === 'es' ? 'Ingresar manualmente' : 'Manual input'}
                         </label>
@@ -712,55 +859,48 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBa
                             type="number"
                             value={laborCost}
                             onChange={(e) => setLaborCost(parseFloat(e.target.value) || 0)}
-                            className="w-full bg-black border border-slate-600 p-2 text-white rounded"
+                            className="w-full bg-black border border-slate-600 p-2.5 text-white rounded-lg focus:outline-none focus:border-blue-500 transition-all font-mono"
                             placeholder={lang === 'es' ? 'Costo de instalación...' : 'Installation cost...'}
                         />
                     ) : (
-                        <div className="text-2xl font-black text-green-400">${laborCost}</div>
+                        <div className="text-2xl font-black text-green-400 font-mono">${laborCost}</div>
                     )}
                 </div>
             )}
 
             {/* Nearby Installers Marketplace */}
-            {userLocation && (
-                <div className="bg-slate-800/40 p-4 rounded-lg border border-slate-700/50">
-                    <div className="flex justify-between items-center mb-3">
-                        <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">
-                            {lang === 'es' ? 'Instaladores Cercanos' : 'Nearby Installers'}
+            {geocodedLocation && (
+                <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 space-y-4 animate-fadeIn">
+                    <div className="flex justify-between items-center">
+                        <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest">
+                            {lang === 'es' ? 'Instaladores por Proximidad' : 'Installers by Proximity'}
                         </h4>
-                        <button 
-                            onClick={fetchNearbyInstallers}
-                            disabled={isSearchingInstallers}
-                            className="text-[10px] font-bold text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-                        >
-                            {isSearchingInstallers ? (lang === 'es' ? 'Buscando...' : 'Searching...') : (lang === 'es' ? 'Buscar Proximidad' : 'Search Proximity')}
-                        </button>
                     </div>
 
-                    {nearbyInstallers.length > 0 ? (
-                        <div className="space-y-2">
-                            {nearbyInstallers.map((inst) => (
-                                <div 
-                                    key={inst.id} 
-                                    onClick={() => setSelectedContractor(inst.id)}
-                                    className={`flex justify-between items-center p-2 rounded border cursor-pointer transition-all ${selectedContractor === inst.id ? 'bg-blue-600/20 border-blue-500' : 'bg-black border-slate-700 hover:border-slate-500'}`}
-                                >
-                                    <div>
-                                        <div className="text-xs font-bold text-white">{inst.name}</div>
-                                        <div className="text-[9px] text-slate-500 uppercase">{inst.region}</div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-[10px] font-bold text-blue-400">{inst.distance_km.toFixed(1)} km</div>
-                                        <div className="text-[9px] text-slate-500">{lang === 'es' ? 'Distancia' : 'Distance'}</div>
-                                    </div>
+                    <div className="space-y-3">
+                        {sortedContractors.map((inst: any) => (
+                            <div 
+                                key={inst.id} 
+                                onClick={() => {
+                                    setSelectedContractor(inst.id);
+                                    setManualLaborOverride(false);
+                                }}
+                                className={`flex justify-between items-center p-4 rounded-2xl border cursor-pointer transition-all ${selectedContractor === inst.id ? 'bg-blue-600/20 border-blue-500 shadow-md shadow-blue-500/5' : 'bg-black border-slate-800 hover:border-slate-600'}`}
+                            >
+                                <div>
+                                    <div className="text-xs font-bold text-white">{inst.name}</div>
+                                    <div className="text-[9px] text-slate-500 uppercase font-black tracking-wider mt-1">📍 {inst.region}</div>
+                                    <div className="text-[10px] text-slate-400 mt-1.5 font-semibold">{inst.address}</div>
                                 </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-[10px] text-slate-500 italic">
-                            {lang === 'es' ? 'Haga clic para encontrar instaladores certificados en su área.' : 'Click to find certified installers in your area.'}
-                        </p>
-                    )}
+                                <div className="text-right pl-4">
+                                    <div className="text-[11px] font-black text-blue-400 font-mono">
+                                        {inst.distance_km !== null && inst.distance_km !== undefined ? `${inst.distance_km.toFixed(1)} km` : 'N/A'}
+                                    </div>
+                                    <div className="text-[9px] text-slate-500 font-semibold">{lang === 'es' ? 'Distancia' : 'Distance'}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

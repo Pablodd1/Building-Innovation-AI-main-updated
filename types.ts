@@ -79,6 +79,9 @@ export interface Contractor {
   phone: string;
   email: string;
   region: string;
+  address?: string; // Colombian street address
+  lat?: number; // Latitude for proximity checks
+  lon?: number; // Longitude for proximity checks
   laborRatePerSqm?: number; // Labor cost per square meter
   laborRatePerLinear?: number; // Labor cost per linear meter
   laborRatePerPiece?: number; // Labor cost per piece (for rolls)
