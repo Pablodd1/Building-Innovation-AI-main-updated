@@ -43,7 +43,7 @@ jobs:
         env:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-        timeout-minutes: 20
+        timeout-minutes: 60
         run: |
           sudo apt-get update --fix-missing || true
           sudo apt-get install -y lftp
