@@ -64,10 +64,10 @@ jobs:
           mkdir -fp nodejs/dist-server;
           mkdir -fp nodejs/data;
           mkdir -fp nodejs/tmp;
-          mirror -Rn --no-perms --ignore-time --parallel=1 ./dist/ nodejs/dist/;
-          mirror -Rn --no-perms --ignore-time --parallel=1 ./dist-server/ nodejs/dist-server/;
+          mirror -Rn --delete --no-perms --ignore-time --parallel=1 ./dist/ nodejs/dist/;
+          mirror -Rn --delete --no-perms --ignore-time --parallel=1 ./dist-server/ nodejs/dist-server/;
           put ./server.js -o nodejs/server.js;
-          mirror -Rn --no-perms --ignore-time --parallel=1 --exclude products.json ./data/ nodejs/data/;
+          mirror -Rn --delete --no-perms --ignore-time --parallel=1 --exclude products.json ./data/ nodejs/data/;
           put ./tmp_restart.txt -o nodejs/tmp/restart.txt;
           echo 'Deploy complete';
           "
