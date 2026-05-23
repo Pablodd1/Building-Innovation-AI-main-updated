@@ -19,6 +19,7 @@ export interface User {
     role: string;
     tier: string;
     generations_used: number;
+    photoURL?: string; // Profile avatar URL
 }
 
 export interface TechnicalSpecs {
