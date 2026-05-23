@@ -790,6 +790,14 @@ const App: React.FC = () => {
             return;
         }
 
+        // If a buildingapp.us WebP CDN image failed, try the original data-original-src
+        const dbUrl = target.getAttribute('data-original-src');
+        if (dbUrl && dbUrl !== originalSrc && (dbUrl.includes('drive.google.com') || dbUrl.includes('lh3.googleusercontent.com'))) {
+            target.setAttribute('data-error-fixed', 'true');
+            target.src = `/api/proxy-image?url=${encodeURIComponent(dbUrl)}`;
+            return;
+        }
+
         // Fallback placeholder
         target.setAttribute('data-error-fixed', 'true');
         target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
@@ -808,12 +816,13 @@ const App: React.FC = () => {
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
                         const refCode = m.ref_code || m.refCode || "";
                         
-                        // Prioritize remote high-fidelity WebP CDN paths for universal resolution (Mobile/Web/Capacitor)
-                        let imageUrl = m.image_url || m.imageUrl || "";
-                        if (refCode) {
+                        // Use original DB image URL; only fall back to WebP CDN if the original is empty
+                        const dbImageUrl = m.image_url || m.imageUrl || "";
+                        let imageUrl = dbImageUrl;
+                        if (!imageUrl && refCode) {
                             imageUrl = `https://buildingapp.us/products/${refCode}.webp`;
-                        } else {
-                            imageUrl = proxyImageUrl(imageUrl);
+                        } else if (imageUrl.includes('drive.google.com') || imageUrl.includes('lh3.googleusercontent.com')) {
+                            imageUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
                         }
 
                         return {
@@ -824,6 +833,7 @@ const App: React.FC = () => {
                             subcategory: m.subcategory || "",
                             description: m.description || "",
                             imageUrl,
+                            _fallbackImageUrl: dbImageUrl,  // original DB URL for image error recovery
                             usage: normalizedUsage,
                             promptModifier: m.prompt_modifier || m.promptModifier || "",
                             dimensions: {
@@ -840,50 +850,50 @@ const App: React.FC = () => {
                         };
                     });
                     setMaterials(converted);
+                    localStorage.setItem('materials_cache', JSON.stringify(converted));
                     setMaterialsLoading(false);
                     return;
                 }
             }
         } catch (e) {
-            console.warn("API materials unavailable, trying local manifest...");
+            console.warn("API materials unavailable, trying localStorage...");
         }
 
+        // Tier 2: localStorage — persists deletions so products don't reappear
+        const cached = localStorage.getItem('materials_cache');
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setMaterials(parsed);
+                    setMaterialsLoading(false);
+                    return;
+                }
+            } catch (e) {}
+        }
+
+        // Tier 3: Local JSON manifest as seed fallback
         try {
-            // Tier 2: Local embedded manifest — query-param cache-busted CDN proxy
             const localRes = await fetch("/data/products.json?v=" + Date.now());
             if (localRes.ok) {
                 const localData = await localRes.json();
                 if (Array.isArray(localData) && localData.length > 0) {
-                    const proxied = localData.map((m: any) => {
-                        const rawUsage = m.usage || "Interior";
-                        const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
-                        const refCode = m.ref_code || m.refCode || "";
-                        
-                        // Prioritize remote high-fidelity WebP CDN paths for universal resolution (Mobile/Web/Capacitor)
-                        let imageUrl = m.image_url || m.imageUrl || "";
-                        if (refCode) {
-                            imageUrl = `https://buildingapp.us/products/${refCode}.webp`;
-                        } else {
-                            imageUrl = proxyImageUrl(imageUrl);
-                        }
-
-                        return {
-                            ...m,
-                            usage: normalizedUsage,
-                            imageUrl: imageUrl,
-                        };
-                    });
+                    const proxied = localData.map((m: any) => ({
+                        ...m,
+                        usage: (m.usage || "Interior").charAt(0).toUpperCase() + (m.usage || "Interior").slice(1).toLowerCase(),
+                    }));
                     setMaterials(proxied);
+                    localStorage.setItem('materials_cache', JSON.stringify(proxied));
                     setMaterialsLoading(false);
                     return;
                 }
             }
         } catch (e) {
-            console.warn("Local manifest unavailable, falling back to constants...");
+            console.warn("Local manifest unavailable, showing empty catalog.");
         }
 
-        // Tier 3: Last resort fallback to hardcoded MATERIALS
-        setMaterials(MATERIALS);
+        // No reliable source — show empty catalog (don't silently load all 322)
+        setMaterials([]);
         setMaterialsLoading(false);
     }, []);
 
@@ -3829,7 +3839,7 @@ const App: React.FC = () => {
                             >
                                 <img
                                     src={proxyImageUrl(material.imageUrl)}
-                                    data-original-src={proxyImageUrl(material.imageUrl)}
+                                    data-original-src={material._fallbackImageUrl || proxyImageUrl(material.imageUrl)}
                                     alt={material.name}
                                     onError={handleImageError}
                                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -3987,7 +3997,7 @@ const App: React.FC = () => {
                                     <div className="relative group cursor-pointer shrink-0" onClick={handleGenerateProbe}>
                                         <img
                                             src={proxyImageUrl(selectedMaterial.imageUrl)}
-                                            data-original-src={proxyImageUrl(selectedMaterial.imageUrl)}
+                                            data-original-src={selectedMaterial._fallbackImageUrl || proxyImageUrl(selectedMaterial.imageUrl)}
                                             onError={handleImageError}
                                             className="w-12 h-12 rounded-lg object-cover border border-gray-300"
                                         />
