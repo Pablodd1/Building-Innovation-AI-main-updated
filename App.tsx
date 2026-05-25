@@ -201,6 +201,7 @@ const App: React.FC = () => {
         materialProbe: null,
     });
     const [cartCount, setCartCount] = useState<number>(0);
+    const [toast, setToast] = useState<string | null>(null);
 
     const [showProbeModal, setShowProbeModal] = useState(false);
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -655,24 +656,32 @@ const App: React.FC = () => {
             const data = await res.json();
             
             if (data.isMock) {
-                // Fallback to simulation for testing
-                const confirmMsg = lang === 'es' 
-                    ? `¿Confirmas la suscripción al plan ${newTier}? (Simulación de pago)` 
-                    : `Confirm subscription to ${newTier} plan? (Payment Simulation)`;
-                    
-                if (confirm(confirmMsg)) {
-                    const updateRes = await fetch(`/api/admin/users/${currentUser.id}/tier`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ tier: newTier }),
-                    });
-                    if (updateRes.ok) {
-                        const updatedUser = await updateRes.json();
-                        setCurrentUser({ ...currentUser, tier: updatedUser.tier });
-                        alert(lang === 'es' ? "¡Suscripción actualizada!" : "Subscription updated!");
-                        setShowSubscriptionModal(false);
+                // Stripe not configured — collect info and send email to admin
+                const name = prompt(lang === 'es' ? 'Tu nombre:' : 'Your name:');
+                const email = prompt(lang === 'es' ? 'Tu email:' : 'Your email:');
+                if (name && email) {
+                    try {
+                        await fetch("/api/purchase-requests", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                user_id: currentUser.id,
+                                customer_name: name,
+                                customer_email: email,
+                                customer_phone: "Not provided",
+                                customer_address: "Not provided",
+                                cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
+                                total_estimate: 0,
+                                project_notes: `Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
+                            }),
+                        });
+                        setToast(lang === 'es' ? `Solicitud de ${newTier} enviada. Te contactaremos.` : `${newTier} upgrade request sent. We'll contact you.`);
+                    } catch {
+                        setToast(lang === 'es' ? `Error al enviar. Contacta al administrador.` : `Failed to send. Contact administrator.`);
                     }
                 }
+                setShowSubscriptionModal(false);
+                setTimeout(() => setToast(null), 4000);
                 return;
             }
 
@@ -763,6 +772,12 @@ const App: React.FC = () => {
         if (url.includes('drive.google.com') || url.includes('lh3.googleusercontent.com')) {
             return `/api/proxy-image?url=${encodeURIComponent(url)}`;
         }
+        // Rewrite CDN product image URLs to local static path
+        // https://buildingapp.us/products/14031001.webp -> /products/14031001.webp
+        const match = url.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
+        if (match) {
+            return `/products/${match[1]}?v=2`;
+        }
         return url;
     };
 
@@ -783,10 +798,10 @@ const App: React.FC = () => {
             return;
         }
 
-        // For local paths that failed, try prepending the remote production CDN domain
+        // For local paths that failed, show placeholder directly
         if (originalSrc.startsWith('/')) {
             target.setAttribute('data-error-fixed', 'true');
-            target.src = "https://buildingapp.us" + originalSrc;
+            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
             return;
         }
 
@@ -816,13 +831,18 @@ const App: React.FC = () => {
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
                         const refCode = m.ref_code || m.refCode || "";
                         
-                        // Use original DB image URL; only fall back to WebP CDN if the original is empty
+                        // Use original DB image URL; rewrite CDN to local path
                         const dbImageUrl = m.image_url || m.imageUrl || "";
                         let imageUrl = dbImageUrl;
                         if (!imageUrl && refCode) {
                             imageUrl = `https://buildingapp.us/products/${refCode}.webp`;
                         } else if (imageUrl.includes('drive.google.com') || imageUrl.includes('lh3.googleusercontent.com')) {
                             imageUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+                        }
+                        // Rewrite CDN URLs to local path so images load from our server
+                        const cdnMatch = imageUrl.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
+                        if (cdnMatch) {
+                            imageUrl = `/products/${cdnMatch[1]}?v=3`;
                         }
 
                         return {
@@ -938,6 +958,47 @@ const App: React.FC = () => {
             const cart = existingCartJson ? JSON.parse(existingCartJson) : [];
             setCartCount(cart.length);
         } catch (e) {}
+    };
+
+    const addToCart = (material: Material, dimensions: { width: number; height: number }, quantity: number = 1) => {
+        const existingCart: CartItem[] = JSON.parse(localStorage.getItem("constructVizCart") || "[]");
+        // Convert cm dimensions to meters for cart storage
+        const widthM = dimensions.width / 100;
+        const heightM = dimensions.height / 100;
+        const area = widthM * heightM;
+        const unitPrice = material.pricing?.pricePerUnit || 0;
+        const totalCost = area * unitPrice * quantity;
+        
+        // Check if this exact material+dimensions combo already exists
+        const existingIndex = existingCart.findIndex(
+            item => item.material.id === material.id && 
+                    Math.abs(item.dimensions.width - widthM) < 0.001 && 
+                    Math.abs(item.dimensions.height - heightM) < 0.001
+        );
+        
+        if (existingIndex >= 0) {
+            existingCart[existingIndex].quantity += quantity;
+            existingCart[existingIndex].totalCost = area * unitPrice * existingCart[existingIndex].quantity;
+        } else {
+            const newItem: CartItem = {
+                id: `cart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                material,
+                dimensions: { width: widthM, height: heightM },
+                quantity,
+                totalCost,
+                timestamp: Date.now(),
+            };
+            existingCart.push(newItem);
+        }
+        
+        localStorage.setItem("constructVizCart", JSON.stringify(existingCart));
+        setCartCount(existingCart.length);
+        
+        const itemName = material.name || material.refCode || "Producto";
+        setToast(lang === 'es' ? `¡${itemName} añadido al carrito!` : `${itemName} added to cart!`);
+        setTimeout(() => setToast(null), 2500);
+        
+        logUserBehavior("ADD_TO_CART", { materialId: material.id, materialName: itemName, quantity, totalCost });
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3832,31 +3893,51 @@ const App: React.FC = () => {
                 <div className="flex-1 overflow-y-auto p-4 md:p-6">
                     <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
                         {filtered.map((material) => (
-                            <button
+                            (() => { if (filtered.indexOf(material) < 3) console.log('IMG RENDER:', material.refCode, 'imageUrl:', material.imageUrl); return null; })(),
+                            <div
                                 key={material.id}
-                                onClick={() => handleSelectMaterial(material)}
-                                className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 border border-gray-300 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all text-left"
+                                className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 border border-gray-300 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all"
                             >
-                                <img
-                                    src={proxyImageUrl(material.imageUrl)}
-                                    data-original-src={material._fallbackImageUrl || proxyImageUrl(material.imageUrl)}
-                                    alt={material.name}
-                                    onError={handleImageError}
-                                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-2 flex flex-col justify-end">
-                                    <div className="text-[8px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
-                                        {material.category}
+                                <button
+                                    onClick={() => handleSelectMaterial(material)}
+                                    className="absolute inset-0 w-full h-full text-left"
+                                >
+                                    <img
+                                        src={proxyImageUrl(material.imageUrl)}
+                                        data-original-src={material._fallbackImageUrl || proxyImageUrl(material.imageUrl)}
+                                        alt={material.name}
+                                        onError={handleImageError}
+                                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-2 flex flex-col justify-end">
+                                        <div className="text-[8px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
+                                            {material.category}
+                                        </div>
+                                        <div className="text-gray-700 text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
+                                            {material.name}
+                                        </div>
+                                        <div className="text-[8px] text-gray-500">
+                                            {material.dimensions.width}x
+                                            {material.dimensions.length}cm
+                                        </div>
                                     </div>
-                                    <div className="text-gray-700 text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
-                                        {material.name}
-                                    </div>
-                                    <div className="text-[8px] text-gray-500">
-                                        {material.dimensions.width}x
-                                        {material.dimensions.length}cm
-                                    </div>
-                                </div>
-                            </button>
+                                </button>
+                                {/* Add to Cart button */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const dims = material.dimensions || { width: 30, length: 30 };
+                                        addToCart(material, { width: dims.width, height: dims.length }, 1);
+                                    }}
+                                    className="absolute bottom-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1"
+                                    title={lang === 'es' ? 'Añadir al carrito' : 'Add to cart'}
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
+                                    </svg>
+                                    +
+                                </button>
+                            </div>
                         ))}
                     </div>
                     {filtered.length === 0 && (
@@ -4090,12 +4171,28 @@ const App: React.FC = () => {
                             </div>
 
                             {/* Quote/Cart — full width */}
-                            <div className="col-span-2">
+                            <div className="col-span-2 flex gap-2">
+                                <Button
+                                    onClick={() => {
+                                        const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
+                                        const wallDims = generationState.analysis?.dimensions;
+                                        const cartDims = wallDims 
+                                            ? { width: wallDims.width, height: wallDims.height } 
+                                            : { width: dims.width, height: dims.length };
+                                        addToCart(selectedMaterial, cartDims, 1);
+                                    }}
+                                    variant="secondary"
+                                    disabled={!generationState.resultImage}
+                                    className="flex-1 py-3 bg-blue-600 border-blue-500 hover:bg-blue-500 text-white text-xs uppercase whitespace-nowrap"
+                                    icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" /></svg>}
+                                >
+                                    {lang === 'es' ? 'Añadir al Carrito' : 'Add to Cart'}
+                                </Button>
                                 <Button
                                     onClick={() => setView(AppView.ESTIMATION)}
                                     variant="secondary"
                                     disabled={!generationState.resultImage}
-                                    className="w-full py-3 bg-green-600 border-green-500 hover:bg-green-500 text-white text-xs uppercase whitespace-nowrap"
+                                    className="flex-1 py-3 bg-green-600 border-green-500 hover:bg-green-500 text-white text-xs uppercase whitespace-nowrap"
                                     icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
                                 >
                                     {t.editor.createQuote}
@@ -4128,6 +4225,73 @@ const App: React.FC = () => {
                         {t.cart.title}
                     </h1>
                 </header>
+
+                {/* Tier Info Card */}
+                {(() => {
+                    const tier = currentUser?.tier || 'Free';
+                    const used = currentUser?.generations_used || 0;
+                    const limit = getTierLimit(tier);
+                    const remaining = Math.max(0, limit - used);
+                    const isUnlimited = limit >= 9999;
+                    const pct = isUnlimited ? 100 : Math.max(0, Math.min(100, Math.round((remaining / Math.max(1, limit)) * 100)));
+                    const tierNames: Record<string, string> = {
+                        FREE: t.cart.tierFree, STANDARD: 'STANDARD', PREMIUM: 'PREMIUM', LUXURY: 'LUXURY'
+                    };
+                    const tierColors: Record<string, string> = {
+                        FREE: 'gray', STANDARD: 'blue', PREMIUM: 'purple', LUXURY: 'amber'
+                    };
+                    const color = tierColors[tier.toUpperCase()] || 'gray';
+
+                    return (
+                        <div className={`mb-6 p-5 rounded-2xl border bg-white/90 backdrop-blur border-${color}-200 shadow-sm`}>
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <div className="text-xs uppercase tracking-widest text-gray-400 font-bold mb-1">
+                                        {t.cart.tierLabel}
+                                    </div>
+                                    <span className={`text-lg font-black text-${color}-600`}>
+                                        {tierNames[tier.toUpperCase()] || tier}
+                                    </span>
+                                </div>
+                                {tier !== 'LUXURY' && (
+                                    <Button
+                                        onClick={() => { setShowSubscriptionModal(true); }}
+                                        className="text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl uppercase tracking-wider"
+                                    >
+                                        {t.cart.upgradeTier}
+                                    </Button>
+                                )}
+                            </div>
+
+                            {/* Renders remaining */}
+                            <div className="mt-2">
+                                <div className="flex justify-between text-xs mb-1">
+                                    <span className="text-gray-500">
+                                        {isUnlimited
+                                            ? t.cart.unlimitedRenders
+                                            : `${remaining} ${t.cart.rendersLeft}`}
+                                    </span>
+                                    {!isUnlimited && (
+                                        <span className="text-gray-400">{used}/{limit}</span>
+                                    )}
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ${isUnlimited ? 'bg-green-500' : remaining > limit * 0.3 ? 'bg-green-500' : remaining > limit * 0.1 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                        style={{ width: `${isUnlimited ? 100 : Math.max(0, pct)}%` }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Explainer for free tier */}
+                            {tier === 'FREE' && (
+                                <p className="mt-3 text-xs text-gray-400 leading-relaxed">
+                                    {t.cart.tierExplainer}
+                                </p>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 <div className="flex-1 max-w-4xl mx-auto w-full">
                     {cartItems.length === 0 ? (
@@ -4234,31 +4398,75 @@ const App: React.FC = () => {
                                 {t.cart.confirmOrder}
                             </h3>
                             <p className="text-sm text-gray-600 mb-6">
-                                You will be redirected to your email client to
-                                send this order request to our sales team.
+                                {lang === 'es' 
+                                    ? 'Elige cómo deseas pagar tu orden, o envíala por email a nuestro equipo de ventas.'
+                                    : 'Choose how you want to pay for your order, or email it to our sales team.'}
                             </p>
                             <div className="bg-slate-100 p-4 rounded text-xs font-mono mb-6 whitespace-pre-wrap">
                                 {checkoutBody}
                             </div>
-                            <div className="flex gap-3">
+                            <div className="space-y-3">
+                                {/* Stripe Checkout Button */}
                                 <Button
-                                    variant="secondary"
-                                    onClick={() => setShowCheckoutModal(false)}
-                                    className="flex-1 border-gray-300 text-gray-600 hover:bg-gray-200"
+                                    onClick={async () => {
+                                        setShowCheckoutModal(false);
+                                        try {
+                                            const res = await fetch('/api/checkout/create-product-session', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    items: cartItems,
+                                                    userId: currentUser?.id,
+                                                    email: currentUser?.email,
+                                                    name: currentUser?.name,
+                                                }),
+                                            });
+                                            const data = await res.json();
+                                            if (data.url) {
+                                                window.location.href = data.url;
+                                            } else if (data.isMock) {
+                                                // Fallback to email if Stripe is in mock mode
+                                                window.open(
+                                                    `mailto:comercial.buildinginnovation@gmail.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
+                                                );
+                                            }
+                                        } catch (err) {
+                                            // Fallback to email on error
+                                            window.open(
+                                                `mailto:comercial.buildinginnovation@gmail.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
+                                            );
+                                        }
+                                    }}
+                                    className="w-full py-4 bg-[#635BFF] hover:bg-[#7C73FF] text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2"
                                 >
-                                    {t.common.cancel}
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M13.976 6.32c-.623.512-1.196 1.024-1.196 2.048 0 1.28 1.024 2.048 2.456 3.072 1.432 1.024 2.456 2.56 2.456 4.608 0 3.072-2.048 5.12-5.16 5.12-2.456 0-4.16-1.432-5.16-3.584l2.56-1.432c.624.96 1.432 1.84 2.6 1.84 1.024 0 1.84-.624 1.84-1.84 0-1.28-1.024-2.048-2.456-3.072-1.432-1.024-2.456-2.56-2.456-4.608 0-3.072 2.048-5.12 4.976-5.12 2.048 0 3.584 1.024 4.608 2.56l-2.56 1.432c-.624-1.024-1.432-1.432-2.048-1.432-1.024 0-1.84.624-1.84 1.432z"/>
+                                    </svg>
+                                    {lang === 'es' ? 'Pagar con Tarjeta' : 'Pay with Card'}
                                 </Button>
-                                <Button
+                                
+                                {/* Email Order Button (secondary) */}
+                                <button
                                     onClick={() => {
                                         window.open(
                                             `mailto:comercial.buildinginnovation@gmail.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
                                         );
                                         setShowCheckoutModal(false);
                                     }}
-                                    className="flex-1"
+                                    className="w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
                                 >
-                                    {t.cart.openGmail}
-                                </Button>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                    {lang === 'es' ? 'Enviar por Email' : 'Email Order Request'}
+                                </button>
+
+                                <button
+                                    onClick={() => setShowCheckoutModal(false)}
+                                    className="w-full py-2 text-gray-400 hover:text-gray-600 text-xs font-bold transition-colors"
+                                >
+                                    {t.common.cancel}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -4860,6 +5068,17 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700">
+            {/* Floating Toast Notification */}
+            {toast && (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] animate-bounce-in">
+                    <div className="bg-green-600 text-white px-5 py-3 rounded-full shadow-2xl text-sm font-bold flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        {toast}
+                    </div>
+                </div>
+            )}
             {view === AppView.LOGIN && renderLogin()}
             {view === AppView.LANDING && renderLanding()}
             {view === AppView.ADMIN && renderAdmin()}
@@ -4897,7 +5116,13 @@ const App: React.FC = () => {
                                 material={selectedMaterial}
                                 onBack={() => setView(AppView.EDITOR)}
                                 onAddToCart={() => {
-                                    updateCartCount();
+                                    const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
+                                    // Use AI-calculated wall dimensions if available, else material defaults
+                                    const wallDims = generationState.analysis?.dimensions;
+                                    const cartDims = wallDims 
+                                        ? { width: wallDims.width, height: wallDims.height } 
+                                        : { width: dims.width, height: dims.length };
+                                    addToCart(selectedMaterial, cartDims, 1);
                                 }}
                                 onNewQuote={() => setView(AppView.GALLERY)}
                                 contractors={contractors}

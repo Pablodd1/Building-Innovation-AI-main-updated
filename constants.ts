@@ -268,7 +268,13 @@ export const TRANSLATIONS: Record<Language, any> = {
             continue: "Continue Shopping",
             checkout: "Checkout via Email",
             confirmOrder: "Confirm Order Details",
-            openGmail: "Open in Gmail"
+            openGmail: "Open in Gmail",
+            tierLabel: "Your Plan",
+            tierFree: "Free Tier",
+            rendersLeft: "renders remaining",
+            unlimitedRenders: "unlimited renders",
+            upgradeTier: "Upgrade Plan",
+            tierExplainer: "Upgrade for more AI renders and features."
         },
         common: {
             back: "Back",
@@ -428,7 +434,13 @@ export const TRANSLATIONS: Record<Language, any> = {
             continue: "Seguir Comprando",
             checkout: "Finalizar por Email",
             confirmOrder: "Confirmar Detalles",
-            openGmail: "Abrir en Gmail"
+            openGmail: "Abrir en Gmail",
+            tierLabel: "Tu Plan",
+            tierFree: "Plan Gratuito",
+            rendersLeft: "renderizados restantes",
+            unlimitedRenders: "renderizados ilimitados",
+            upgradeTier: "Mejorar Plan",
+            tierExplainer: "Mejora tu plan para más renderizados y funciones."
         },
         common: {
             back: "Volver",

@@ -9,11 +9,11 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
+import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, type AIConfig, type AIProvider } from "./services/aiProviders.js";
 import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
-import { TelegramAlerts, telegramAlerts } from './telegramAlerts';
-import { productionAlerts } from './productionAlerts';
+import { telegramAlerts } from './telegramAlerts';
 import mysql from 'mysql2/promise';
 
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
@@ -443,7 +443,7 @@ class SystemMonitor {
       
       if (currentStatus !== this.lastStatus) {
         if (!currentStatus) {
-           await telegramAlerts.sendErrorAlert(new Error("AI Key Failure"), `The Gemini API Key is missing or invalid: ${health.checks.apiKey.message}`);
+           await telegramAlerts.sendErrorAlert(new Error("AI Key Failure"), `The AI API Key is missing or invalid (active provider: ${health.checks.apiKey.message})`);
         }
         this.lastStatus = currentStatus;
       }
@@ -453,21 +453,26 @@ class SystemMonitor {
   private async checkConfig() {
     try {
       const configPath = findConfigPath();
-      let key = null;
-      
+      let config: any = {};
+
       if (configPath) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        key = config.GEMINI_API_KEY;
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       }
-      
-      // Fallback to env var
-      if (!key) {
-        key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+
+      const provider = config.AI_PROVIDER || 'gemini';
+      const geminiKey = config.GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      const openaiKey = config.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+
+      if (provider === 'openai') {
+        if (!openaiKey) return { ok: false, message: 'AI_PROVIDER is openai but OPENAI_API_KEY not found in config or env' };
+        if (!openaiKey.startsWith('sk-')) return { ok: false, message: 'OpenAI API key format invalid (should start with sk-)' };
+        return { ok: true, message: `OpenAI key valid (active provider: ${provider})` };
       }
-      
-      if (!key) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
-      if (!key.startsWith('AIza')) return { ok: false, message: 'API key format invalid (should start with AIza)' };
-      return { ok: true, message: `Key valid (${key.length} chars)` };
+
+      // Default: Gemini
+      if (!geminiKey) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
+      if (!geminiKey.startsWith('AIza')) return { ok: false, message: 'Gemini API key format invalid (should start with AIza)' };
+      return { ok: true, message: `Gemini key valid (active provider: ${provider})` };
     } catch (e: any) {
       return { ok: false, message: `Config error: ${e.message}` };
     }
@@ -558,13 +563,7 @@ setInterval(() => monitor.checkAndReport(), 300000); // Check every 5 mins for A
 
 // Helper to get config (API Keys, etc.)
 async function getConfig() {
-    const configPath = findConfigPath();
-    try {
-        if (configPath) {
-            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        }
-    } catch (e) {}
-    return { GEMINI_API_KEY: process.env.VITE_GEMINI_API_KEY || "" };
+    return loadConfig();
 }
 
 // Helper to load from JSON (fallback persistence)
@@ -849,7 +848,7 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
         if (userId) {
             console.log(`Payment successful for user ${userId}. Upgrading tier...`);
             try {
-                const tier = session.metadata?.tier || (session.amount_total > 4000 ? 'Enterprise' : 'Pro'); // Fallback to amount if metadata missing
+                const tier = session.metadata?.tier || (session.amount_total > 4000 ? 'LUXURY' : 'PREMIUM'); // Fallback to amount if metadata missing
                 
                 // 1. Try DB first
                 try {
@@ -944,6 +943,67 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
         res.json({ id: session.id, url: session.url });
     } catch (e: any) {
         console.error('Checkout Session error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/checkout/create-product-session', express.json(), async (req: Request, res: Response) => {
+    try {
+        const { items, userId, email, name } = req.body;
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'Missing or empty items' });
+        }
+
+        const config = await getConfig();
+        const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
+
+        // Check if Stripe is properly configured (not placeholder key)
+        if (!secretKey || secretKey === 'sk_test_123') {
+            return res.json({
+                isMock: true,
+                sessionId: `mock_product_${Date.now()}`,
+                items: items.map((item: any) => ({
+                    name: item.material?.name || 'Unknown',
+                    quantity: item.quantity,
+                    totalCost: item.totalCost
+                }))
+            });
+        }
+
+        // Build line items from cart — each cart item becomes a Stripe line item
+        const lineItems = items.map((item: any) => ({
+            price_data: {
+                currency: 'usd',
+                product_data: {
+                    name: `${item.material?.name || 'Material'} — ${item.dimensions ? `${item.dimensions.width}m × ${item.dimensions.height}m` : 'Custom'}`,
+                    description: `${item.quantity} ${item.material?.pricing?.unitLabel || 'units'} @ $${item.material?.pricing?.pricePerSqm?.toFixed(2) || '0.00'}/m²`,
+                    ...(item.material?.imageUrl ? { images: [item.material.imageUrl] } : {})
+                },
+                unit_amount: Math.round((item.totalCost / item.quantity) * 100), // Stripe uses cents
+            },
+            quantity: item.quantity,
+        }));
+
+        const baseUrl = req.headers.origin || `https://${req.headers.host}` || 'https://buildingapp.us';
+        const stripeObj = await getStripe();
+        const session = await stripeObj.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: lineItems,
+            mode: 'payment',
+            success_url: `${baseUrl}/?session_id={CHECKOUT_SESSION_ID}&status=success`,
+            cancel_url: `${baseUrl}/cart`,
+            customer_email: email,
+            client_reference_id: String(userId || 'guest'),
+            metadata: {
+                userId: String(userId || 'guest'),
+                customerName: name || '',
+                itemCount: String(items.length),
+            }
+        });
+
+        res.json({ id: session.id, url: session.url });
+    } catch (e: any) {
+        console.error('Product Checkout Session error:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -1440,36 +1500,16 @@ const extractImage = (response: any): string => {
     throw new Error("No image generated in the response.");
 };
 
-// Get API key — server only, never exposed to client
+// Get API key for Gemini — delegates to unified config loader
 const getServerApiKey = (): string => {
-    // Priority: env var (Hostinger Node.js apps support this) > config file
-    const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
-    if (envKey.trim()) {
-        console.log("[API Key] Loaded from environment variable");
-        return envKey.trim();
-    }
-    
-    const configPath = findConfigPath();
-    if (configPath) {
-        try {
-            const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-            if (config.GEMINI_API_KEY?.trim()) {
-                console.log("[API Key] Loaded from config file:", configPath);
-                return config.GEMINI_API_KEY.trim();
-            }
-        } catch (e) {
-            console.error("[API Key] Error reading config file:", configPath, e);
-        }
-    }
-    
-    console.error("[API Key] No key found in env vars or config file. Checked paths:", JSON_CONFIG_PATHS);
-    return "";
+    const config = loadConfig();
+    return config.GEMINI_API_KEY;
 };
 
-// POST /api/ai/generate-overlay — Server-side AI image generation
+// POST /api/ai/generate-overlay — Multi-provider AI image generation
 app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
     try {
-        const { originalImage, material, userInstruction, renderOptions, lang, userId } = req.body;
+        const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider } = req.body;
         
         // Check quota
         if (userId) {
@@ -1482,102 +1522,30 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             }
         }
 
-        // Get API key (server-side only)
-        const apiKey = getServerApiKey();
-        if (!apiKey) {
+        // Load config and determine provider
+        const config = loadConfig();
+        const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
+        
+        // Validate that the selected provider has an API key
+        if (provider === "openai" && !config.OPENAI_API_KEY) {
             return res.status(500).json({ 
-                error: "API Key not configured on server. Please contact administrator." 
+                error: "OpenAI API Key not configured. Please contact administrator or switch provider." 
+            });
+        }
+        if (provider === "gemini" && !config.GEMINI_API_KEY) {
+            return res.status(500).json({ 
+                error: "Gemini API Key not configured. Please contact administrator or switch provider." 
             });
         }
 
-        const ai = new GoogleGenAI({ apiKey });
-        const base64Data = cleanBase64(originalImage);
-        const mimeType = getMimeType(originalImage);
+        // Generate via provider abstraction
+        const result = await generateOverlay({
+            originalImage,
+            material,
+            userInstruction: userInstruction || "",
+            renderOptions,
+        }, provider, config);
 
-        const isFurniture = material?.category === "Muebles" || material?.usage === "Furniture";
-        
-        const lightingHint =
-            renderOptions?.lighting === "SUNSET"
-                ? "warm golden hour sunset lighting"
-                : renderOptions?.lighting === "NIGHT_LUXURY"
-                    ? "dramatic night luxury lighting with warm interior glow"
-                    : "natural ambient lighting";
-
-        // Load product image as reference if available
-        const productRef = await getImageBase64(material?.imageUrl);
-        const hasProductImage = !!productRef;
-
-        // Build prompt
-        const materialIdentity = `"${material?.name || "selected material"}" — Category: ${material?.category || "general"}${material?.subcategory ? `, Sub: ${material.subcategory}` : ""}`;
-        
-        let finalPrompt: string;
-        if (isFurniture) {
-            finalPrompt = `You are a professional virtual stager.
-Place the product shown in the "Product Reference" image into this room.
-Product Name: ${materialIdentity}
-Style: ${material?.promptModifier || "modern"}.
-${userInstruction ? `User request: "${userInstruction}"` : ""}
-Rules:
-- Match room perspective, scale to surrounding objects
-- Cast correct shadows from the room's light source (${lightingHint})
-- Use exact textures/colors from the Product Reference image
-- Do NOT alter existing furniture/objects unless user asks
-- Output ONLY the final image`;
-        } else {
-            finalPrompt = `You are an elite architectural visualization specialist.
-Your task is to photorealistically OVERLAY the material from the "Product Reference" image onto the appropriate surfaces in the user's original room photo.
-Material: ${materialIdentity}
-${userInstruction ? `User request: "${userInstruction}"` : ""}
-
-STRICT RENDERING RULES:
-1. 100% PHOTOREALISM: The output must look like a real photograph, equal in quality and resolution to the original picture.
-2. EXACT OVERLAY: Apply the EXACT texture, pattern, color, and scale from the Product Reference image onto the target surface.
-3. PRESERVE FOREGROUND: You MUST flawlessly preserve and cut around all objects IN FRONT of the surface (furniture, people, plants, windows). DO NOT paint over them.
-4. PERSPECTIVE & LIGHTING: Match the room's 3D perspective exactly. Re-apply the original room's shadows, reflections, and highlights over the new material so it blends perfectly.
-5. Lighting conditions: ${lightingHint}
-6. Output ONLY the final high-quality image.`;
-        }
-
-        const contents: any = {
-            parts: [
-                { inlineData: { data: base64Data, mimeType } }, // Part 1: Room Image
-            ],
-        };
-
-        if (hasProductImage) {
-            contents.parts.push({ text: "Product Reference Image:" });
-            contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
-        }
-
-        contents.parts.push({ text: finalPrompt });
-
-        // Generate with image-capable model (Nano Banana)
-        const genStartTime = Date.now();
-        let usedModel = "gemini-2.0-flash-exp-image-generation";
-        let response;
-        try {
-            response = await ai.models.generateContent({
-                model: "gemini-2.0-flash-exp-image-generation",
-                contents,
-                config: {
-                    responseModalities: ["TEXT", "IMAGE"],
-                },
-            });
-        } catch (primaryError: any) {
-            console.warn("gemini-2.0-flash-exp-image-generation failed, trying fallback (gemini-2.5-flash-preview-05-20):", getErrorMessage(primaryError));
-            usedModel = "gemini-2.5-flash-preview-05-20";
-            response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-05-20",
-                contents,
-                config: {
-                    responseModalities: ["TEXT", "IMAGE"],
-                },
-            });
-        }
-
-        const resultImage = extractImage(response);
-        const durationMs = Date.now() - genStartTime;
-        
         // Log successful generation
         generationLog.push({
             timestamp: new Date().toISOString(),
@@ -1586,16 +1554,13 @@ STRICT RENDERING RULES:
             materialName: material?.name,
             category: material?.category,
             success: true,
-            durationMs,
-            model: usedModel,
+            durationMs: result.durationMs,
+            model: `${provider}/${result.model}`,
         });
         
-        res.json({ success: true, image: resultImage });
+        res.json({ success: true, image: result.image, provider, model: result.model });
         
     } catch (error: any) {
-        const durationMs = 0;
-        
-        // Log failed generation
         generationLog.push({
             timestamp: new Date().toISOString(),
             userId: req.body?.userId,
@@ -1603,7 +1568,7 @@ STRICT RENDERING RULES:
             materialName: req.body?.material?.name,
             category: req.body?.material?.category,
             success: false,
-            durationMs,
+            durationMs: 0,
             model: "error",
             error: getErrorMessage(error),
         });
@@ -1613,10 +1578,10 @@ STRICT RENDERING RULES:
     }
 });
 
-// POST /api/ai/analyze-room — Server-side room analysis
+// POST /api/ai/analyze-room — Multi-provider room analysis
 app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
     try {
-        const { image, userId, lang } = req.body;
+        const { image, userId, lang, provider: userProvider } = req.body;
         
         if (userId) {
             const quota = await checkAndIncrementQuota(userId);
@@ -1625,35 +1590,19 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
             }
         }
 
-        const apiKey = getServerApiKey();
-        if (!apiKey) {
-            return res.status(500).json({ error: "API Key not configured on server" });
+        const config = loadConfig();
+        const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
+
+        if (provider === "openai" && !config.OPENAI_API_KEY) {
+            return res.status(500).json({ error: "OpenAI API Key not configured" });
+        }
+        if (provider === "gemini" && !config.GEMINI_API_KEY) {
+            return res.status(500).json({ error: "Gemini API Key not configured" });
         }
 
-        const ai = new GoogleGenAI({ apiKey });
-        const base64Data = cleanBase64(image);
-        const mimeType = getMimeType(image);
+        const result = await analyzeRoom({ image, lang }, provider, config);
 
-        let response;
-        try {
-            response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: {
-                    parts: [
-                        { inlineData: { data: base64Data, mimeType } },
-                        {
-                            text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
-                        },
-                    ],
-                },
-            });
-        } catch (primaryError: any) {
-            console.warn("gemini-2.5-flash failed for analysis:", getErrorMessage(primaryError));
-            // Re-throw — gemini-2.5-flash is the most reliable text model
-            throw primaryError;
-        }
-
-        res.json({ success: true, analysis: response.text || "Could not analyze the room." });
+        res.json({ success: true, analysis: result.analysis, provider, model: result.model });
         
     } catch (error: any) {
         console.error("Room analysis error:", error);
@@ -2438,6 +2387,45 @@ app.patch('/api/admin/users/:id/generations', requireAdmin, async (req: Request,
     }
 });
 
+// User-facing tier update — for mock subscription upgrades (no Stripe)
+app.patch('/api/users/:id/tier', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { tier } = req.body;
+
+        // Users can only update their own tier
+        if (String((req as any).user?.id) !== String(id)) {
+            return res.status(403).json({ error: 'Can only update your own tier' });
+        }
+
+        const tiers = await getTiers();
+        const validTiers = Object.keys(tiers).map(k => k.toUpperCase());
+        const isTierValid = validTiers.includes(tier.toUpperCase()) || 
+                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier.toUpperCase()) ||
+                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier);
+        if (!isTierValid) {
+            return res.status(400).json({ error: 'Invalid tier' });
+        }
+
+        // Update tier in DB
+        await query('UPDATE users SET tier = $1, updated_at = NOW() WHERE id = $2', [tier, id]);
+
+        // Update in-memory user list
+        try {
+            const memResult = await getUsers();
+            const memUser = memResult.find((u: any) => String(u.id) === String(id));
+            if (memUser) memUser.tier = tier;
+        } catch (e) {}
+
+        console.log(`[tier-upgrade] User ${id} self-upgraded to ${tier}`);
+
+        res.json({ tier, id, message: 'Tier updated' });
+    } catch (e: any) {
+        console.error('User tier update error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.patch('/api/admin/users/:id/tier', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
@@ -3011,38 +2999,22 @@ app.get('/api/debug/errors', (req: Request, res: Response) => {
     res.json(errorLog);
 });
 
+// DEPRECATED: Use /api/ai/generate-overlay instead. This endpoint is a legacy stub.
 app.post('/api/ai/generate', async (req: Request, res: Response) => {
-    try {
-        const { userId, type, data } = req.body;
-        if (!userId) return res.status(401).json({ error: 'Authentication required' });
-
-        const quota = await checkAndIncrementQuota(userId);
-        if (!quota.allowed) {
-            return res.status(403).json({ 
-                error: 'Quota exceeded', 
-                message: `You have used ${quota.used}/${quota.limit} generations. Please upgrade your tier.` 
-            });
-        }
-
-        // Logic for calling Gemini
-        const config = await getConfig();
-        const apiKey = config.GEMINI_API_KEY;
-        
-        if (!apiKey) {
-            return res.status(400).json({ error: 'API Key not configured. Please set it in Admin Dashboard.' });
-        }
-
-        res.json({ success: true, quota, apiKey });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
+    res.json({ 
+        success: false, 
+        error: 'This endpoint is deprecated. Please use /api/ai/generate-overlay instead.',
+        deprecated: true
+    });
 });
 
 // Admin Config Endpoints
 app.get('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     const config = await getConfig();
     res.json({ 
+        aiProvider: config.AI_PROVIDER || 'gemini',
         hasKey: !!config.GEMINI_API_KEY,
+        hasOpenAIKey: !!config.OPENAI_API_KEY,
         hasStripeSecretKey: !!config.STRIPE_SECRET_KEY,
         hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET
     });
@@ -3082,24 +3054,28 @@ app.get('/api/debug/config-path', async (req: Request, res: Response) => {
         pathsSearched: searches,
         configFound: !!found,
         configPath: found?.path || null,
+        aiProvider: config.AI_PROVIDER || 'gemini',
         keyPresent: !!config.GEMINI_API_KEY,
         keyLength: config.GEMINI_API_KEY?.length || 0,
+        openaiKeyPresent: !!config.OPENAI_API_KEY,
         envKeyPresent: !!(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY),
     });
 });
 
 app.post('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { apiKey, stripeSecretKey, stripeWebhookSecret } = req.body;
+        const { apiKey, openaiApiKey, aiProvider, stripeSecretKey, stripeWebhookSecret } = req.body;
         
         const config = await getConfig();
         if (apiKey !== undefined) config.GEMINI_API_KEY = apiKey;
+        if (openaiApiKey !== undefined) config.OPENAI_API_KEY = openaiApiKey;
+        if (aiProvider !== undefined) config.AI_PROVIDER = aiProvider;
         if (stripeSecretKey !== undefined) config.STRIPE_SECRET_KEY = stripeSecretKey;
         if (stripeWebhookSecret !== undefined) config.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
         
         saveToJSON(JSON_CONFIG_PATH, config);
         
-        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', 'Updated visual rendering engine and Stripe checkout server credentials');
+        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', `Updated AI provider (${config.AI_PROVIDER}) and server credentials`);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -3170,6 +3146,13 @@ const distPath = fs.existsSync(path.join(path.resolve(), 'dist'))
 console.log(`📂 Serving static files from: ${distPath}`);
 
 app.use(express.static(distPath));
+
+// Serve product images from /products/
+const productsPath = path.join(path.resolve(), 'products');
+if (!fs.existsSync(productsPath)) {
+    fs.mkdirSync(productsPath, { recursive: true });
+}
+app.use('/products', express.static(productsPath));
 
 // SPA fallback: handle all non-API routes
 app.use((req: Request, res: Response, next) => {

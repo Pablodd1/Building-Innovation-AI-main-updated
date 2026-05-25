@@ -8,5 +8,8 @@ export async function sendPurchaseNotifications(params: {
     // In production, integrate with Brevo/SendGrid/etc.
     console.log(`[Email] Would send purchase notification to ${userEmail} for ${userName}`);
     console.log(`[Email] Materials: ${materials.map(m => `${m.name} x${m.quantity}`).join(', ')}`);
-    return { sent: false, reason: 'Email service not configured' };
+    return {
+        customer: { success: false, reason: 'Email service not configured' },
+        admin: { success: false, reason: 'Email service not configured' }
+    };
 }
