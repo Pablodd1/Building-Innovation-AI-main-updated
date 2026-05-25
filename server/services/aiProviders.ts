@@ -118,12 +118,16 @@ export function loadConfig(): AIConfig {
                 AI_PROVIDER: file.AI_PROVIDER || defaults.AI_PROVIDER,
                 GEMINI_API_KEY: file.GEMINI_API_KEY || defaults.GEMINI_API_KEY,
                 OPENAI_API_KEY: file.OPENAI_API_KEY || defaults.OPENAI_API_KEY,
-                STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY,
-                STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET,
+                STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
+                STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "",
             };
         } catch { /* fall through */ }
     }
-    return defaults;
+    return {
+        ...defaults,
+        STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "",
+        STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || "",
+    };
 }
 
 // ---- Lazy SDK instances (cached by key) ----
