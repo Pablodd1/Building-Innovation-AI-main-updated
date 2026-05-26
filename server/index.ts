@@ -717,12 +717,23 @@ async function getUsers() {
 
 // ===== TIER EXPIRATION SYSTEM =====
 
+function normalizeTier(tier: string | null | undefined): string {
+    if (!tier) return 'FREE';
+    const upper = tier.toUpperCase();
+    if (upper === 'FREE' || upper.includes('TIER 1') || upper.includes('GRATIS')) return 'FREE';
+    if (upper === 'STANDARD' || upper === 'PRO' || upper.includes('TIER 2') || upper.includes('TIER 3')) return 'STANDARD';
+    if (upper === 'PREMIUM' || upper.includes('TIER 4')) return 'PREMIUM';
+    if (upper === 'LUXURY' || upper === 'ENTERPRISE' || upper.includes('TIER 5')) return 'LUXURY';
+    return upper;
+}
+
 // Check if a user's tier has expired and downgrade to Free if so.
 // Returns true if the user was downgraded.
 async function checkAndDowngradeExpiredTier(user: any): Promise<boolean> {
     if (!user) return false;
+    const normalized = normalizeTier(user.tier);
     // Free tier never expires
-    if (!user.tier || user.tier.toUpperCase() === 'FREE') return false;
+    if (normalized === 'FREE') return false;
     // No expiration set — permanent tier (legacy), don't downgrade
     if (!user.tier_expires_at) return false;
 
@@ -730,8 +741,9 @@ async function checkAndDowngradeExpiredTier(user: any): Promise<boolean> {
     if (isNaN(expiresAt.getTime())) return false; // Invalid date
 
     if (new Date() > expiresAt) {
-        console.log(`[TierExpiration] User ${user.id} (${user.email}) tier ${user.tier} expired at ${user.tier_expires_at}. Downgrading to Free.`);
+        const expiredAt = user.tier_expires_at;
         const oldTier = user.tier;
+        console.log(`[TierExpiration] User ${user.id} (${user.email}) tier ${oldTier} expired at ${expiredAt}. Downgrading to Free.`);
         user.tier = 'Free';
         user.tier_expires_at = null;
 
@@ -759,12 +771,12 @@ async function checkAndDowngradeExpiredTier(user: any): Promise<boolean> {
         logUserActivity({
             userId: user.id,
             action: 'TIER_EXPIRED',
-            details: { oldTier, newTier: 'Free', expiredAt: user.tier_expires_at },
+            details: { oldTier, newTier: 'Free', expiredAt },
         });
 
         // 4. Notify admin
         telegramAlerts.sendMessage({
-            text: `<b>📋 Tier Expired</b>\nUser: ${user.email}\nOld tier: ${oldTier}\nExpired: ${user.tier_expires_at}\nAuto-downgraded to Free.`,
+            text: `<b>📋 Tier Expired</b>\nUser: ${user.email}\nOld tier: ${oldTier}\nExpired: ${expiredAt}\nAuto-downgraded to Free.`,
         }).catch(() => {});
 
         return true;
@@ -859,7 +871,7 @@ const requireAuth = async (req: Request, res: Response, next: any) => {
 
         let user: any = null;
         try {
-            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1', [token]);
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, session_token FROM users WHERE session_token = $1', [token]);
             if (result.rows.length > 0) {
                 user = result.rows[0];
             }
@@ -898,7 +910,7 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
 
         let user: any = null;
         try {
-            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1', [token]);
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, session_token FROM users WHERE session_token = $1', [token]);
             if (result.rows.length > 0) {
                 user = result.rows[0];
             }
@@ -994,7 +1006,7 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
                 if (session.subscription) {
                     try {
                         const stripeObj = await getStripe();
-                        const subscription = await stripeObj.subscriptions.retrieve(session.subscription);
+                        const subscription = await stripeObj.subscriptions.retrieve(session.subscription) as any;
                         if (subscription.current_period_end) {
                             expiresAt = new Date(subscription.current_period_end * 1000).toISOString();
                             console.log(`[Stripe Webhook] Subscription period ends: ${expiresAt}`);
@@ -1055,7 +1067,7 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
         if (subscriptionId) {
             try {
                 const stripeObj = await getStripe();
-                const subscription = await stripeObj.subscriptions.retrieve(subscriptionId);
+                const subscription = await stripeObj.subscriptions.retrieve(subscriptionId) as any;
                 const newPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
 
                 // Find user by customer ID (stored in metadata or lookup)
@@ -1595,7 +1607,7 @@ function pushGenerationLog(entry: typeof generationLog[0]) {
 interface UserActivityEntry {
     timestamp: string;
     userId?: number;
-    action: 'RENDER' | 'ANALYZE' | 'LOGIN' | 'SIGNUP' | 'PURCHASE_INIT' | 'PURCHASE_MOCK' | 'DOWNLOAD' | 'ADMIN_ACTION';
+    action: 'RENDER' | 'ANALYZE' | 'LOGIN' | 'SIGNUP' | 'PURCHASE_INIT' | 'PURCHASE_MOCK' | 'DOWNLOAD' | 'ADMIN_ACTION' | 'TIER_EXPIRED' | 'PURCHASE_COMPLETE' | 'SUBSCRIPTION_RENEWED' | 'SUBSCRIPTION_CANCELLED';
     details?: Record<string, any>;
     ip?: string;
 }
@@ -2671,7 +2683,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
         try {
             const result = await query(
-                'SELECT id, name, email, phone, address, role, tier, generations_used, password_hash FROM users WHERE email = $1',
+                'SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, password_hash FROM users WHERE email = $1',
                 [email]
             );
 
@@ -2923,7 +2935,7 @@ app.get('/api/users/:id', requireAuth, async (req: Request, res: Response) => {
 
         // 1. Try DB first
         try {
-            const result = await query('SELECT id, name, email, role, tier, generations_used FROM users WHERE id = $1', [parseInt(id as string)]);
+            const result = await query('SELECT id, name, email, role, tier, generations_used, tier_expires_at FROM users WHERE id = $1', [parseInt(id as string)]);
             if (result.rows.length > 0) {
                 return res.json(result.rows[0]);
             }
@@ -3104,7 +3116,7 @@ app.get('/api/admin/users/:id/detail', requireAdmin, async (req: Request, res: R
         
         // 1. Get user profile
         try {
-            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, created_at FROM users WHERE id = $1', [userId]);
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, created_at FROM users WHERE id = $1', [userId]);
             if (result.rows.length > 0) {
                 userProfile = result.rows[0];
             }
@@ -3271,7 +3283,7 @@ app.post('/api/admin/users/create-admin', requireAdmin, async (req: Request, res
 // Get all users (Admin only)
 app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const result = await query('SELECT id, name, email, role, tier, generations_used, created_at FROM users ORDER BY created_at DESC');
+        const result = await query('SELECT id, name, email, role, tier, generations_used, tier_expires_at, created_at FROM users ORDER BY created_at DESC');
         res.json(result.rows);
     } catch (error: any) {
         console.warn('Database unavailable, reading from local users fallback for admin...');
@@ -3287,11 +3299,19 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
         // Special case for Super Admin
         if (userId === 999) return { allowed: true };
 
-        const result = await query('SELECT tier, generations_used FROM users WHERE id = $1', [userId]);
+        const result = await query('SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1', [userId]);
         if (result.rows.length === 0) return { allowed: false, error: 'User not found' };
 
-        const { tier, generations_used } = result.rows[0];
-        const tierKey = (tier || 'FREE').toUpperCase();
+        let { id, email, tier, generations_used, tier_expires_at } = result.rows[0];
+        
+        // Check and apply tier expiration downgrade before quota check
+        const userForCheck = { id, email, tier, tier_expires_at };
+        const wasDowngraded = await checkAndDowngradeExpiredTier(userForCheck);
+        if (wasDowngraded) {
+            tier = userForCheck.tier; // 'Free' after downgrade
+        }
+        
+        const tierKey = normalizeTier(tier);
         
         const tiers = await getTiers();
         const tierConfig = tiers[tierKey as keyof TiersConfig] || tiers.FREE;
@@ -3311,9 +3331,13 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
             const user = users.find((u: any) => String(u.id) === String(userId));
             if (!user) return { allowed: true }; // Allow if user not found to avoid blocking
 
+            // Check expiration in JSON fallback too
+            await checkAndDowngradeExpiredTier(user);
+
             const tier = user.tier || 'Free';
+            const tierKey = normalizeTier(tier);
             const tiers = await getTiers();
-            const tierConfig = tiers[tier.toUpperCase() as keyof TiersConfig] || tiers.FREE;
+            const tierConfig = tiers[tierKey as keyof TiersConfig] || tiers.FREE;
             const used = user.generations_used || 0;
 
             if (used >= tierConfig.limit) {

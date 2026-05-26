@@ -151,18 +151,18 @@ const App: React.FC = () => {
 
     const getTierLimit = (tierName: string) => {
         const tiers = tiersConfig || {
-            FREE: { name: 'Tier 1 (Free)', limit: 5 },
-            PRO: { name: 'Tier 2 (Pro)', limit: 50 },
-            ENTERPRISE: { name: 'Tier 3 (Enterprise)', limit: 9999 }
+            FREE: { name: 'Tier 1 (Free)', limit: 10 },
+            STANDARD: { name: 'Tier 2 (Standard)', limit: 500 },
+            PREMIUM: { name: 'Tier 3 (Premium)', limit: 1000 },
+            LUXURY: { name: 'Tier 4 (Luxury)', limit: 999999 }
         };
+        const normalizedTier = tierName.toLowerCase();
         const matched = Object.values(tiers).find(
-            (t: any) => t.name.toLowerCase() === tierName.toLowerCase() || 
-                       t.name.split(' ')[0].toLowerCase() === tierName.toLowerCase() ||
-                       t.name.includes(`(${tierName})`) ||
-                       (tierName.toLowerCase() === 'pro' && t.name.toLowerCase().includes('pro')) ||
-                       (tierName.toLowerCase() === 'enterprise' && t.name.toLowerCase().includes('enterprise'))
+            (t: any) => t.name.toLowerCase() === normalizedTier || 
+                       t.name.toLowerCase().includes(normalizedTier) ||
+                       (t.name.split(' ')[0].toLowerCase() === normalizedTier)
         ) || (tiers as any)[tierName.toUpperCase()] || tiers.FREE;
-        return matched ? matched.limit : 5;
+        return matched.limit ?? 10;
     };
 
     // Admin Form State
@@ -2018,6 +2018,16 @@ const App: React.FC = () => {
                                         {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') === 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
                                     </span>
                                 </div>
+                                {currentUser.tier_expires_at && currentUser.tier?.toUpperCase() !== 'FREE' && (
+                                    <div className="text-[8px] text-amber-600 font-semibold mt-0.5">
+                                        {(() => {
+                                            const days = Math.max(0, Math.ceil((new Date(currentUser.tier_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                                            if (days <= 3) return `${days}d left — renew now!`;
+                                            if (days <= 7) return `${days}d remaining`;
+                                            return null;
+                                        })()}
+                                    </div>
+                                )}
                                 <div className="w-24 h-1 bg-blue-200 rounded-full overflow-hidden mt-0.5">
                                     <div 
                                         className="h-full bg-blue-600 transition-all duration-500" 
@@ -4314,6 +4324,19 @@ const App: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* Tier expiration */}
+                            {currentUser?.tier_expires_at && tier.toUpperCase() !== 'FREE' && (
+                                <div className="mt-3 text-xs">
+                                    {(() => {
+                                        const days = Math.max(0, Math.ceil((new Date(currentUser.tier_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                                        if (days <= 0) return <span className="text-red-600 font-bold">Expired — renew to restore access</span>;
+                                        if (days <= 3) return <span className="text-red-600 font-bold">{days} days left — renew now!</span>;
+                                        if (days <= 7) return <span className="text-amber-600 font-semibold">{days} days remaining</span>;
+                                        return <span className="text-gray-400">Expires: {new Date(currentUser.tier_expires_at).toLocaleDateString()}</span>;
+                                    })()}
+                                </div>
+                            )}
+
                             {/* Explainer for free tier */}
                             {tier === 'FREE' && (
                                 <p className="mt-3 text-xs text-gray-400 leading-relaxed">
@@ -5056,6 +5079,17 @@ const App: React.FC = () => {
                         <div className="flex justify-between items-start mb-12 relative">
                             <div className="w-full text-center">
                                 <h2 className="text-3xl md:text-4xl font-black text-white tracking-[0.3em] uppercase">Planes Disponibles</h2>
+                                {currentUser?.tier_expires_at && tier.toUpperCase() !== 'FREE' && (
+                                    <div className="mt-3 text-sm font-medium">
+                                        {(() => {
+                                            const days = Math.max(0, Math.ceil((new Date(currentUser.tier_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                                            if (days <= 0) return <span className="text-red-500">Your plan expired on {new Date(currentUser.tier_expires_at).toLocaleDateString()}</span>;
+                                            if (days <= 3) return <span className="text-red-500">Your plan expires in {days} days — renew now!</span>;
+                                            if (days <= 7) return <span className="text-amber-400">Your plan expires in {days} days</span>;
+                                            return <span className="text-gray-400">Current plan expires: {new Date(currentUser.tier_expires_at).toLocaleDateString()}</span>;
+                                        })()}
+                                    </div>
+                                )}
                             </div>
                             <button onClick={() => setShowSubscriptionModal(false)} className="absolute right-0 top-0 p-3 hover:bg-white/10 rounded-full transition-colors text-white">
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
