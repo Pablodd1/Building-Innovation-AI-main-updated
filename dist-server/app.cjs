@@ -113298,6 +113298,9 @@ try {
     }
     record.count++;
     next();
+  }, pushGenerationLog = function(entry) {
+    generationLog.push(entry);
+    if (generationLog.length > 500) generationLog.shift();
   };
   const PORT = process.env.PORT || 3e3;
   const { Pool: Pool2 } = esm_default;
@@ -113742,10 +113745,6 @@ try {
       if (!token) {
         return res.status(401).json({ error: "Unauthorized. No session token provided." });
       }
-      if (token === "session_admin_fallback") {
-        req.user = { id: 999, name: "Super Admin", email: "admin@gmail.com", role: "admin", tier: "Enterprise" };
-        return next();
-      }
       let user = null;
       try {
         const result = await query("SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1", [token]);
@@ -113779,10 +113778,6 @@ try {
       if (!token) {
         return res.status(401).json({ error: "Unauthorized. No session token provided." });
       }
-      if (token === "session_admin_fallback") {
-        req.user = { id: 999, name: "Super Admin", email: "admin@gmail.com", role: "admin", tier: "Enterprise" };
-        return next();
-      }
       let user = null;
       try {
         const result = await query("SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1", [token]);
@@ -113808,7 +113803,24 @@ try {
       res.status(500).json({ error: "Internal server error during authorization" });
     }
   };
-  app.use((0, import_cors.default)());
+  const allowedOrigins = ["https://buildingapp.us", "https://www.buildingapp.us", "http://localhost:5173", "http://localhost:3000"];
+  app.use((0, import_cors.default)({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true
+  }));
+  app.use((req, res, next) => {
+    const isLongRunning = req.path.includes("/ai/") || req.path.includes("/proxy-image");
+    req.setTimeout(isLongRunning ? 3e5 : 6e4, () => {
+      res.status(408).json({ error: "Request timeout" });
+    });
+    next();
+  });
   let stripeInstance = null;
   let lastStripeKey = null;
   async function getStripe() {
@@ -114383,6 +114395,17 @@ try {
   app.post("/api/ai/generate-overlay", async (req, res) => {
     try {
       const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider } = req.body;
+      if (originalImage && typeof originalImage === "string") {
+        const match = originalImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        if (!match) {
+          return res.status(400).json({ error: "Invalid image format. Must be base64 data URL (jpeg, png, webp)." });
+        }
+        const base64Data = match[3];
+        const approxBytes = base64Data.length * 3 / 4;
+        if (approxBytes > 5 * 1024 * 1024) {
+          return res.status(413).json({ error: "Image too large. Max 5MB." });
+        }
+      }
       if (userId) {
         const quota = await checkAndIncrementQuota(userId);
         if (!quota.allowed) {
@@ -114410,7 +114433,7 @@ try {
         userInstruction: userInstruction || "",
         renderOptions
       }, provider, config);
-      generationLog.push({
+      pushGenerationLog({
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         userId,
         materialId: material?.id || material?.refCode,
@@ -114422,7 +114445,7 @@ try {
       });
       res.json({ success: true, image: result.image, provider, model: result.model });
     } catch (error) {
-      generationLog.push({
+      pushGenerationLog({
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         userId: req.body?.userId,
         materialId: req.body?.material?.id || req.body?.material?.refCode,
@@ -114440,6 +114463,17 @@ try {
   app.post("/api/ai/analyze-room", async (req, res) => {
     try {
       const { image, userId, lang, provider: userProvider } = req.body;
+      if (image && typeof image === "string") {
+        const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        if (!match) {
+          return res.status(400).json({ error: "Invalid image format. Must be base64 data URL (jpeg, png, webp)." });
+        }
+        const base64Data = match[3];
+        const approxBytes = base64Data.length * 3 / 4;
+        if (approxBytes > 5 * 1024 * 1024) {
+          return res.status(413).json({ error: "Image too large. Max 5MB." });
+        }
+      }
       if (userId) {
         const quota = await checkAndIncrementQuota(userId);
         if (!quota.allowed) {
@@ -115038,19 +115072,6 @@ try {
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password required" });
       }
-      if (email === "admin@gmail.com" && password === "admin@@@1") {
-        return res.json({
-          user: {
-            id: 999,
-            name: "Super Admin",
-            email: "admin@gmail.com",
-            role: "admin",
-            tier: "Enterprise",
-            generations_used: 0,
-            session_token: "session_admin_fallback"
-          }
-        });
-      }
       const sessionToken = "session_" + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
       try {
         const result = await query(
@@ -115567,21 +115588,7 @@ try {
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       env: {
         node_env: process.env.NODE_ENV,
-        has_db_url: !!process.env.DATABASE_URL,
-        port: PORT,
-        has_db_host: !!process.env.DB_HOST,
-        db_host_val: process.env.DB_HOST ? `${process.env.DB_HOST.substring(0, 3)}...` : null,
-        has_db_user: !!process.env.DB_USER,
-        db_user_val: process.env.DB_USER ? `${process.env.DB_USER.substring(0, 3)}...` : null,
-        has_db_password: !!process.env.DB_PASSWORD,
-        has_db_name: !!process.env.DB_NAME,
-        db_name_val: process.env.DB_NAME ? `${process.env.DB_NAME.substring(0, 3)}...` : null,
-        has_db_port: !!process.env.DB_PORT,
-        db_port: process.env.DB_PORT || null,
-        has_telegram_token: !!process.env.TELEGRAM_BOT_TOKEN,
-        telegram_token_len: process.env.TELEGRAM_BOT_TOKEN ? process.env.TELEGRAM_BOT_TOKEN.length : 0,
-        has_telegram_chat_id: !!process.env.TELEGRAM_CHAT_ID,
-        telegram_chat_id_val: process.env.TELEGRAM_CHAT_ID ? `${process.env.TELEGRAM_CHAT_ID.substring(0, 4)}...` : null
+        port: PORT
       }
     };
     try {
@@ -115595,43 +115602,6 @@ try {
       debugInfo.json_users_count = users.length;
     } catch (e2) {
       debugInfo.json_users = `error: ${e2.message}`;
-    }
-    try {
-      const cwd = process.cwd();
-      debugInfo.cwd = cwd;
-      debugInfo.env_files_searched = [
-        import_path62.default.join(cwd, ".env"),
-        import_path62.default.resolve(cwd, "..", ".env"),
-        import_path62.default.resolve(cwd, "..", "..", ".env"),
-        import_path62.default.resolve(cwd, "..", "..", "..", ".env")
-      ].map((p) => ({
-        path: p,
-        exists: import_fs3.default.existsSync(p)
-      }));
-      debugInfo.has_env_file = debugInfo.env_files_searched.some((e2) => e2.exists);
-      if (import_fs3.default.existsSync(cwd)) {
-        debugInfo.files = import_fs3.default.readdirSync(cwd).map((f3) => {
-          try {
-            const stat3 = import_fs3.default.statSync(import_path62.default.join(cwd, f3));
-            return `${f3} (${stat3.isDirectory() ? "dir" : "file"}, ${stat3.size} bytes)`;
-          } catch (err) {
-            return `${f3} (error: ${err.message})`;
-          }
-        });
-      }
-      const dataPath = import_path62.default.join(cwd, "data");
-      if (import_fs3.default.existsSync(dataPath)) {
-        debugInfo.data_files = import_fs3.default.readdirSync(dataPath).map((f3) => {
-          try {
-            const stat3 = import_fs3.default.statSync(import_path62.default.join(dataPath, f3));
-            return `${f3} (${stat3.isDirectory() ? "dir" : "file"}, ${stat3.size} bytes)`;
-          } catch (err) {
-            return `${f3} (error: ${err.message})`;
-          }
-        });
-      }
-    } catch (err) {
-      debugInfo.files_error = err.message;
     }
     res.json(debugInfo);
   });
@@ -115659,7 +115629,7 @@ Context: ${context || "N/A"}`
     res.json({ status: "logged" });
   });
   app.get("/api/debug/errors", (req, res) => {
-    res.json(errorLog);
+    res.json(errorLog.slice(0, 10));
   });
   app.post("/api/ai/generate", async (req, res) => {
     res.json({
@@ -115757,6 +115727,16 @@ Context: ${context || "N/A"}`
     try {
       const { url } = req.query;
       if (!url) return res.status(400).json({ error: "Missing url param" });
+      const allowedProxyDomains = ["lh3.googleusercontent.com", "drive.google.com", "drive.usercontent.google.com"];
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL" });
+      }
+      if (!allowedProxyDomains.includes(parsedUrl.hostname)) {
+        return res.status(403).json({ error: "Domain not allowed" });
+      }
       const imageRes = await fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -115767,6 +115747,10 @@ Context: ${context || "N/A"}`
         return res.status(imageRes.status).json({ error: "Image fetch failed", status: imageRes.status });
       }
       const contentType = imageRes.headers.get("content-type") || "image/jpeg";
+      const contentLength = imageRes.headers.get("content-length");
+      if (contentLength && parseInt(contentLength) > 5 * 1024 * 1024) {
+        return res.status(413).json({ error: "Image too large. Max 5MB." });
+      }
       res.setHeader("Content-Type", contentType);
       res.setHeader("Cache-Control", "public, max-age=86400");
       const buffer = await imageRes.arrayBuffer();

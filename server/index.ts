@@ -725,12 +725,6 @@ const requireAuth = async (req: Request, res: Response, next: any) => {
             return res.status(401).json({ error: 'Unauthorized. No session token provided.' });
         }
 
-        // Hardcoded admin fallback
-        if (token === 'session_admin_fallback') {
-            (req as any).user = { id: 999, name: 'Super Admin', email: 'admin@gmail.com', role: 'admin', tier: 'Enterprise' };
-            return next();
-        }
-
         let user: any = null;
         try {
             const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1', [token]);
@@ -770,12 +764,6 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
             return res.status(401).json({ error: 'Unauthorized. No session token provided.' });
         }
 
-        // Hardcoded admin fallback
-        if (token === 'session_admin_fallback') {
-            (req as any).user = { id: 999, name: 'Super Admin', email: 'admin@gmail.com', role: 'admin', tier: 'Enterprise' };
-            return next();
-        }
-
         let user: any = null;
         try {
             const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, session_token FROM users WHERE session_token = $1', [token]);
@@ -806,7 +794,26 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
 };
 
 // Middleware + Monitoring + Security
-app.use(cors());
+const allowedOrigins = ['https://buildingapp.us', 'https://www.buildingapp.us', 'http://localhost:5173', 'http://localhost:3000'];
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
+
+// Global request timeout — 60s for API routes, 5min for AI/image routes
+app.use((req: Request, res: Response, next: any) => {
+    const isLongRunning = req.path.includes('/ai/') || req.path.includes('/proxy-image');
+    req.setTimeout(isLongRunning ? 300000 : 60000, () => {
+        res.status(408).json({ error: 'Request timeout' });
+    });
+    next();
+});
 // Stripe Webhook Endpoint (Must use raw body for signature verification)
 let stripeInstance: Stripe | null = null;
 let lastStripeKey: string | null = null;
@@ -1338,6 +1345,11 @@ const generationLog: Array<{
     error?: string;
 }> = [];
 
+function pushGenerationLog(entry: typeof generationLog[0]) {
+    generationLog.push(entry);
+    if (generationLog.length > 500) generationLog.shift();
+}
+
 app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response) => {
     try {
         const health = await monitor.getHealth();
@@ -1518,6 +1530,19 @@ const getServerApiKey = (): string => {
 app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
     try {
         const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider } = req.body;
+
+        // Input validation: image must be a valid data URL and under 5MB
+        if (originalImage && typeof originalImage === 'string') {
+            const match = originalImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+            if (!match) {
+                return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
+            }
+            const base64Data = match[3];
+            const approxBytes = (base64Data.length * 3) / 4;
+            if (approxBytes > 5 * 1024 * 1024) {
+                return res.status(413).json({ error: 'Image too large. Max 5MB.' });
+            }
+        }
         
         // Check quota
         if (userId) {
@@ -1555,7 +1580,7 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
         }, provider, config);
 
         // Log successful generation
-        generationLog.push({
+        pushGenerationLog({
             timestamp: new Date().toISOString(),
             userId,
             materialId: material?.id || material?.refCode,
@@ -1569,7 +1594,7 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
         res.json({ success: true, image: result.image, provider, model: result.model });
         
     } catch (error: any) {
-        generationLog.push({
+        pushGenerationLog({
             timestamp: new Date().toISOString(),
             userId: req.body?.userId,
             materialId: req.body?.material?.id || req.body?.material?.refCode,
@@ -1590,6 +1615,19 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
 app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
     try {
         const { image, userId, lang, provider: userProvider } = req.body;
+
+        // Input validation: image must be a valid data URL and under 5MB
+        if (image && typeof image === 'string') {
+            const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+            if (!match) {
+                return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
+            }
+            const base64Data = match[3];
+            const approxBytes = (base64Data.length * 3) / 4;
+            if (approxBytes > 5 * 1024 * 1024) {
+                return res.status(413).json({ error: 'Image too large. Max 5MB.' });
+            }
+        }
         
         if (userId) {
             const quota = await checkAndIncrementQuota(userId);
@@ -2256,21 +2294,6 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Email and password required' });
         }
 
-        // Hardcoded admin fallback
-        if (email === 'admin@gmail.com' && password === 'admin@@@1') {
-            return res.json({ 
-                user: { 
-                    id: 999, 
-                    name: 'Super Admin', 
-                    email: 'admin@gmail.com', 
-                    role: 'admin',
-                    tier: 'Enterprise',
-                    generations_used: 0,
-                    session_token: 'session_admin_fallback'
-                } 
-            });
-        }
-
         const sessionToken = 'session_' + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
 
         try {
@@ -2904,21 +2927,7 @@ app.get('/api/debug', async (req: Request, res: Response) => {
         timestamp: new Date().toISOString(),
         env: {
             node_env: process.env.NODE_ENV,
-            has_db_url: !!process.env.DATABASE_URL,
             port: PORT,
-            has_db_host: !!process.env.DB_HOST,
-            db_host_val: process.env.DB_HOST ? `${process.env.DB_HOST.substring(0, 3)}...` : null,
-            has_db_user: !!process.env.DB_USER,
-            db_user_val: process.env.DB_USER ? `${process.env.DB_USER.substring(0, 3)}...` : null,
-            has_db_password: !!process.env.DB_PASSWORD,
-            has_db_name: !!process.env.DB_NAME,
-            db_name_val: process.env.DB_NAME ? `${process.env.DB_NAME.substring(0, 3)}...` : null,
-            has_db_port: !!process.env.DB_PORT,
-            db_port: process.env.DB_PORT || null,
-            has_telegram_token: !!process.env.TELEGRAM_BOT_TOKEN,
-            telegram_token_len: process.env.TELEGRAM_BOT_TOKEN ? process.env.TELEGRAM_BOT_TOKEN.length : 0,
-            has_telegram_chat_id: !!process.env.TELEGRAM_CHAT_ID,
-            telegram_chat_id_val: process.env.TELEGRAM_CHAT_ID ? `${process.env.TELEGRAM_CHAT_ID.substring(0, 4)}...` : null
         }
     };
 
@@ -2934,44 +2943,6 @@ app.get('/api/debug', async (req: Request, res: Response) => {
         debugInfo.json_users_count = users.length;
     } catch (e: any) {
         debugInfo.json_users = `error: ${e.message}`;
-    }
-
-    try {
-        const cwd = process.cwd();
-        debugInfo.cwd = cwd;
-        debugInfo.env_files_searched = [
-            path.join(cwd, '.env'),
-            path.resolve(cwd, '..', '.env'),
-            path.resolve(cwd, '..', '..', '.env'),
-            path.resolve(cwd, '..', '..', '..', '.env'),
-        ].map(p => ({
-            path: p,
-            exists: fs.existsSync(p)
-        }));
-        debugInfo.has_env_file = debugInfo.env_files_searched.some(e => e.exists);
-        if (fs.existsSync(cwd)) {
-            debugInfo.files = fs.readdirSync(cwd).map(f => {
-                try {
-                    const stat = fs.statSync(path.join(cwd, f));
-                    return `${f} (${stat.isDirectory() ? 'dir' : 'file'}, ${stat.size} bytes)`;
-                } catch (err) {
-                    return `${f} (error: ${err.message})`;
-                }
-            });
-        }
-        const dataPath = path.join(cwd, 'data');
-        if (fs.existsSync(dataPath)) {
-            debugInfo.data_files = fs.readdirSync(dataPath).map(f => {
-                try {
-                    const stat = fs.statSync(path.join(dataPath, f));
-                    return `${f} (${stat.isDirectory() ? 'dir' : 'file'}, ${stat.size} bytes)`;
-                } catch (err) {
-                    return `${f} (error: ${err.message})`;
-                }
-            });
-        }
-    } catch (err) {
-        debugInfo.files_error = err.message;
     }
 
     res.json(debugInfo);
@@ -3004,7 +2975,7 @@ app.post('/api/log-error', (req: Request, res: Response) => {
 });
 
 app.get('/api/debug/errors', (req: Request, res: Response) => {
-    res.json(errorLog);
+    res.json(errorLog.slice(0, 10));
 });
 
 // DEPRECATED: Use /api/ai/generate-overlay instead. This endpoint is a legacy stub.
@@ -3122,6 +3093,18 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
         const { url } = req.query as { url: string };
         if (!url) return res.status(400).json({ error: 'Missing url param' });
 
+        // Only allow Google Drive / Google User Content domains
+        const allowedProxyDomains = ['lh3.googleusercontent.com', 'drive.google.com', 'drive.usercontent.google.com'];
+        let parsedUrl: URL;
+        try {
+            parsedUrl = new URL(url);
+        } catch {
+            return res.status(400).json({ error: 'Invalid URL' });
+        }
+        if (!allowedProxyDomains.includes(parsedUrl.hostname)) {
+            return res.status(403).json({ error: 'Domain not allowed' });
+        }
+
         const imageRes = await fetch(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -3134,6 +3117,11 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
         }
 
         const contentType = imageRes.headers.get('content-type') || 'image/jpeg';
+        const contentLength = imageRes.headers.get('content-length');
+        if (contentLength && parseInt(contentLength) > 5 * 1024 * 1024) {
+            return res.status(413).json({ error: 'Image too large. Max 5MB.' });
+        }
+
         res.setHeader('Content-Type', contentType);
         res.setHeader('Cache-Control', 'public, max-age=86400'); // cache 24h
 
