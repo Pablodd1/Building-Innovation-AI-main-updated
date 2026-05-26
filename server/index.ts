@@ -296,6 +296,10 @@ const JSON_USERS_TRACKED = fs.existsSync(path.join(process.cwd(), 'public', 'dat
 const JSON_DB_PATH = path.join(process.cwd(), 'data', 'products.persistent.json');
 const JSON_USERS_PATH = path.join(process.cwd(), 'data', 'users.persistent.json');
 const JSON_MEMORIES_PATH = path.join(process.cwd(), 'data', 'memories.persistent.json');
+const JSON_AUDIT_LOGS_PATH = path.join(process.cwd(), 'data', 'audit_logs.persistent.json');
+const JSON_GENERATION_LOG_PATH = path.join(process.cwd(), 'data', 'generation_log.persistent.json');
+const JSON_USER_ACTIVITY_PATH = path.join(process.cwd(), 'data', 'user_activity.persistent.json');
+const JSON_DAILY_STATS_PATH = path.join(process.cwd(), 'data', 'daily_stats.persistent.json');
 const JSON_PRODUCTS_PATH = JSON_DB_PATH;
 
 // Initialize persistent files on startup if they don't exist
@@ -314,7 +318,15 @@ try {
     }
     if (!fs.existsSync(JSON_MEMORIES_PATH)) {
         fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify({}, null, 2), 'utf8');
-        console.log('✅ Initialized memories.persistent.json');
+    }
+    if (!fs.existsSync(JSON_GENERATION_LOG_PATH)) {
+        fs.writeFileSync(JSON_GENERATION_LOG_PATH, JSON.stringify([], null, 2), 'utf8');
+    }
+    if (!fs.existsSync(JSON_USER_ACTIVITY_PATH)) {
+        fs.writeFileSync(JSON_USER_ACTIVITY_PATH, JSON.stringify([], null, 2), 'utf8');
+    }
+    if (!fs.existsSync(JSON_DAILY_STATS_PATH)) {
+        fs.writeFileSync(JSON_DAILY_STATS_PATH, JSON.stringify({ counters: { totalRequests: 0, apiCalls: 0, aiGenerations: 0, materialViews: 0, errors: 0 }, history: [] }, null, 2), 'utf8');
     }
 } catch (initErr) {
     console.error('Failed to initialize persistent JSON fallbacks:', initErr);
@@ -372,18 +384,71 @@ class SystemMonitor {
   };
   private dailyLog: any[] = [];
   private alertCooldown = new Map<string, number>();
+  private currentDay: string = '';
+
+  constructor() {
+    this.loadCounters();
+    this.currentDay = new Date().toISOString().split('T')[0];
+  }
+
+  private loadCounters() {
+    try {
+      if (fs.existsSync(JSON_DAILY_STATS_PATH)) {
+        const data = JSON.parse(fs.readFileSync(JSON_DAILY_STATS_PATH, 'utf8'));
+        if (data.counters) {
+          this.counters = { ...this.counters, ...data.counters };
+        }
+        if (Array.isArray(data.history)) {
+          this.dailyLog = data.history;
+        }
+      }
+    } catch (e) {
+      console.warn('[Monitor] Failed to load daily stats:', e);
+    }
+  }
+
+  private saveCounters() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      // Roll over to new day if needed
+      if (today !== this.currentDay) {
+        this.dailyLog.push({
+          date: this.currentDay,
+          ...this.counters,
+        });
+        // Keep only last 90 days
+        if (this.dailyLog.length > 90) {
+          this.dailyLog = this.dailyLog.slice(-90);
+        }
+        this.currentDay = today;
+      }
+      fs.writeFileSync(JSON_DAILY_STATS_PATH, JSON.stringify({
+        counters: this.counters,
+        history: this.dailyLog,
+        lastUpdated: new Date().toISOString(),
+      }, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[Monitor] Failed to save daily stats:', e);
+    }
+  }
 
   trackRequest(req: Request) {
     this.counters.totalRequests++;
     if (req.path.startsWith('/api')) this.counters.apiCalls++;
     if (req.path.includes('generate')) this.counters.aiGenerations++;
     if (req.path.includes('material') || req.path.includes('products')) this.counters.materialViews++;
+    this.saveCounters();
   }
 
   trackError(error: any) {
     this.counters.errors++;
+    this.saveCounters();
     // Send Telegram alert for errors
     telegramAlerts.sendErrorAlert(error instanceof Error ? error : new Error(String(error)));
+  }
+
+  getDailyStats(days: number = 30) {
+    return this.dailyLog.slice(-days);
   }
 
   async getHealth(): Promise<HealthStatus> {
@@ -650,10 +715,77 @@ async function getUsers() {
     }
 }
 
+// ===== TIER EXPIRATION SYSTEM =====
+
+// Check if a user's tier has expired and downgrade to Free if so.
+// Returns true if the user was downgraded.
+async function checkAndDowngradeExpiredTier(user: any): Promise<boolean> {
+    if (!user) return false;
+    // Free tier never expires
+    if (!user.tier || user.tier.toUpperCase() === 'FREE') return false;
+    // No expiration set — permanent tier (legacy), don't downgrade
+    if (!user.tier_expires_at) return false;
+
+    const expiresAt = new Date(user.tier_expires_at);
+    if (isNaN(expiresAt.getTime())) return false; // Invalid date
+
+    if (new Date() > expiresAt) {
+        console.log(`[TierExpiration] User ${user.id} (${user.email}) tier ${user.tier} expired at ${user.tier_expires_at}. Downgrading to Free.`);
+        const oldTier = user.tier;
+        user.tier = 'Free';
+        user.tier_expires_at = null;
+
+        // 1. Update DB
+        try {
+            await query('UPDATE users SET tier = $1, tier_expires_at = NULL WHERE id = $2', ['Free', user.id]);
+        } catch (dbErr: any) {
+            console.warn(`[TierExpiration] DB update failed for user ${user.id}:`, dbErr.message);
+        }
+
+        // 2. Update JSON fallback
+        try {
+            const users = await getUsers();
+            const idx = users.findIndex((u: any) => String(u.id) === String(user.id));
+            if (idx !== -1) {
+                users[idx].tier = 'Free';
+                users[idx].tier_expires_at = null;
+                saveToJSON(JSON_USERS_PATH, users);
+            }
+        } catch (jsonErr: any) {
+            console.warn(`[TierExpiration] JSON update failed for user ${user.id}:`, jsonErr.message);
+        }
+
+        // 3. Log the event
+        logUserActivity({
+            userId: user.id,
+            action: 'TIER_EXPIRED',
+            details: { oldTier, newTier: 'Free', expiredAt: user.tier_expires_at },
+        });
+
+        // 4. Notify admin
+        telegramAlerts.sendMessage({
+            text: `<b>📋 Tier Expired</b>\nUser: ${user.email}\nOld tier: ${oldTier}\nExpired: ${user.tier_expires_at}\nAuto-downgraded to Free.`,
+        }).catch(() => {});
+
+        return true;
+    }
+    return false;
+}
+
+// Run expiration check on all users (for scheduled cleanup)
+async function runTierExpirationCleanup(): Promise<{ checked: number; downgraded: number }> {
+    let downgraded = 0;
+    const users = await getUsers();
+    for (const user of users) {
+        const wasDowngraded = await checkAndDowngradeExpiredTier(user);
+        if (wasDowngraded) downgraded++;
+    }
+    console.log(`[TierExpiration] Cleanup complete: ${users.length} checked, ${downgraded} downgraded.`);
+    return { checked: users.length, downgraded };
+}
+
 // ===== SECURITY AUDIT LOGGING & AUTHORIZATION MIDDLEWARE =====
 
-// Define persistent untracked fallback path for audit logs
-const JSON_AUDIT_LOGS_PATH = path.join(process.cwd(), 'data', 'audit_logs.persistent.json');
 try {
     if (!fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
         fs.writeFileSync(JSON_AUDIT_LOGS_PATH, JSON.stringify([], null, 2), 'utf8');
@@ -851,37 +983,132 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object as any;
         const userId = session.client_reference_id;
-        
+
         if (userId) {
-            console.log(`Payment successful for user ${userId}. Upgrading tier...`);
+            console.log(`[Stripe Webhook] checkout.session.completed for user ${userId}`);
             try {
-                const tier = session.metadata?.tier || (session.amount_total > 4000 ? 'LUXURY' : 'PREMIUM'); // Fallback to amount if metadata missing
-                
-                // 1. Try DB first
-                try {
-                    await query('UPDATE users SET tier = $1 WHERE id = $2', [tier, userId]);
-                    console.log(`Successfully upgraded tier in DB for user ${userId}`);
-                } catch (dbErr: any) {
-                    console.warn(`Failed to upgrade tier in DB for user ${userId}, continuing to JSON:`, dbErr.message);
+                const tier = session.metadata?.tier || (session.amount_total > 4000 ? 'LUXURY' : 'PREMIUM');
+
+                // Fetch subscription to get current_period_end
+                let expiresAt: string | null = null;
+                if (session.subscription) {
+                    try {
+                        const stripeObj = await getStripe();
+                        const subscription = await stripeObj.subscriptions.retrieve(session.subscription);
+                        if (subscription.current_period_end) {
+                            expiresAt = new Date(subscription.current_period_end * 1000).toISOString();
+                            console.log(`[Stripe Webhook] Subscription period ends: ${expiresAt}`);
+                        }
+                    } catch (subErr: any) {
+                        console.warn(`[Stripe Webhook] Could not fetch subscription expiry:`, subErr.message);
+                    }
+                }
+                // Fallback: 30 days from now if we couldn't get the period end
+                if (!expiresAt) {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 30);
+                    expiresAt = d.toISOString();
+                    console.log(`[Stripe Webhook] Using fallback expiry: ${expiresAt}`);
                 }
 
-                // 2. Always update JSON as fallback (critical on Hostinger where DB fails)
+                // 1. Try DB first
+                try {
+                    await query('UPDATE users SET tier = $1, tier_expires_at = $2 WHERE id = $3', [tier, expiresAt, userId]);
+                    console.log(`[Stripe Webhook] Upgraded DB user ${userId} to ${tier}, expires ${expiresAt}`);
+                } catch (dbErr: any) {
+                    console.warn(`[Stripe Webhook] DB update failed for user ${userId}:`, dbErr.message);
+                }
+
+                // 2. Always update JSON as fallback
                 try {
                     const users = await getUsers();
                     const index = users.findIndex((u: any) => String(u.id) === String(userId));
                     if (index !== -1) {
                         users[index].tier = tier;
+                        users[index].tier_expires_at = expiresAt;
                         saveToJSON(JSON_USERS_PATH, users);
-                        console.log(`Successfully upgraded tier in JSON for user ${userId}`);
+                        console.log(`[Stripe Webhook] Upgraded JSON user ${userId} to ${tier}, expires ${expiresAt}`);
                     } else {
-                        console.warn(`User ${userId} not found in JSON fallback`);
+                        console.warn(`[Stripe Webhook] User ${userId} not found in JSON fallback`);
                     }
                 } catch (jsonErr: any) {
-                    console.error(`Failed to upgrade tier in JSON for user ${userId}:`, jsonErr);
+                    console.error(`[Stripe Webhook] JSON update failed for user ${userId}:`, jsonErr);
+                }
+
+                logUserActivity({
+                    userId: parseInt(userId),
+                    action: 'PURCHASE_COMPLETE',
+                    details: { tier, expiresAt, method: 'stripe_webhook' },
+                });
+            } catch (e: any) {
+                console.error(`[Stripe Webhook] Error processing tier upgrade for user ${userId}:`, e);
+            }
+        }
+    }
+
+    // Handle subscription renewal — extend expiration
+    if (event.type === 'invoice.payment_succeeded') {
+        const invoice = event.data.object as any;
+        const subscriptionId = invoice.subscription;
+        const customerId = invoice.customer;
+
+        if (subscriptionId) {
+            try {
+                const stripeObj = await getStripe();
+                const subscription = await stripeObj.subscriptions.retrieve(subscriptionId);
+                const newPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+                // Find user by customer ID (stored in metadata or lookup)
+                // For now, scan users to find one with matching stripe_customer_id or matching subscription
+                const users = await getUsers();
+                const user = users.find((u: any) => u.stripe_customer_id === customerId || u.stripe_subscription_id === subscriptionId);
+
+                if (user) {
+                    await query('UPDATE users SET tier_expires_at = $1 WHERE id = $2', [newPeriodEnd, user.id]).catch(() => {});
+                    const idx = users.findIndex((u: any) => String(u.id) === String(user.id));
+                    if (idx !== -1) {
+                        users[idx].tier_expires_at = newPeriodEnd;
+                        saveToJSON(JSON_USERS_PATH, users);
+                    }
+                    console.log(`[Stripe Webhook] Renewed user ${user.id}, new expiry: ${newPeriodEnd}`);
+                    logUserActivity({
+                        userId: user.id,
+                        action: 'SUBSCRIPTION_RENEWED',
+                        details: { newExpiresAt: newPeriodEnd },
+                    });
                 }
             } catch (e: any) {
-                console.error(`Error processing tier upgrade for user ${userId}:`, e);
+                console.error(`[Stripe Webhook] Error handling renewal:`, e);
             }
+        }
+    }
+
+    // Handle subscription cancellation — downgrade immediately
+    if (event.type === 'customer.subscription.deleted') {
+        const subscription = event.data.object as any;
+        const customerId = subscription.customer;
+
+        try {
+            const users = await getUsers();
+            const user = users.find((u: any) => u.stripe_customer_id === customerId || u.stripe_subscription_id === subscription.id);
+
+            if (user) {
+                await query('UPDATE users SET tier = $1, tier_expires_at = NULL WHERE id = $2', ['Free', user.id]).catch(() => {});
+                const idx = users.findIndex((u: any) => String(u.id) === String(user.id));
+                if (idx !== -1) {
+                    users[idx].tier = 'Free';
+                    users[idx].tier_expires_at = null;
+                    saveToJSON(JSON_USERS_PATH, users);
+                }
+                console.log(`[Stripe Webhook] Cancelled subscription for user ${user.id}, downgraded to Free`);
+                logUserActivity({
+                    userId: user.id,
+                    action: 'SUBSCRIPTION_CANCELLED',
+                    details: { reason: 'stripe_webhook_cancelled' },
+                });
+            }
+        } catch (e: any) {
+            console.error(`[Stripe Webhook] Error handling cancellation:`, e);
         }
     }
 
@@ -921,6 +1148,11 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
 
         // If key is missing, placeholder, or the Price ID is not configured, fall back to mock mode
         if (!secretKey || secretKey === 'sk_test_123' || !stripePriceId || (stripePriceId.startsWith('price_') && stripePriceId.includes('_placeholder'))) {
+            logUserActivity({
+                userId: parseInt(userId),
+                action: 'PURCHASE_INIT',
+                details: { tier, mode: 'subscription', method: 'mock_checkout' },
+            });
             return res.json({
                 isMock: true,
                 sessionId: `mock_${Date.now()}`,
@@ -948,6 +1180,11 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
         });
 
         res.json({ id: session.id, url: session.url });
+        logUserActivity({
+            userId: parseInt(userId),
+            action: 'PURCHASE_INIT',
+            details: { tier, stripePriceId, mode: 'subscription', method: 'stripe' },
+        });
     } catch (e: any) {
         console.error('Checkout Session error:', e);
         res.status(500).json({ error: e.message });
@@ -1332,8 +1569,8 @@ app.get('/api/admin/status', requireAdmin, (req: Request, res: Response) => {
 
 // ===== ANALYTICS & GENERATION TRACKING =====
 
-// In-memory generation log (persists until server restart; could be extended to DB/JSON)
-const generationLog: Array<{
+// Load generation log from persistent JSON (survives restarts)
+let generationLog: Array<{
     timestamp: string;
     userId?: number;
     materialId?: string;
@@ -1343,11 +1580,57 @@ const generationLog: Array<{
     durationMs: number;
     model: string;
     error?: string;
-}> = [];
+}> = loadFromJSON(JSON_GENERATION_LOG_PATH);
 
 function pushGenerationLog(entry: typeof generationLog[0]) {
     generationLog.push(entry);
-    if (generationLog.length > 500) generationLog.shift();
+    // Keep in-memory array bounded for performance, but persist everything
+    if (generationLog.length > 5000) generationLog = generationLog.slice(-2500);
+    // Async save to disk (non-blocking)
+    saveToJSON(JSON_GENERATION_LOG_PATH, generationLog);
+}
+
+// ===== USER ACTIVITY TRACKING =====
+
+interface UserActivityEntry {
+    timestamp: string;
+    userId?: number;
+    action: 'RENDER' | 'ANALYZE' | 'LOGIN' | 'SIGNUP' | 'PURCHASE_INIT' | 'PURCHASE_MOCK' | 'DOWNLOAD' | 'ADMIN_ACTION';
+    details?: Record<string, any>;
+    ip?: string;
+}
+
+function logUserActivity(entry: Omit<UserActivityEntry, 'timestamp'>) {
+    const fullEntry: UserActivityEntry = {
+        timestamp: new Date().toISOString(),
+        ...entry,
+    };
+    // Append to persistent file
+    try {
+        const existing: UserActivityEntry[] = loadFromJSON(JSON_USER_ACTIVITY_PATH);
+        existing.push(fullEntry);
+        // Keep last 10,000 entries to prevent unbounded growth
+        if (existing.length > 10000) {
+            const trimmed = existing.slice(-5000);
+            saveToJSON(JSON_USER_ACTIVITY_PATH, trimmed);
+        } else {
+            saveToJSON(JSON_USER_ACTIVITY_PATH, existing);
+        }
+    } catch (e) {
+        console.error('Failed to persist user activity:', e);
+    }
+}
+
+function getUserActivity(userId?: number, limit = 100): UserActivityEntry[] {
+    try {
+        const all: UserActivityEntry[] = loadFromJSON(JSON_USER_ACTIVITY_PATH);
+        if (userId) {
+            return all.filter(a => a.userId === userId).slice(-limit);
+        }
+        return all.slice(-limit);
+    } catch (e) {
+        return [];
+    }
 }
 
 app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response) => {
@@ -1447,8 +1730,53 @@ app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response
             topMaterials,
             recentGenerations,
             hourlyGenerations,
+            dailyStats: monitor.getDailyStats(30),
             timestamp: new Date().toISOString(),
         });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// Admin: Get user activity log
+app.get('/api/admin/user-activity', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+        const activity = getUserActivity(userId, limit);
+        res.json({ activity, count: activity.length });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// Admin: Get generation log
+app.get('/api/admin/generation-log', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 200;
+        const logs = generationLog.slice(-limit).reverse();
+        res.json({ logs, count: logs.length, total: generationLog.length });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// Admin: Get daily stats history
+app.get('/api/admin/daily-stats', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const days = req.query.days ? parseInt(req.query.days as string) : 30;
+        const stats = monitor.getDailyStats(days);
+        res.json({ stats, count: stats.length, days });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// Admin: Run tier expiration cleanup manually
+app.post('/api/admin/run-tier-cleanup', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const result = await runTierExpirationCleanup();
+        res.json({ success: true, ...result });
     } catch (error: any) {
         res.status(500).json({ error: getErrorMessage(error) });
     }
@@ -1590,6 +1918,19 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             durationMs: result.durationMs,
             model: `${provider}/${result.model}`,
         });
+        logUserActivity({
+            userId,
+            action: 'RENDER',
+            details: {
+                materialId: material?.id || material?.refCode,
+                materialName: material?.name,
+                category: material?.category,
+                provider,
+                model: result.model,
+                durationMs: result.durationMs,
+                success: true,
+            },
+        });
         
         res.json({ success: true, image: result.image, provider, model: result.model });
         
@@ -1604,6 +1945,16 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             durationMs: 0,
             model: "error",
             error: getErrorMessage(error),
+        });
+        logUserActivity({
+            userId: req.body?.userId,
+            action: 'RENDER',
+            details: {
+                materialId: req.body?.material?.id || req.body?.material?.refCode,
+                materialName: req.body?.material?.name,
+                success: false,
+                error: getErrorMessage(error),
+            },
         });
 
         console.error("AI Generation failed:", error);
@@ -1953,6 +2304,18 @@ app.post('/api/purchase-requests', async (req: Request, res: Response) => {
 
         const purchaseRequest = result.rows[0];
 
+        logUserActivity({
+            userId: user_id || undefined,
+            action: 'PURCHASE_MOCK',
+            details: {
+                purchaseRequestId: purchaseRequest.id,
+                customer_email,
+                total_estimate,
+                currency: currency || 'USD',
+                itemCount: cart_items.length,
+            },
+        });
+
         // Send email notifications
         try {
             const notifications = await sendPurchaseNotifications({
@@ -2228,6 +2591,11 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             }
 
             res.status(201).json({ user: result.rows[0] });
+            logUserActivity({
+                userId: result.rows[0].id,
+                action: 'SIGNUP',
+                details: { email, name, tier: 'Free', method: 'db' },
+            });
         } catch (dbError) {
             console.warn('Signup DB unavailable, using JSON fallback...');
             
@@ -2278,6 +2646,11 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             // Don't return password hash
             const { password_hash, ...userResponse } = newUser;
             res.status(201).json({ user: userResponse });
+            logUserActivity({
+                userId: newUser.id,
+                action: 'SIGNUP',
+                details: { email, name, tier: 'Free', method: 'json_fallback' },
+            });
         }
     } catch (error: any) {
         console.error('Signup error:', error);
@@ -2316,7 +2689,15 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
                     console.warn('Failed to save session token to DB:', updateErr.message);
                 }
 
+                // Check for tier expiration and auto-downgrade if needed
+                await checkAndDowngradeExpiredTier(user);
+
                 const { password_hash, ...userResponse } = user;
+                logUserActivity({
+                    userId: user.id,
+                    action: 'LOGIN',
+                    details: { email: user.email, tier: user.tier, method: 'db' },
+                });
                 return res.json({ 
                     user: { 
                         ...userResponse, 
@@ -2347,7 +2728,15 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
             user.session_token = sessionToken;
             saveToJSON(JSON_USERS_PATH, users);
 
+            // Check for tier expiration and auto-downgrade if needed
+            await checkAndDowngradeExpiredTier(user);
+
             const { password_hash, ...userResponse } = user;
+            logUserActivity({
+                userId: user.id,
+                action: 'LOGIN',
+                details: { email: user.email, tier: user.tier, method: 'json_fallback' },
+            });
             return res.json({ 
                 user: { 
                     ...userResponse, 
@@ -2549,6 +2938,29 @@ app.get('/api/users/:id', requireAuth, async (req: Request, res: Response) => {
         }
 
         res.status(404).json({ error: 'User not found' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get current user's tier status (with expiration check)
+app.get('/api/me/tier', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const authUser = (req as any).user;
+        // Run expiration check — mutates and persists if expired
+        await checkAndDowngradeExpiredTier(authUser);
+
+        const expiresAt = authUser.tier_expires_at || null;
+        const daysRemaining = expiresAt
+            ? Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+            : null;
+
+        res.json({
+            tier: authUser.tier || 'Free',
+            expiresAt,
+            daysRemaining,
+            isExpired: daysRemaining !== null && daysRemaining <= 0,
+        });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

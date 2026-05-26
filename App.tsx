@@ -119,6 +119,7 @@ const App: React.FC = () => {
     const [materialsLoading, setMaterialsLoading] = useState(true);
     const [contractors, setContractors] = useState<Contractor[]>([]);
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+    const [estimationSource, setEstimationSource] = useState<AppView>(AppView.GALLERY);
     const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">("USD");
     const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
 
@@ -798,8 +799,14 @@ const App: React.FC = () => {
             return;
         }
 
-        // For local paths that failed, show placeholder directly
+        // For local paths that failed, try the original DB fallback URL before giving up
         if (originalSrc.startsWith('/')) {
+            const dbUrl = target.getAttribute('data-original-src');
+            if (dbUrl && dbUrl !== originalSrc && (dbUrl.includes('drive.google.com') || dbUrl.includes('lh3.googleusercontent.com'))) {
+                target.setAttribute('data-error-fixed', 'true');
+                target.src = `/api/proxy-image?url=${encodeURIComponent(dbUrl)}`;
+                return;
+            }
             target.setAttribute('data-error-fixed', 'true');
             target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
             return;
@@ -831,19 +838,24 @@ const App: React.FC = () => {
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
                         const refCode = m.ref_code || m.refCode || "";
                         
-                        // Use original DB image URL; rewrite CDN to local path
+                        // Image resolution: ALWAYS prefer local product file if refCode exists.
+                        // Local `/products/{refCode}.webp` is the single source of truth.
                         const dbImageUrl = m.image_url || m.imageUrl || "";
                         let imageUrl = dbImageUrl;
-                        if (!imageUrl && refCode) {
-                            imageUrl = `https://buildingapp.us/products/${refCode}.webp`;
+                        // If refCode exists, force local path regardless of what DB says
+                        if (refCode) {
+                            imageUrl = `/products/${refCode}.webp?v=4`;
                         } else if (imageUrl.includes('drive.google.com') || imageUrl.includes('lh3.googleusercontent.com')) {
                             imageUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+                        } else {
+                            // Rewrite any CDN URLs to local path
+                            const cdnMatch = imageUrl.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
+                            if (cdnMatch) {
+                                imageUrl = `/products/${cdnMatch[1]}?v=4`;
+                            }
                         }
-                        // Rewrite CDN URLs to local path so images load from our server
-                        const cdnMatch = imageUrl.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
-                        if (cdnMatch) {
-                            imageUrl = `/products/${cdnMatch[1]}?v=3`;
-                        }
+                        // Original DB URL kept for error-recovery fallback
+                        const fallbackImageUrl = dbImageUrl || (refCode ? `https://buildingapp.us/products/${refCode}.webp` : "");
 
                         return {
                             id: String(m.id),
@@ -853,7 +865,7 @@ const App: React.FC = () => {
                             subcategory: m.subcategory || "",
                             description: m.description || "",
                             imageUrl,
-                            _fallbackImageUrl: dbImageUrl,  // original DB URL for image error recovery
+                            _fallbackImageUrl: fallbackImageUrl,  // original DB URL for image error recovery
                             usage: normalizedUsage,
                             promptModifier: m.prompt_modifier || m.promptModifier || "",
                             dimensions: {
@@ -870,7 +882,7 @@ const App: React.FC = () => {
                         };
                     });
                     setMaterials(converted);
-                    localStorage.setItem('materials_cache', JSON.stringify(converted));
+                    localStorage.setItem('materials_cache_v2', JSON.stringify(converted));
                     setMaterialsLoading(false);
                     return;
                 }
@@ -880,7 +892,7 @@ const App: React.FC = () => {
         }
 
         // Tier 2: localStorage — persists deletions so products don't reappear
-        const cached = localStorage.getItem('materials_cache');
+        const cached = localStorage.getItem('materials_cache_v2');
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
@@ -903,7 +915,7 @@ const App: React.FC = () => {
                         usage: (m.usage || "Interior").charAt(0).toUpperCase() + (m.usage || "Interior").slice(1).toLowerCase(),
                     }));
                     setMaterials(proxied);
-                    localStorage.setItem('materials_cache', JSON.stringify(proxied));
+                    localStorage.setItem('materials_cache_v2', JSON.stringify(proxied));
                     setMaterialsLoading(false);
                     return;
                 }
@@ -3937,6 +3949,22 @@ const App: React.FC = () => {
                                     </svg>
                                     +
                                 </button>
+                                {/* Estimate button */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedMaterial(material);
+                                        setEstimationSource(AppView.GALLERY);
+                                        setView(AppView.ESTIMATION);
+                                    }}
+                                    className="absolute bottom-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1"
+                                    title={lang === 'es' ? 'Cotizar' : 'Estimate'}
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                    </svg>
+                                    {lang === 'es' ? 'Cotizar' : 'Estimate'}
+                                </button>
                             </div>
                         ))}
                     </div>
@@ -4189,7 +4217,10 @@ const App: React.FC = () => {
                                     {lang === 'es' ? 'Añadir al Carrito' : 'Add to Cart'}
                                 </Button>
                                 <Button
-                                    onClick={() => setView(AppView.ESTIMATION)}
+                                    onClick={() => {
+                                        setEstimationSource(AppView.EDITOR);
+                                        setView(AppView.ESTIMATION);
+                                    }}
                                     variant="secondary"
                                     disabled={!generationState.resultImage}
                                     className="flex-1 py-3 bg-green-600 border-green-500 hover:bg-green-500 text-white text-xs uppercase whitespace-nowrap"
@@ -4539,6 +4570,7 @@ const App: React.FC = () => {
                                 variant="secondary"
                                 onClick={() => {
                                     setShowProbeModal(false);
+                                    setEstimationSource(AppView.GALLERY);
                                     setView(AppView.ESTIMATION);
                                 }}
                                 className="uppercase text-xs"
@@ -5114,7 +5146,7 @@ const App: React.FC = () => {
                         <div className="w-full max-w-4xl h-full">
                             <EstimationPanel
                                 material={selectedMaterial}
-                                onBack={() => setView(AppView.EDITOR)}
+                                onBack={() => setView(estimationSource)}
                                 onAddToCart={() => {
                                     const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
                                     // Use AI-calculated wall dimensions if available, else material defaults
