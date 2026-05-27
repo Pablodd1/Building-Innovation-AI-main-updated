@@ -95928,6 +95928,22 @@ async function analyzeRoom(req, provider, config) {
   }
   return analyzeRoomGemini(req, config, () => Date.now() - start);
 }
+var ANALYSIS_PROMPT = `Analyze this interior/exterior space as a Senior Architect.
+
+Return your response in this EXACT JSON format:
+{
+  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested materials.",
+  "dimensions": {
+    "width": 350,
+    "height": 280,
+    "areaM2": 9.8
+  },
+  "style": "Modern Minimalist",
+  "lighting": "Natural daylight from large windows",
+  "suggestedMaterials": ["Polished concrete", "White oak flooring"]
+}
+
+For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
 async function analyzeRoomGemini(req, config, elapsed) {
   const ai = getGeminiSDK(config.GEMINI_API_KEY);
   const base64Data = cleanBase64(req.image);
@@ -95938,13 +95954,12 @@ async function analyzeRoomGemini(req, config, elapsed) {
     contents: {
       parts: [
         { inlineData: { data: base64Data, mimeType } },
-        {
-          text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words)."
-        }
+        { text: ANALYSIS_PROMPT }
       ]
     }
   });
-  return { analysis: response.text || "Could not analyze the room.", model, durationMs: elapsed() };
+  const rawText = response.text || '{"text":"Could not analyze the room."}';
+  return parseAnalysisResponse(rawText, model, elapsed());
 }
 async function analyzeRoomOpenAI(req, config) {
   const start = Date.now();
@@ -95962,17 +95977,26 @@ async function analyzeRoomOpenAI(req, config) {
             type: "image_url",
             image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" }
           },
-          {
-            type: "text",
-            text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words)."
-          }
+          { type: "text", text: ANALYSIS_PROMPT }
         ]
       }
     ],
-    max_tokens: 300
+    max_tokens: 500
   });
-  const analysis = completion.choices[0]?.message?.content || "Could not analyze the room.";
-  return { analysis, model, durationMs: Date.now() - start };
+  const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze the room."}';
+  return parseAnalysisResponse(rawText, model, Date.now() - start);
+}
+function parseAnalysisResponse(rawText, model, durationMs) {
+  try {
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+    const parsed = JSON.parse(jsonStr);
+    const text = parsed.text || "Could not analyze the room.";
+    const dimensions = parsed.dimensions && typeof parsed.dimensions.width === "number" && typeof parsed.dimensions.height === "number" && typeof parsed.dimensions.areaM2 === "number" ? parsed.dimensions : void 0;
+    return { analysis: text, dimensions, model, durationMs };
+  } catch (e2) {
+    return { analysis: rawText, model, durationMs };
+  }
 }
 
 // node_modules/stripe/esm/Error.js
@@ -114791,7 +114815,13 @@ Auto-downgraded to Free.`
         return res.status(500).json({ error: "Gemini API Key not configured" });
       }
       const result = await analyzeRoom({ image, lang }, provider, config);
-      res.json({ success: true, analysis: result.analysis, provider, model: result.model });
+      res.json({
+        success: true,
+        analysis: result.analysis,
+        dimensions: result.dimensions,
+        provider,
+        model: result.model
+      });
     } catch (error) {
       console.error("Room analysis error:", error);
       res.status(500).json({ error: getErrorMessage(error) });

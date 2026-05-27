@@ -33,7 +33,7 @@ import { formatMetersUSA } from "./services/unitUtils";
 interface HistoryItem {
     resultImage: string | null;
     resultVideo: string | null;
-    analysis: string | null;
+    analysis: import("./types").RoomAnalysisResult | null;
     prompt: string;
     material: Material | null;
 }
@@ -1607,9 +1607,9 @@ const App: React.FC = () => {
             ...prev,
             isAnalyzing: true,
             error: null,
-        })); // Use isAnalyzing instead of isGenerating
+        }));
         try {
-            const analysisText = await generateRoomAnalysis(
+            const analysisResult = await generateRoomAnalysis(
                 originalImage,
                 currentUser?.id,
                 lang,
@@ -1617,9 +1617,9 @@ const App: React.FC = () => {
             setGenerationState((prev) => ({
                 ...prev,
                 isAnalyzing: false,
-                analysis: analysisText,
+                analysis: analysisResult,
             }));
-            logUserBehavior("ROOM_ANALYSIS", { analysisLength: analysisText.length });
+            logUserBehavior("ROOM_ANALYSIS", { analysisLength: analysisResult.text.length });
         } catch (e: any) {
             setGenerationState((prev) => ({
                 ...prev,
@@ -4085,7 +4085,7 @@ const App: React.FC = () => {
                                     </div>
                                 ) : (
                                     <p className="leading-relaxed">
-                                        {generationState.analysis}
+                                        {generationState.analysis?.text}
                                     </p>
                                 )}
                             </div>
@@ -5192,10 +5192,10 @@ const App: React.FC = () => {
                         <div className="w-full max-w-4xl h-full">
                             <EstimationPanel
                                 material={selectedMaterial}
+                                roomAnalysis={generationState.analysis}
                                 onBack={() => setView(estimationSource)}
                                 onAddToCart={() => {
                                     const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
-                                    // Use AI-calculated wall dimensions if available, else material defaults
                                     const wallDims = generationState.analysis?.dimensions;
                                     const cartDims = wallDims 
                                         ? { width: wallDims.width, height: wallDims.height } 

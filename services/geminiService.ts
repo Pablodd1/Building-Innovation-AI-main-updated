@@ -1,4 +1,4 @@
-import { Material, RenderOptions } from "../types";
+import { Material, RenderOptions, RoomAnalysisResult } from "../types";
 
 // =============================================================
 // SERVER-PROXIED AI GENERATION
@@ -19,7 +19,7 @@ export const generateRoomAnalysis = async (
     imageBase64: string,
     userId?: number,
     lang: string = "en"
-): Promise<string> => {
+): Promise<RoomAnalysisResult> => {
     const res = await fetch("/api/ai/analyze-room", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -32,7 +32,13 @@ export const generateRoomAnalysis = async (
     }
 
     const data = await res.json();
-    return data.analysis || "Could not analyze the room.";
+    return {
+        text: data.analysis || "Could not analyze the room.",
+        dimensions: data.dimensions,
+        style: data.style,
+        lighting: data.lighting,
+        suggestedMaterials: data.suggestedMaterials,
+    };
 };
 
 // --- Material Overlay Generation ---

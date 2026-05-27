@@ -373,14 +373,20 @@ Match the room's 3D perspective and lighting (${lightingHint}).`;
 }
 
 // =============================================================
-// ROOM ANALYSIS (Text)
+// ROOM ANALYSIS (Structured)
 // =============================================================
+
+export interface RoomAnalysisDimensions {
+    width: number;   // in cm
+    height: number;  // in cm
+    areaM2: number;  // in square meters
+}
 
 export async function analyzeRoom(
     req: AnalysisRequest,
     provider: AIProvider,
     config: AIConfig
-): Promise<{ analysis: string; model: string; durationMs: number }> {
+): Promise<{ analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number }> {
     const start = Date.now();
 
     if (provider === "openai") {
@@ -390,11 +396,28 @@ export async function analyzeRoom(
     return analyzeRoomGemini(req, config, () => Date.now() - start);
 }
 
+const ANALYSIS_PROMPT = `Analyze this interior/exterior space as a Senior Architect.
+
+Return your response in this EXACT JSON format:
+{
+  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested materials.",
+  "dimensions": {
+    "width": 350,
+    "height": 280,
+    "areaM2": 9.8
+  },
+  "style": "Modern Minimalist",
+  "lighting": "Natural daylight from large windows",
+  "suggestedMaterials": ["Polished concrete", "White oak flooring"]
+}
+
+For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
+
 async function analyzeRoomGemini(
     req: AnalysisRequest,
     config: AIConfig,
     elapsed: () => number
-): Promise<{ analysis: string; model: string; durationMs: number }> {
+): Promise<{ analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number }> {
     const ai = getGeminiSDK(config.GEMINI_API_KEY);
     const base64Data = cleanBase64(req.image);
     const mimeType = getMimeType(req.image);
@@ -405,20 +428,19 @@ async function analyzeRoomGemini(
         contents: {
             parts: [
                 { inlineData: { data: base64Data, mimeType } },
-                {
-                    text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
-                },
+                { text: ANALYSIS_PROMPT },
             ],
         },
     });
 
-    return { analysis: response.text || "Could not analyze the room.", model, durationMs: elapsed() };
+    const rawText = response.text || "{\"text\":\"Could not analyze the room.\"}";
+    return parseAnalysisResponse(rawText, model, elapsed());
 }
 
 async function analyzeRoomOpenAI(
     req: AnalysisRequest,
     config: AIConfig
-): Promise<{ analysis: string; model: string; durationMs: number }> {
+): Promise<{ analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number }> {
     const start = Date.now();
     const ai = getOpenAISDK(config.OPENAI_API_KEY);
     const mimeType = getMimeType(req.image);
@@ -435,18 +457,41 @@ async function analyzeRoomOpenAI(
                         type: "image_url",
                         image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" },
                     },
-                    {
-                        type: "text",
-                        text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
-                    },
+                    { type: "text", text: ANALYSIS_PROMPT },
                 ],
             },
         ],
-        max_tokens: 300,
+        max_tokens: 500,
     });
 
-    const analysis = completion.choices[0]?.message?.content || "Could not analyze the room.";
-    return { analysis, model, durationMs: Date.now() - start };
+    const rawText = completion.choices[0]?.message?.content || "{\"text\":\"Could not analyze the room.\"}";
+    return parseAnalysisResponse(rawText, model, Date.now() - start);
+}
+
+function parseAnalysisResponse(
+    rawText: string,
+    model: string,
+    durationMs: number
+): { analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number } {
+    try {
+        // Try to extract JSON from the response (might be wrapped in markdown)
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+        const parsed = JSON.parse(jsonStr);
+
+        const text = parsed.text || "Could not analyze the room.";
+        const dimensions = parsed.dimensions &&
+            typeof parsed.dimensions.width === "number" &&
+            typeof parsed.dimensions.height === "number" &&
+            typeof parsed.dimensions.areaM2 === "number"
+            ? parsed.dimensions
+            : undefined;
+
+        return { analysis: text, dimensions, model, durationMs };
+    } catch (e) {
+        // Fallback: return raw text as analysis, no dimensions
+        return { analysis: rawText, model, durationMs };
+    }
 }
 
 // =============================================================

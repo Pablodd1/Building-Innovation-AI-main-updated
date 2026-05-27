@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Material, Contractor, Language, RegionUnit } from '../types';
+import { Material, Contractor, Language, RegionUnit, RoomAnalysisResult } from '../types';
 
 interface EstimationPanelProps {
     material: Material;
+    roomAnalysis?: RoomAnalysisResult | null;
     onBack: () => void;
     onAddToCart: () => void;
     onNewQuote: () => void;
@@ -29,6 +30,7 @@ interface UnitLabels {
 
 export const EstimationPanel: React.FC<EstimationPanelProps> = ({
     material,
+    roomAnalysis,
     onBack,
     onAddToCart,
     onNewQuote,
@@ -63,6 +65,22 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({
     );
     const [selectedContractor, setSelectedContractor] = useState<string>('');
     const [laborOverride, setLaborOverride] = useState<string>('');
+    const [manualPrice, setManualPrice] = useState<string>('');
+
+    // Auto-populate room dimensions from AI analysis when available
+    useEffect(() => {
+        if (roomAnalysis?.dimensions) {
+            const dims = roomAnalysis.dimensions;
+            if (isLatam) {
+                setRoomWidth(String(dims.width));
+                setRoomHeight(String(dims.height));
+            } else {
+                // Convert cm to inches for display
+                setRoomWidth(String(Math.round(dims.width * CM_TO_INCH * 10) / 10));
+                setRoomHeight(String(Math.round(dims.height * CM_TO_INCH * 10) / 10));
+            }
+        }
+    }, [roomAnalysis, isLatam]);
 
     // Convert room dims to cm for calculation
     const roomW_cm = parseFloat(roomWidth) || 0;
@@ -85,8 +103,8 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({
     const panelsWithWaste = Math.ceil(exactPanels * wasteMultiplier);
     const wastePanels = Math.max(0, panelsWithWaste - Math.ceil(exactPanels));
 
-    // Pricing
-    const unitPrice = material.pricing?.pricePerUnit || 0;
+    // Pricing — MANUAL INPUT (starts empty, user fills in)
+    const unitPrice = parseFloat(manualPrice) || 0;
     const unitLabel = material.pricing?.unitLabel || (lang === 'es' ? 'Unidad' : 'Unit');
     const currency = material.pricing?.currency || 'USD';
 
@@ -151,6 +169,9 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({
             manualLabor: 'o ingresa costo manual (por m²):',
             units: 'unidades',
             panels: 'paneles',
+            pricePerUnit: 'Precio por unidad',
+            enterPrice: 'Ingresar precio',
+            fromAnalysis: 'Dimensiones detectadas por IA',
         }
         : {
             material: 'Material',
@@ -187,6 +208,9 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({
             manualLabor: 'or enter manual rate (per m²):',
             units: 'units',
             panels: 'panels',
+            pricePerUnit: 'Price per Unit',
+            enterPrice: 'Enter price',
+            fromAnalysis: 'AI-detected dimensions',
         };
 
     const subst = material.subcategory || material.category || '';
@@ -279,20 +303,36 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({
                     </div>
                     <div>
                         <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
-                            {lang === 'es' ? 'Precio' : 'Price'}
+                            {specLabel.pricePerUnit}
                         </span>
-                        <span className="text-green-400 font-medium">
-                            {fmt(unitPrice)} <span className="text-slate-500 text-xs">/ {unitLabel}</span>
-                        </span>
+                        <input
+                            type="number"
+                            value={manualPrice}
+                            onChange={(e) => setManualPrice(e.target.value)}
+                            placeholder={specLabel.enterPrice}
+                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-white text-sm focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+                            min="0"
+                            step="0.01"
+                        />
                     </div>
                 </div>
             </div>
 
             {/* ── Room Dimensions Input ── */}
             <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
-                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">
-                    {specLabel.roomDimensions}
-                </h2>
+                <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                        {specLabel.roomDimensions}
+                    </h2>
+                    {roomAnalysis?.dimensions && (
+                        <span className="text-xs text-blue-400 flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            {specLabel.fromAnalysis}
+                        </span>
+                    )}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                     <div>
                         <label className="block text-xs text-slate-500 mb-1">{specLabel.width} ({dimUnit})</label>

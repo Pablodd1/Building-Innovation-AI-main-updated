@@ -2011,7 +2011,13 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
 
         const result = await analyzeRoom({ image, lang }, provider, config);
 
-        res.json({ success: true, analysis: result.analysis, provider, model: result.model });
+        res.json({
+            success: true,
+            analysis: result.analysis,
+            dimensions: result.dimensions,
+            provider,
+            model: result.model
+        });
         
     } catch (error: any) {
         console.error("Room analysis error:", error);

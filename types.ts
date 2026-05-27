@@ -55,13 +55,27 @@ export enum AppView {
   CART = "CART",
 }
 
+export interface RoomDimensions {
+  width: number;  // in cm
+  height: number; // in cm
+  areaM2: number; // in square meters
+}
+
+export interface RoomAnalysisResult {
+  text: string;           // Human-readable analysis text
+  dimensions?: RoomDimensions; // Estimated room dimensions from AI
+  style?: string;         // Detected design style
+  lighting?: string;      // Detected lighting condition
+  suggestedMaterials?: string[]; // Suggested materials
+}
+
 export interface GenerationState {
   isGenerating: boolean;
   isAnalyzing: boolean; // Subtle loading state for text analysis
   error: string | null;
   resultImage: string | null; // Base64
   resultVideo: string | null; // URL
-  analysis: string | null; // Text
+  analysis: RoomAnalysisResult | null; // Structured analysis with dimensions
   materialProbe: string | null; // 3D Sphere Preview
 }
 
