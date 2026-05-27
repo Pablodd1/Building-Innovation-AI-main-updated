@@ -964,6 +964,18 @@ const App: React.FC = () => {
         }
     }, [materials.length, currentPage, itemsPerPage]);
 
+    // Auto-trigger room analysis when entering EDITOR with a new captured image
+    useEffect(() => {
+        if (
+            view === AppView.EDITOR &&
+            originalImage &&
+            !generationState.isAnalyzing &&
+            !generationState.analysis
+        ) {
+            handleRoomAnalysis();
+        }
+    }, [view, originalImage]);
+
     const updateCartCount = () => {
         try {
             const existingCartJson = localStorage.getItem("constructVizCart");
