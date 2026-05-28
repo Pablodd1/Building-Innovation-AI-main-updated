@@ -3622,6 +3622,52 @@ app.listen(PORT, async () => {
     console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
     console.log(`📊 Serving from: ${distPath}`);
     
+    // Bootstrap admin user if none exists (ensures permanent admin)
+    try {
+        const users = await getUsers();
+        const hasAdmin = users.some((u: any) => u.role === 'admin');
+        if (!hasAdmin) {
+            const adminEmail = process.env.ADMIN_EMAIL || 'admin@buildingapp.us';
+            const adminPassword = process.env.ADMIN_PASSWORD || 'BuildingAdmin2026!';
+            const bcrypt = await import('bcryptjs');
+            const hash = await bcrypt.hash(adminPassword, 10);
+            const newAdmin = {
+                id: 1,
+                name: 'System Admin',
+                email: adminEmail,
+                phone: null,
+                address: null,
+                password_hash: hash,
+                role: 'admin',
+                tier: 'Enterprise',
+                generations_used: 0,
+                session_token: 'admin_' + require('crypto').randomBytes(16).toString('hex'),
+                created_at: new Date().toISOString()
+            };
+            // Try DB first, fall back to JSON
+            try {
+                await query(
+                    `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     ON CONFLICT (id) DO UPDATE SET password_hash = $4, role = $5, tier = $6`,
+                    [newAdmin.id, newAdmin.name, newAdmin.email, newAdmin.password_hash,
+                     newAdmin.role, newAdmin.tier, newAdmin.generations_used, newAdmin.session_token]
+                );
+                console.log('[BOOTSTRAP] Admin user created/updated in PostgreSQL');
+            } catch (dbErr) {
+                // JSON fallback
+                const filtered = users.filter((u: any) => u.id !== 1);
+                filtered.push(newAdmin);
+                saveToJSON(JSON_USERS_PATH, filtered);
+                console.log('[BOOTSTRAP] Admin user created in JSON fallback');
+            }
+        } else {
+            console.log('[BOOTSTRAP] Admin user already exists');
+        }
+    } catch (e: any) {
+        console.warn('[BOOTSTRAP] Admin check failed:', e.message);
+    }
+
     // Initialize Telegram from config file
     try {
         const { initTelegramFromConfig } = await import('./telegramAlerts');
