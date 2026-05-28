@@ -633,6 +633,31 @@ const App: React.FC = () => {
             ctx.fillStyle = "rgba(255,255,255,0.7)";
             ctx.textAlign = "right";
             ctx.fillText(copyText, img.width - 16, img.height - barH / 2);
+            // Room analysis text overlay (above watermark bar)
+            const analysisText = generationState.analysis?.text;
+            if (analysisText) {
+                const analysisFontSize = Math.max(11, barH * 0.4);
+                ctx.font = `${analysisFontSize}px Arial, sans-serif`;
+                ctx.fillStyle = "rgba(255,255,255,0.85)";
+                ctx.textAlign = "left";
+                // Word wrap the analysis text
+                const maxWidth = img.width - 32;
+                const words = analysisText.split(' ');
+                let line = '';
+                let lineY = img.height - barH - analysisFontSize - 8;
+                for (const word of words) {
+                    const testLine = line ? line + ' ' + word : word;
+                    const metrics = ctx.measureText(testLine);
+                    if (metrics.width > maxWidth && line) {
+                        ctx.fillText(line, 16, lineY);
+                        lineY -= analysisFontSize + 2;
+                        line = word;
+                    } else {
+                        line = testLine;
+                    }
+                }
+                if (line) ctx.fillText(line, 16, lineY);
+            }
             // Trigger download
             const link = document.createElement("a");
             link.href = canvas.toDataURL("image/jpeg", 0.95);
@@ -4053,43 +4078,7 @@ const App: React.FC = () => {
                             )}
                         </div>
 
-                        {/* AI Analysis Overlay */}
-                        {(generationState.analysis ||
-                            generationState.isAnalyzing) && (
-                            <div className="absolute bottom-8 left-8 right-8 z-40 bg-white/95 backdrop-blur border border-gray-300 p-4 rounded-xl text-xs text-gray-600 max-h-48 overflow-y-auto animate-fadeIn shadow-2xl max-w-2xl mx-auto">
-                                <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white/95 pb-2 border-b border-gray-300">
-                                    <svg
-                                        className="w-4 h-4 text-blue-400"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M13 10V3L4 14h7v7l9-11h-7z"
-                                        />
-                                    </svg>
-                                    <span className="text-blue-400 font-bold uppercase tracking-wider">
-                                        {lang === "es"
-                                            ? "Análisis del Espacio"
-                                            : "Room Analysis"}
-                                    </span>
-                                </div>
-                                {generationState.isAnalyzing ? (
-                                    <div className="space-y-2 py-1">
-                                        <div className="h-1.5 bg-gray-300 rounded w-full animate-pulse"></div>
-                                        <div className="h-1.5 bg-gray-300 rounded w-2/3 animate-pulse"></div>
-                                        <div className="h-1.5 bg-gray-300 rounded w-5/6 animate-pulse"></div>
-                                    </div>
-                                ) : (
-                                    <p className="leading-relaxed">
-                                        {generationState.analysis?.text}
-                                    </p>
-                                )}
-                            </div>
-                        )}
+
                     </div>
                 </div>
 
@@ -4443,8 +4432,12 @@ const App: React.FC = () => {
                                                     `- ${i.material.name}: ${i.quantity} units ($${Math.round(i.totalCost)})`,
                                             )
                                             .join("\n");
+                                        // Include room analysis if available
+                                        const analysisSection = generationState.analysis?.text
+                                            ? `\n\n${lang === "es" ? "Análisis del Espacio" : "Room Analysis"}:\n${generationState.analysis.text}\n`
+                                            : "";
                                         setCheckoutBody(
-                                            `${lang === "es" ? "Orden de Compra" : "Order Request"}:\n\n${body}\n\nTotal: $${Math.round(total)}`,
+                                            `${lang === "es" ? "Orden de Compra" : "Order Request"}:\n\n${body}\n\nTotal: $${Math.round(total)}${analysisSection}`,
                                         );
                                         setShowCheckoutModal(true);
                                     }}
