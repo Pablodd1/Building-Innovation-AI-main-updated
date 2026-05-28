@@ -114241,18 +114241,24 @@ Auto-downgraded to Free.`
           }))
         });
       }
+      const baseUrl = req.headers.origin || `https://${req.headers.host}` || "https://buildingapp.us";
       const lineItems = items.map((item) => {
         const unitPrice = Number(item.material?.pricing?.pricePerUnit) || 0;
         const qty = Number(item.quantity) || 1;
         const totalCost = Number(item.totalCost) || 0;
+        const currency = (item.material?.pricing?.currency || "usd").toLowerCase();
         const unitAmount = totalCost > 0 && qty > 0 ? Math.round(totalCost / qty * 100) : Math.round(unitPrice * 100);
+        let imageUrl = item.material?.imageUrl || "";
+        if (imageUrl && imageUrl.startsWith("/")) {
+          imageUrl = baseUrl.replace(/\/$/, "") + imageUrl;
+        }
         return {
           price_data: {
-            currency: "usd",
+            currency,
             product_data: {
               name: `${item.material?.name || "Material"} \u2014 ${item.dimensions ? `${item.dimensions.width}m \xD7 ${item.dimensions.height}m` : "Custom"}`,
               description: `${qty} ${item.material?.pricing?.unitLabel || "units"} @ $${unitPrice.toFixed(2)}/unit`,
-              ...item.material?.imageUrl ? { images: [item.material.imageUrl] } : {}
+              ...imageUrl ? { images: [imageUrl] } : {}
             },
             unit_amount: unitAmount || 1
             // Stripe requires at least 1 cent
@@ -114260,7 +114266,6 @@ Auto-downgraded to Free.`
           quantity: qty
         };
       }).filter((li) => li.price_data.unit_amount > 0);
-      const baseUrl = req.headers.origin || `https://${req.headers.host}` || "https://buildingapp.us";
       const stripeObj = await getStripe();
       const session = await stripeObj.checkout.sessions.create({
         payment_method_types: ["card"],
