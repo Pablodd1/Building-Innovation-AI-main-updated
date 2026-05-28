@@ -4089,7 +4089,7 @@ const App: React.FC = () => {
                         <Button
                             variant="ghost"
                             onClick={() => setView(AppView.CAMERA)}
-                            className="text-xs uppercase tracking-wider"
+                            className="text-xs uppercase tracking-wider text-gray-400/40 hover:text-gray-500/60"
                         >
                             {t.editor.back}
                         </Button>
