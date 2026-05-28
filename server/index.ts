@@ -1137,29 +1137,8 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
         const config = await getConfig();
         const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
 
-        const tiers = await getTiers();
-        const matchedTier = Object.values(tiers).find(
-            (t: any) => t.name.toLowerCase() === tier.toLowerCase() || 
-                       t.name.split(' ')[0].toLowerCase() === tier.toLowerCase() ||
-                       t.name.includes(`(${tier})`) ||
-                       (tier.toLowerCase() === 'pro' && t.name.toLowerCase().includes('pro')) ||
-                       (tier.toLowerCase() === 'enterprise' && t.name.toLowerCase().includes('enterprise'))
-        ) || (tiers as any)[tier.toUpperCase()];
-
-        let stripePriceId = matchedTier ? matchedTier.stripePriceId : '';
-
-        // Fallback to .env variables if the tier has a placeholder or empty ID
-        if (!stripePriceId || stripePriceId.includes('_placeholder')) {
-            const tierUpper = tier.toUpperCase();
-            if (tierUpper.includes('PREMIUM') || tierUpper.includes('PRO')) {
-                stripePriceId = process.env.STRIPE_PRICE_PRO || stripePriceId;
-            } else if (tierUpper.includes('LUXURY') || tierUpper.includes('ENTERPRISE')) {
-                stripePriceId = process.env.STRIPE_PRICE_ENTERPRISE || stripePriceId;
-            }
-        }
-
-        // If key is missing, placeholder, or the Price ID is not configured, fall back to mock mode
-        if (!secretKey || secretKey === 'sk_test_123' || !stripePriceId || (stripePriceId.startsWith('price_') && stripePriceId.includes('_placeholder'))) {
+        // If no Stripe key configured, fall back to mock mode
+        if (!secretKey || secretKey === 'sk_test_123') {
             logUserActivity({
                 userId: parseInt(userId),
                 action: 'PURCHASE_INIT',
@@ -1172,13 +1151,35 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
             });
         }
 
+        // Resolve tier price from config
+        const tiers = await getTiers();
+        const matchedTier = Object.values(tiers).find(
+            (t: any) => t.name.toLowerCase() === tier.toLowerCase() || 
+                       t.name.split(' ')[0].toLowerCase() === tier.toLowerCase() ||
+                       t.name.includes(`(${tier})`) ||
+                       (tier.toLowerCase() === 'pro' && t.name.toLowerCase().includes('pro')) ||
+                       (tier.toLowerCase() === 'enterprise' && t.name.toLowerCase().includes('enterprise'))
+        ) || (tiers as any)[tier.toUpperCase()] || tiers.FREE;
+
+        const tierName = matchedTier.name || tier;
+        const tierPrice = matchedTier.price || 0;
+        const unitAmount = Math.round(tierPrice * 100); // Stripe uses cents
+
         const baseUrl = req.headers.origin || req.headers.referer || 'http://localhost:3000';
         const stripeObj = await getStripe();
         const session = await stripeObj.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: [
                 {
-                    price: stripePriceId,
+                    price_data: {
+                        currency: 'usd',
+                        product_data: {
+                            name: `Building Innovation — ${tierName}`,
+                            description: `${tierName} subscription plan — ${matchedTier.limit >= 9999 ? 'Unlimited' : matchedTier.limit} AI generations/month`,
+                        },
+                        unit_amount: unitAmount || 1,
+                        recurring: { interval: 'month' as const },
+                    },
                     quantity: 1,
                 },
             ],
@@ -1195,7 +1196,7 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
         logUserActivity({
             userId: parseInt(userId),
             action: 'PURCHASE_INIT',
-            details: { tier, stripePriceId, mode: 'subscription', method: 'stripe' },
+            details: { tier, tierPrice, mode: 'subscription', method: 'stripe' },
         });
     } catch (e: any) {
         console.error('Checkout Session error:', e);

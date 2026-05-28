@@ -114166,20 +114166,7 @@ Auto-downgraded to Free.`
       }
       const config = await getConfig();
       const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
-      const tiers = await getTiers();
-      const matchedTier = Object.values(tiers).find(
-        (t2) => t2.name.toLowerCase() === tier.toLowerCase() || t2.name.split(" ")[0].toLowerCase() === tier.toLowerCase() || t2.name.includes(`(${tier})`) || tier.toLowerCase() === "pro" && t2.name.toLowerCase().includes("pro") || tier.toLowerCase() === "enterprise" && t2.name.toLowerCase().includes("enterprise")
-      ) || tiers[tier.toUpperCase()];
-      let stripePriceId = matchedTier ? matchedTier.stripePriceId : "";
-      if (!stripePriceId || stripePriceId.includes("_placeholder")) {
-        const tierUpper = tier.toUpperCase();
-        if (tierUpper.includes("PREMIUM") || tierUpper.includes("PRO")) {
-          stripePriceId = process.env.STRIPE_PRICE_PRO || stripePriceId;
-        } else if (tierUpper.includes("LUXURY") || tierUpper.includes("ENTERPRISE")) {
-          stripePriceId = process.env.STRIPE_PRICE_ENTERPRISE || stripePriceId;
-        }
-      }
-      if (!secretKey || secretKey === "sk_test_123" || !stripePriceId || stripePriceId.startsWith("price_") && stripePriceId.includes("_placeholder")) {
+      if (!secretKey || secretKey === "sk_test_123") {
         logUserActivity({
           userId: parseInt(userId),
           action: "PURCHASE_INIT",
@@ -114191,13 +114178,28 @@ Auto-downgraded to Free.`
           tier
         });
       }
+      const tiers = await getTiers();
+      const matchedTier = Object.values(tiers).find(
+        (t2) => t2.name.toLowerCase() === tier.toLowerCase() || t2.name.split(" ")[0].toLowerCase() === tier.toLowerCase() || t2.name.includes(`(${tier})`) || tier.toLowerCase() === "pro" && t2.name.toLowerCase().includes("pro") || tier.toLowerCase() === "enterprise" && t2.name.toLowerCase().includes("enterprise")
+      ) || tiers[tier.toUpperCase()] || tiers.FREE;
+      const tierName = matchedTier.name || tier;
+      const tierPrice = matchedTier.price || 0;
+      const unitAmount = Math.round(tierPrice * 100);
       const baseUrl = req.headers.origin || req.headers.referer || "http://localhost:3000";
       const stripeObj = await getStripe();
       const session = await stripeObj.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: [
           {
-            price: stripePriceId,
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `Building Innovation \u2014 ${tierName}`,
+                description: `${tierName} subscription plan \u2014 ${matchedTier.limit >= 9999 ? "Unlimited" : matchedTier.limit} AI generations/month`
+              },
+              unit_amount: unitAmount || 1,
+              recurring: { interval: "month" }
+            },
             quantity: 1
           }
         ],
@@ -114213,7 +114215,7 @@ Auto-downgraded to Free.`
       logUserActivity({
         userId: parseInt(userId),
         action: "PURCHASE_INIT",
-        details: { tier, stripePriceId, mode: "subscription", method: "stripe" }
+        details: { tier, tierPrice, mode: "subscription", method: "stripe" }
       });
     } catch (e2) {
       console.error("Checkout Session error:", e2);
