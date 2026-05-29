@@ -4091,6 +4091,9 @@ const App: React.FC = () => {
                             onClick={() => setView(AppView.CAMERA)}
                             className="text-xs uppercase tracking-wider text-black font-bold"
                         >
+                            <svg className="w-3 h-3 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                            </svg>
                             {t.editor.back}
                         </Button>
                         <div className="flex items-center gap-2">
