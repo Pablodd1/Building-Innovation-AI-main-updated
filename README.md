@@ -1,93 +1,144 @@
-# 🏛️ Building Innovation - ConstructViz AI
+# Building Innovation AI
 
-**Building Innovation AI** is a state-of-the-art construction visualization and material management platform. It leverages cutting-edge Generative AI (Google Gemini 2.0/3.0 & Veo) to provide real-time architectural texturing, cinematic video reveals, and professional project estimation.
+**AI-Powered Construction Material Visualization & Estimation Platform**
 
----
-
-## 🚀 Key Features
-
-### 🎨 AI Visualization & Design
-*   **Real-time Texture Overlay**: Upload a photo of any room and apply floors, wall coverings, or furniture instantly. The AI respects perspective, lighting, and occlusions for a photorealistic preview.
-*   **AI Design Consultant**: An integrated "Room Analysis" feature that identifies architectural styles, lighting conditions, and provides professional design recommendations.
-*   **Cinematic Video Reveal (Veo)**: Transform 2D designs into 4K cinematic 3D video pans, allowing clients to "walk through" their renovated space before a single tile is laid.
-
-### 📊 Smart Estimation & Project Management
-*   **Advanced Cost Calculator**: Sophisticated logic for calculating materials across multiple units (Rolls, Boxes, Tiles, Linear Meters, and Units).
-*   **Dual Unit Support**: Seamless switching between Metric (LATAM) and Imperial (USA) units for global accessibility.
-*   **Contractor Logic**: Integrated installer management with region-based filtering and specialized professional pricing.
-*   **Shopping Cart & PDF Quotes**: Generate professional order requests and email-ready quotes directly from the app.
-
-### 🛡️ Administrative & Tiered Systems
-*   **Tiered User Quotas**: A professional credit-based system (Free, Pro, Enterprise) to manage AI generation costs and monetization.
-*   **Real-time Usage Tracking**: Admins can monitor AI generation usage per user in real-time.
-*   **User Management Dashboard**: Dedicated admin tools to upgrade/downgrade user tiers and manage platform access.
-*   **Material Editor**: A full-featured CMS for managing the product catalog, including CSV bulk imports and high-fidelity image mapping.
+[buildingapp.us](https://buildingapp.us) · [buildinginnovation.us](https://buildinginnovation.us)
 
 ---
 
-## 🏗️ Technical Architecture
+## What It Does
 
-### Tech Stack
-- **Frontend**: React 19, TypeScript, Vanilla CSS (Premium Dark Mode UI).
-- **Backend**: Node.js, Express, PostgreSQL.
-- **AI Models**: 
-  - `gemini-1.5-pro`: High-fidelity texture mapping and staging.
-  - `gemini-1.5-flash`: Fast room analysis and design metadata.
-  - `veo-2.0-generate`: Cinematic video generation.
-- **Persistence**: Hybrid strategy using **PostgreSQL** with a **JSON File Fallback** (`products.json`/`users.json`) to ensure 100% uptime in volatile production environments.
+Building Innovation AI lets contractors, homeowners, and architects:
 
-### Data Model
-- **Materials**: Multi-attribute schema including `price_contractor`, `items_per_box`, `usage` (Interior/Exterior), and `prompt_modifiers` for AI optimization.
-- **Users**: Tiered access levels (`Free`, `Pro`, `Enterprise`) with `generations_used` tracking.
+1. **Take a photo** of any room
+2. **Overlay construction materials** using AI (Google Gemini / OpenAI)
+3. **Get exact estimates** — material quantity, waste factor, labor cost
+4. **Assign a contractor** from our database
+5. **Checkout with Stripe** — buy materials directly
+
+All in a single platform. English/Spanish toggle. LATAM + USA units.
 
 ---
 
-## 🤖 AI Context & Development
-*This section provides context for AI agents (like GitHub Copilot or cursor) working on this repository.*
+## Competitive Landscape
 
-### Code Patterns
-- **Services Architecture**: Core AI logic is encapsulated in `services/geminiService.ts`. Quota enforcement is proxied through the backend `/api/ai/generate` to protect API keys.
-- **Type Safety**: Centralized types in `types.ts` ensure consistency across the full stack.
-- **Hybrid Auth**: Uses a simplified session-based auth with a hardcoded admin fallback (`admin@gmail.com`) for maintenance.
+| Feature | Building Innovation AI | Hover | Planner5D | Buildxact | Procore | STACK |
+|---------|----------------------|-------|-----------|-----------|---------|-------|
+| AI Room Visualization | ✅ | ❌ (3D only) | ⚠️ (design gen) | ❌ | ❌ | ❌ |
+| Camera Photo Capture | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| AI Room Analysis | ✅ | ✅ (measurements) | ⚠️ | ❌ | ❌ | ❌ |
+| Material Estimation | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
+| Contractor Assignment | ✅ | ⚠️ | ❌ | ⚠️ | ✅ | ❌ |
+| Stripe Checkout | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Multi-Language (EN/ES) | ✅ | ❌ | ✅ (20+) | ❌ | ✅ | ❌ |
+| Before/After Comparison | ✅ | ⚠️ | ✅ | ❌ | ❌ | ❌ |
+| Multiple Lighting Modes | ✅ | ❌ | ⚠️ | ❌ | ❌ | ❌ |
+| Free Tier with AI | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| WhatsApp Bot (planned) | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Price** | **Free / $9.99/mo** | $29-65/report | Free / $6.99/mo | $149/mo | ~$5K+/yr | $2,599/yr |
 
-### Key Logic Files
-- `App.tsx`: Main application entry point containing the router and primary UI components.
-- `server/index.ts`: Backend server handling database migrations, API routes, and JSON-LD synchronization.
-- `services/unitUtils.ts`: Handles the complex mathematics for material estimation and unit conversions.
-
----
-
-## 🛠️ Setup & Installation
-
-1. **Clone the Repo**
-   ```bash
-   git clone [repository-url]
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Environment Variables**
-   Create a `.env` file with:
-   ```env
-   DATABASE_URL=your_postgres_url
-   GOOGLE_API_KEY=your_gemini_key
-   ADMIN_EMAIL=comercial.buildinginnovation@gmail.com
-   ```
-
-4. **Run Locally**
-   ```bash
-   npm run dev      # Frontend
-   npm run server   # Backend (dist-server)
-   ```
+> **Full competitive analysis:** [building-innovation-landing.vercel.app](https://building-innovation-landing.vercel.app)
 
 ---
 
-## 📦 Deployment
-The project is configured for **Hostinger** and other shared/VPS hosting environments via a custom GitHub Action (`deploy.yml`). It automatically compiles the TypeScript backend and builds the React frontend into a unified production bundle.
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19 + TypeScript + Vite |
+| Styling | Tailwind CSS |
+| Backend | Express.js (Node.js) |
+| Database | PostgreSQL |
+| AI | Google Gemini 2.0 / OpenAI GPT-4o |
+| Payments | Stripe PaymentIntents |
+| Notifications | Email (Nodemailer) + Telegram Alerts |
+| Hosting | Hostinger (Node.js Passenger) + Vercel |
+| Image Processing | Sharp |
 
 ---
 
-© 2026 Building Innovation. All rights reserved.
+## What Makes Us Different
+
+1. **Only all-in-one platform** — visualization + estimation + contractor + checkout in one flow
+2. **LATAM-first** — Spanish-native interface, Colombian contractor database, metric units
+3. **15x cheaper** than enterprise alternatives (Procore, Buildxact, STACK)
+4. **AI-agnostic** — multi-provider backend can switch between Gemini/OpenAI without code changes
+5. **Free tier** — 5 real AI renders/month at $0
+
+---
+
+## Planned AI Features (Roadmap)
+
+| Feature | Impact | Effort |
+|---------|--------|--------|
+| Voice-to-Quote (hands-free ordering) | 10x faster field quotes | Medium |
+| AI Damage Assessment (insurance claims) | New revenue stream | Medium |
+| AI Design Style Transfer (inspiration → product) | Viral consumer feature | Low |
+| AR Live Preview (WebXR) | Highest conversion | High |
+| AI Project Timeline Generator | PM-lite add-on | Low |
+| WhatsApp AI Chatbot for Quotes | 10x LATAM user base | Medium |
+
+---
+
+## Pricing
+
+| Tier | Price | AI Renders | Features |
+|------|-------|-----------|----------|
+| Free | $0/mo | 5/month | Browse catalog, basic estimation |
+| Premium | $9.99/mo | 50/month | Full estimation, contractor, Stripe |
+| Elite | $19.99/mo | Unlimited | Priority AI, PDF export, all features |
+
+---
+
+## Repository Structure
+
+```
+├── App.tsx                    # Main React application
+├── components/                # Reusable UI components
+│   ├── CameraCapture.tsx      # In-app photo capture
+│   ├── EstimationPanel.tsx    # Material quantity calculator
+│   ├── ImageComparator.tsx    # Before/after side-by-side
+│   └── AdminPurchaseQueue.tsx # Purchase management
+├── server/
+│   ├── index.ts               # Express.js server
+│   ├── services/aiProviders.ts # Multi-provider AI abstraction
+│   ├── emailService.ts        # Purchase notifications
+│   └── telegramAlerts.ts      # Crash/order Telegram alerts
+├── services/
+│   └── geminiService.ts       # Client-side AI service layer
+├── constants.ts               # Materials, contractors, translations
+└── types.ts                   # TypeScript type definitions
+```
+
+---
+
+## Environment Variables
+
+```
+AI_PROVIDER=gemini|openai
+GEMINI_API_KEY=xxx
+OPENAI_API_KEY=xxx
+STRIPE_SECRET_KEY=sk_live_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+DATABASE_URL=postgresql://...
+DB_HOST=xxx
+DB_USER=xxx
+DB_PASSWORD=xxx
+DB_NAME=xxx
+TELEGRAM_BOT_TOKEN=xxx
+TELEGRAM_CHAT_ID=xxx
+```
+
+---
+
+## Deploy
+
+```bash
+npm run build
+# Frontend → Vercel (auto-deploy on git push)
+# Backend → Hostinger (via PHP FTP bridge or Passenger)
+```
+
+---
+
+*Building Innovation AI — Visualize. Estimate. Build.*
