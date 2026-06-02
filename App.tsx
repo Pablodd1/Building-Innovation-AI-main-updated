@@ -3,6 +3,7 @@ import React, {
     useEffect,
     useMemo,
     useCallback,
+    useMemo,
     Suspense,
     lazy,
 } from "react";
@@ -29,6 +30,7 @@ import {
     generateMaterialProbe,
 } from "./services/geminiService";
 import { formatMetersUSA } from "./services/unitUtils";
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 
 interface HistoryItem {
     resultImage: string | null;
@@ -88,7 +90,32 @@ const LoadingSpinner = () => (
 
 // App Component
 const App: React.FC = () => {
-    const [view, setView] = useState<AppView>(AppView.LOGIN);
+    const navigate = useNavigate();
+    const location = useLocation();
+    const view = useMemo(() => {
+        const path = location.pathname;
+        if (path === '/landing') return AppView.LANDING;
+        if (path === '/admin') return AppView.ADMIN;
+        if (path === '/gallery') return AppView.GALLERY;
+        if (path === '/camera') return AppView.CAMERA;
+        if (path === '/editor') return AppView.EDITOR;
+        if (path === '/estimation') return AppView.ESTIMATION;
+        if (path === '/cart') return AppView.CART;
+        return AppView.LOGIN;
+    }, [location]);
+    const setView = (v: AppView) => {
+        const map: Record<string, string> = {
+            [AppView.LOGIN]: '/login',
+            [AppView.LANDING]: '/landing',
+            [AppView.ADMIN]: '/admin',
+            [AppView.GALLERY]: '/gallery',
+            [AppView.CAMERA]: '/camera',
+            [AppView.EDITOR]: '/editor',
+            [AppView.ESTIMATION]: '/estimation',
+            [AppView.CART]: '/cart',
+        };
+        navigate(map[v] || '/');
+    };
     const [categoryUsage, setCategoryUsage] = useState<
         "Interior" | "Exterior" | "All"
     >("Interior");
@@ -5316,4 +5343,10 @@ const App: React.FC = () => {
     );
 };
 
-export default App;
+const AppWrapper: React.FC = () => (
+    <BrowserRouter>
+        <App />
+    </BrowserRouter>
+);
+
+export default AppWrapper;
