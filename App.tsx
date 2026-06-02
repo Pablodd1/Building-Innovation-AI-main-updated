@@ -20,8 +20,9 @@ import {
 import { CONTRACTORS as INITIAL_CONTRACTORS, TRANSLATIONS, MATERIALS } from "./constants";
 import { Button } from "./components/Button";
 import { CameraCapture } from "./components/CameraCapture";
-import { ImageComparator } from "./components/ImageComparator";
 import { EstimationPanel } from "./components/EstimationPanel";
+import { ImageComparator } from "./components/ImageComparator";
+import { ProductCard } from "./components/ProductCard";
 import { AdminPurchaseQueue } from "./components/AdminPurchaseQueue";
 import {
     generateMaterialOverlay,
@@ -3228,6 +3229,8 @@ const App: React.FC = () => {
                                                                 }
                                                                 alt={m.name}
                                                                 onError={handleImageError}
+                                                                loading="lazy"
+                                                                decoding="async"
                                                                 className="w-12 h-12 rounded object-cover border border-gray-300 bg-gray-200"
                                                             />
                                                         </td>
@@ -3987,66 +3990,23 @@ const App: React.FC = () => {
                 <div className="flex-1 overflow-y-auto p-4 md:p-6">
                     <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
                         {filteredMaterials.map((material) => (
-                            <div
+                            <ProductCard
                                 key={material.id}
-                                className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 border border-gray-300 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all"
-                            >
-                                <button
-                                    onClick={() => handleSelectMaterial(material)}
-                                    className="absolute inset-0 w-full h-full text-left"
-                                >
-                                    <img
-                                        src={proxyImageUrl(material.imageUrl)}
-                                        data-original-src={material._fallbackImageUrl || proxyImageUrl(material.imageUrl)}
-                                        alt={material.name}
-                                        onError={handleImageError}
-                                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-2 flex flex-col justify-end">
-                                        <div className="text-[8px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
-                                            {material.category}
-                                        </div>
-                                        <div className="text-gray-700 text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
-                                            {material.name}
-                                        </div>
-                                        <div className="text-[8px] text-gray-500">
-                                            {material.dimensions.width}x
-                                            {material.dimensions.length}cm
-                                        </div>
-                                    </div>
-                                </button>
-                                {/* Add to Cart button */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const dims = material.dimensions || { width: 30, length: 30 };
-                                        addToCart(material, { width: dims.width, height: dims.length }, 1);
-                                    }}
-                                    className="absolute bottom-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1"
-                                    title={lang === 'es' ? 'Añadir al carrito' : 'Add to cart'}
-                                >
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
-                                    </svg>
-                                    +
-                                </button>
-                                {/* Estimate button */}
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedMaterial(material);
-                                        setEstimationSource(AppView.GALLERY);
-                                        setView(AppView.ESTIMATION);
-                                    }}
-                                    className="absolute bottom-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1"
-                                    title={lang === 'es' ? 'Cotizar' : 'Estimate'}
-                                >
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                                    </svg>
-                                    {lang === 'es' ? 'Cotizar' : 'Estimate'}
-                                </button>
-                            </div>
+                                material={material}
+                                lang={lang}
+                                proxyImageUrl={proxyImageUrl}
+                                handleImageError={handleImageError}
+                                onSelect={handleSelectMaterial}
+                                onAddToCart={(m) => {
+                                    const dims = m.dimensions || { width: 30, length: 30 };
+                                    addToCart(m, { width: dims.width, height: dims.length }, 1);
+                                }}
+                                onEstimate={(m) => {
+                                    setSelectedMaterial(m);
+                                    setEstimationSource(AppView.GALLERY);
+                                    setView(AppView.ESTIMATION);
+                                }}
+                            />
                         ))}
                     </div>
                     {filteredMaterials.length === 0 && (
