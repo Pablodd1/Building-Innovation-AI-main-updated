@@ -41,6 +41,8 @@ interface HistoryItem {
 }
 
 // Custom Logo Component
+const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
+
 const LOGO_URL =
     "https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Logo_Building_PNG_u0cjpu.png";
 
@@ -242,6 +244,22 @@ const App: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
     const [adminCollectionFilter, setAdminCollectionFilter] = useState<"All" | "Interior" | "Exterior">("All");
+
+    // Memoized filtered materials for gallery
+    const filteredMaterials = useMemo(() => {
+        return materials.filter(
+            (m) =>
+                (categoryUsage === "All" || m.usage?.toLowerCase() === categoryUsage.toLowerCase()) &&
+                (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    m.category.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
+    }, [materials, categoryUsage, searchQuery]);
+
+    // Memoized paginated materials for admin table
+    const paginatedMaterials = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return materials.slice(start, start + itemsPerPage);
+    }, [materials, currentPage]);
 
     // Sync unit system with language
     useEffect(() => {
@@ -820,27 +838,26 @@ const App: React.FC = () => {
 
     // Google Drive blocks direct browser access — route through server proxy
     // Verified: /api/proxy-image returns real PNG images (352KB+)
-    const proxyImageUrl = (url: string): string => {
+    const proxyImageUrl = useCallback((url: string): string => {
         if (!url) return '';
         if (url.includes('drive.google.com') || url.includes('lh3.googleusercontent.com')) {
             return `/api/proxy-image?url=${encodeURIComponent(url)}`;
         }
         // Rewrite CDN product image URLs to local static path
-        // https://buildingapp.us/products/14031001.webp -> /products/14031001.webp
         const match = url.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
         if (match) {
             return `/products/${match[1]}?v=2`;
         }
         return url;
-    };
+    }, []);
 
-    const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement, Event>) => {
         const target = e.target as HTMLImageElement;
         const originalSrc = target.getAttribute('data-original-src') || target.src;
 
         // Already failed — show placeholder
         if (target.getAttribute('data-error-fixed') === 'true') {
-            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
+            target.src = PLACEHOLDER_IMG;
             return;
         }
 
@@ -860,7 +877,7 @@ const App: React.FC = () => {
                 return;
             }
             target.setAttribute('data-error-fixed', 'true');
-            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
+            target.src = PLACEHOLDER_IMG;
             return;
         }
 
@@ -874,8 +891,8 @@ const App: React.FC = () => {
 
         // Fallback placeholder
         target.setAttribute('data-error-fixed', 'true');
-        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
-    };
+        target.src = PLACEHOLDER_IMG;
+    }, []);
 
     const loadMaterialsFromDB = useCallback(async () => {
         setMaterialsLoading(true);
@@ -1036,7 +1053,7 @@ const App: React.FC = () => {
         } catch (e) {}
     };
 
-    const addToCart = (material: Material, dimensions: { width: number; height: number }, quantity: number = 1) => {
+    const addToCart = useCallback((material: Material, dimensions: { width: number; height: number }, quantity: number = 1) => {
         const existingCart: CartItem[] = JSON.parse(localStorage.getItem("constructVizCart") || "[]");
         // Convert cm dimensions to meters for cart storage
         const widthM = dimensions.width / 100;
@@ -1075,7 +1092,7 @@ const App: React.FC = () => {
         setTimeout(() => setToast(null), 2500);
         
         logUserBehavior("ADD_TO_CART", { materialId: material.id, materialName: itemName, quantity, totalCost });
-    };
+    }, [lang, setCartCount, setToast]);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -1498,18 +1515,18 @@ const App: React.FC = () => {
 
     // --- Main Logic ---
 
-    const handleStart = (usage: "Interior" | "Exterior" | "All") => {
+    const handleStart = useCallback((usage: "Interior" | "Exterior" | "All") => {
         setCategoryUsage(usage);
         setView(AppView.GALLERY);
-    };
+    }, [setCategoryUsage, setView]);
 
-    const handleSelectMaterial = async (material: Material) => {
+    const handleSelectMaterial = useCallback(async (material: Material) => {
         setSelectedMaterial(material);
         setShowProbeModal(true);
         logUserBehavior("SELECT_MATERIAL", { id: material.id, name: material.name });
-    };
+    }, [setSelectedMaterial, setShowProbeModal]);
 
-    const handleImageCapture = (file: File) => {
+    const handleImageCapture = useCallback((file: File) => {
         const reader = new FileReader();
         reader.onloadend = () => {
             setOriginalImage(reader.result as string);
@@ -1527,7 +1544,7 @@ const App: React.FC = () => {
             }));
         };
         reader.readAsDataURL(file);
-    };
+    }, [setOriginalImage, setView, setHistory, setHistoryIndex, setGenerationState]);
 
     const handleGenerate = async () => {
         if (!originalImage) {
@@ -3914,15 +3931,6 @@ const App: React.FC = () => {
     );
 
     const renderGallery = () => {
-        const filtered = materials.filter(
-            (m) =>
-                (categoryUsage === "All" || m.usage?.toLowerCase() === categoryUsage.toLowerCase()) &&
-                (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    m.category
-                        .toLowerCase()
-                        .includes(searchQuery.toLowerCase())),
-        );
-
         return (
             <div className="min-h-screen bg-gray-100 flex flex-col">
                 <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-gray-300 p-4">
@@ -3978,8 +3986,7 @@ const App: React.FC = () => {
 
                 <div className="flex-1 overflow-y-auto p-4 md:p-6">
                     <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-                        {filtered.map((material) => (
-                            (() => { if (filtered.indexOf(material) < 3) console.log('IMG RENDER:', material.refCode, 'imageUrl:', material.imageUrl); return null; })(),
+                        {filteredMaterials.map((material) => (
                             <div
                                 key={material.id}
                                 className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 border border-gray-300 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all"
@@ -4042,7 +4049,7 @@ const App: React.FC = () => {
                             </div>
                         ))}
                     </div>
-                    {filtered.length === 0 && (
+                    {filteredMaterials.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-20 text-gray-500">
                             <p>{t.gallery.noMaterials}</p>
                         </div>
