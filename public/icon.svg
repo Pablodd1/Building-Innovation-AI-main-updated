@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a1628"/>
+      <stop offset="100%" stop-color="#152040"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <!-- Building icon -->
+  <g transform="translate(300,250)" fill="none" stroke="#f59e0b" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Building body -->
+    <rect x="60" y="180" width="300" height="320" rx="12"/>
+    <!-- Roof -->
+    <polygon points="210,30 0,180 420,180"/>
+    <!-- Door -->
+    <rect x="160" y="340" width="100" height="160" rx="8" fill="#f59e0b" opacity="0.3"/>
+    <!-- Windows -->
+    <rect x="100" y="220" width="60" height="60" rx="8" fill="#f59e0b" opacity="0.2"/>
+    <rect x="260" y="220" width="60" height="60" rx="8" fill="#f59e0b" opacity="0.2"/>
+    <!-- AI dots -->
+    <circle cx="312" cy="312" r="8" fill="#4ade80"/>
+    <circle cx="340" cy="312" r="6" fill="#60a5fa"/>
+    <circle cx="362" cy="312" r="4" fill="#f59e0b"/>
+  </g>
+</svg>
