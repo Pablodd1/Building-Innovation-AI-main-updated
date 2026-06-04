@@ -115979,7 +115979,7 @@ Auto-downgraded to Free.`
       }
     }
   }
-  app.get("/api/debug", async (req, res) => {
+  app.get("/api/debug", requireAdmin, async (req, res) => {
     const debugInfo = {
       status: "online",
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -116025,7 +116025,7 @@ Context: ${context || "N/A"}`
     }
     res.json({ status: "logged" });
   });
-  app.get("/api/debug/errors", (req, res) => {
+  app.get("/api/debug/errors", requireAdmin, (req, res) => {
     res.json(errorLog.slice(0, 10));
   });
   app.post("/api/ai/generate", async (req, res) => {
@@ -116061,7 +116061,7 @@ Context: ${context || "N/A"}`
       res.status(500).json({ error: e2.message });
     }
   });
-  app.get("/api/debug/config-path", async (req, res) => {
+  app.get("/api/debug/config-path", requireAdmin, async (req, res) => {
     const searches = JSON_CONFIG_PATHS2.map((p) => ({
       path: p,
       exists: import_fs3.default.existsSync(p),

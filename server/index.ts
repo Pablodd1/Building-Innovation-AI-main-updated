@@ -3343,7 +3343,7 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
     }
 }
 
-app.get('/api/debug', async (req: Request, res: Response) => {
+app.get('/api/debug', requireAdmin, async (req: Request, res: Response) => {
     const debugInfo: any = {
         status: 'online',
         timestamp: new Date().toISOString(),
@@ -3396,7 +3396,7 @@ app.post('/api/log-error', (req: Request, res: Response) => {
     res.json({ status: 'logged' });
 });
 
-app.get('/api/debug/errors', (req: Request, res: Response) => {
+app.get('/api/debug/errors', requireAdmin, (req: Request, res: Response) => {
     res.json(errorLog.slice(0, 10));
 });
 
@@ -3440,7 +3440,7 @@ app.get('/api/admin/audit-logs', requireAdmin, async (req: Request, res: Respons
 });
 
 // Debug endpoint — helps diagnose path issues on Hostinger (safe: no key exposed)
-app.get('/api/debug/config-path', async (req: Request, res: Response) => {
+app.get('/api/debug/config-path', requireAdmin, async (req: Request, res: Response) => {
     const searches = JSON_CONFIG_PATHS.map(p => ({
         path: p,
         exists: fs.existsSync(p),
