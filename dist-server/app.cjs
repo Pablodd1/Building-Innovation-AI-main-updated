@@ -115355,7 +115355,7 @@ Auto-downgraded to Free.`
       if (!name || !email || !password) {
         return res.status(400).json({ error: "Name, email, and password required" });
       }
-      const sessionToken = "session_" + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
+      const sessionToken = "session_" + require("crypto").randomBytes(24).toString("hex");
       try {
         const existing = await query("SELECT id FROM users WHERE email = $1", [email]);
         if (existing.rows.length > 0) {
@@ -115454,7 +115454,7 @@ Auto-downgraded to Free.`
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password required" });
       }
-      const sessionToken = "session_" + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9);
+      const sessionToken = "session_" + require("crypto").randomBytes(24).toString("hex");
       try {
         const result = await query(
           "SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, password_hash FROM users WHERE email = $1",
@@ -116208,7 +116208,15 @@ Context: ${context || "N/A"}`
       const hasAdmin = users.some((u) => u.role === "admin");
       if (!hasAdmin) {
         const adminEmail = process.env.ADMIN_EMAIL || "admin@buildingapp.us";
-        const adminPassword = process.env.ADMIN_PASSWORD || "BuildingAdmin2026!";
+        let adminPassword = process.env.ADMIN_PASSWORD;
+        if (!adminPassword) {
+          if (process.env.NODE_ENV === "production") {
+            console.error("[BOOTSTRAP] FATAL: ADMIN_PASSWORD not set in production");
+            process.exit(1);
+          }
+          console.warn("[BOOTSTRAP] ADMIN_PASSWORD not set, using development default");
+          adminPassword = "BuildingAdmin2026!";
+        }
         const bcrypt = await Promise.resolve().then(() => (init_bcryptjs(), bcryptjs_exports));
         const hash2 = await bcrypt.hash(adminPassword, 10);
         const newAdmin = {

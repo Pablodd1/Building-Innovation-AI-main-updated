@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { Material, AppView } from "../../types";
+import { Material, AppView } from "../types";
 
 interface ProductCardProps {
     material: Material;

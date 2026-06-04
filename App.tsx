@@ -3,7 +3,6 @@ import React, {
     useEffect,
     useMemo,
     useCallback,
-    useMemo,
     Suspense,
     lazy,
 } from "react";
