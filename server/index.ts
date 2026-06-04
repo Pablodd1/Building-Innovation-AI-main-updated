@@ -1127,9 +1127,10 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
     res.json({received: true});
 });
 
-app.post('/api/checkout/create-session', express.json(), async (req: Request, res: Response) => {
+app.post('/api/checkout/create-session', requireAuth, express.json(), async (req: Request, res: Response) => {
     try {
-        const { userId, tier } = req.body;
+        const userId = (req as any).user?.id;
+        const { tier } = req.body;
         if (!userId || !tier) {
             return res.status(400).json({ error: 'Missing userId or tier' });
         }
@@ -2166,22 +2167,22 @@ app.delete('/api/materials/:id', requireAdmin, async (req: Request, res: Respons
         const id = req.params.id as string;
         let deletedLocally = false;
         
-        // Helper to sync deletions to the original tracked JSON seed file
-        const syncToTrackedJSON = (deletedId: string) => {
+        // Helper to sync deletions to the persistent JSON (NOT the git-tracked seed)
+        const syncToPersistentJSON = (deletedId: string) => {
             try {
-                if (fs.existsSync(JSON_PRODUCTS_TRACKED)) {
-                    const trackedData = JSON.parse(fs.readFileSync(JSON_PRODUCTS_TRACKED, 'utf8'));
-                    const filteredTracked = trackedData.filter((m: any) => 
+                if (fs.existsSync(JSON_DB_PATH)) {
+                    const persistentData = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
+                    const filtered = persistentData.filter((m: any) => 
                         String(m.id) !== String(deletedId) && 
                         String(m.refCode || m.ref_code || '') !== String(deletedId)
                     );
-                    if (filteredTracked.length < trackedData.length) {
-                        fs.writeFileSync(JSON_PRODUCTS_TRACKED, JSON.stringify(filteredTracked, null, 2), 'utf8');
+                    if (filtered.length < persistentData.length) {
+                        fs.writeFileSync(JSON_DB_PATH, JSON.stringify(filtered, null, 2), 'utf8');
                         deletedLocally = true;
                     }
                 }
             } catch (e) {
-                console.warn('Failed to sync deletion to tracked JSON:', e);
+                console.warn('Failed to sync deletion to persistent JSON:', e);
             }
         };
 
@@ -2195,7 +2196,7 @@ app.delete('/api/materials/:id', requireAdmin, async (req: Request, res: Respons
             saveToJSON(JSON_DB_PATH, mapped);
             
             // Sync to original tracked file to ensure permanence across repo clones
-            syncToTrackedJSON(id);
+            syncToPersistentJSON(id);
             
             await logAdminAction(req, (req as any).user, 'DELETE_MATERIAL', `Deleted material ID/SKU ${id}`);
             
@@ -2219,7 +2220,7 @@ app.delete('/api/materials/:id', requireAdmin, async (req: Request, res: Respons
             }
             
             saveToJSON(JSON_DB_PATH, filtered);
-            syncToTrackedJSON(id);
+            syncToPersistentJSON(id);
             
             await logAdminAction(req, (req as any).user, 'DELETE_MATERIAL', `Deleted material ID/SKU ${id} (fallback)`);
             res.json({ success: true, id, note: 'Deleted from JSON fallback', permanentlyDeleted: deletedLocally });
@@ -2282,7 +2283,7 @@ app.delete('/api/materials', requireAdmin, async (req: Request, res: Response) =
 // ===== PURCHASE REQUESTS API (new) =====
 
 // Create purchase request (from Cart)
-app.post('/api/purchase-requests', async (req: Request, res: Response) => {
+app.post('/api/purchase-requests', requireAuth, async (req: Request, res: Response) => {
     try {
         const {
             user_id,
@@ -2470,7 +2471,7 @@ app.post('/api/send-quote-email', async (req: Request, res: Response) => {
 });
 
 // Get all purchase requests (admin)
-app.get('/api/purchase-requests', async (req: Request, res: Response) => {
+app.get('/api/purchase-requests', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { status } = req.query;
 
@@ -2500,7 +2501,7 @@ app.get('/api/purchase-requests', async (req: Request, res: Response) => {
 });
 
 // Get single purchase request
-app.get('/api/purchase-requests/:id', async (req: Request, res: Response) => {
+app.get('/api/purchase-requests/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await query('SELECT * FROM purchase_requests WHERE id = $1', [(id as string)]);
@@ -2522,7 +2523,7 @@ app.get('/api/purchase-requests/:id', async (req: Request, res: Response) => {
 });
 
 // Update purchase request status
-app.patch('/api/purchase-requests/:id', async (req: Request, res: Response) => {
+app.patch('/api/purchase-requests/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { status, contacted_by } = req.body;
@@ -2833,43 +2834,14 @@ app.patch('/api/admin/users/:id/generations', requireAdmin, async (req: Request,
     }
 });
 
-// User-facing tier update — for mock subscription upgrades (no Stripe)
+// User-facing tier update — BLOCKED: tier changes must go through Stripe webhook
 app.patch('/api/users/:id/tier', requireAuth, async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
-        const { tier } = req.body;
-
-        // Users can only update their own tier
-        if (String((req as any).user?.id) !== String(id)) {
-            return res.status(403).json({ error: 'Can only update your own tier' });
-        }
-
-        const tiers = await getTiers();
-        const validTiers = Object.keys(tiers).map(k => k.toUpperCase());
-        const isTierValid = validTiers.includes(tier.toUpperCase()) || 
-                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier.toUpperCase()) ||
-                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier);
-        if (!isTierValid) {
-            return res.status(400).json({ error: 'Invalid tier' });
-        }
-
-        // Update tier in DB
-        await query('UPDATE users SET tier = $1, updated_at = NOW() WHERE id = $2', [tier, id]);
-
-        // Update in-memory user list
-        try {
-            const memResult = await getUsers();
-            const memUser = memResult.find((u: any) => String(u.id) === String(id));
-            if (memUser) memUser.tier = tier;
-        } catch (e) {}
-
-        console.log(`[tier-upgrade] User ${id} self-upgraded to ${tier}`);
-
-        res.json({ tier, id, message: 'Tier updated' });
-    } catch (e: any) {
-        console.error('User tier update error:', e);
-        res.status(500).json({ error: e.message });
-    }
+    // Tier changes must be confirmed by Stripe webhook (checkout.session.completed).
+    // Self-service tier upgrades are not allowed — prevents free Premium/Luxury.
+    return res.status(403).json({ 
+        error: 'Tier changes require Stripe checkout. Visit /pricing to upgrade.',
+        redirect: '/pricing'
+    });
 });
 
 app.patch('/api/admin/users/:id/tier', requireAdmin, async (req: Request, res: Response) => {

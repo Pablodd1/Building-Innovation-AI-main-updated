@@ -114158,9 +114158,10 @@ Auto-downgraded to Free.`
     }
     res.json({ received: true });
   });
-  app.post("/api/checkout/create-session", import_express.default.json(), async (req, res) => {
+  app.post("/api/checkout/create-session", requireAuth, import_express.default.json(), async (req, res) => {
     try {
-      const { userId, tier } = req.body;
+      const userId = req.user?.id;
+      const { tier } = req.body;
       if (!userId || !tier) {
         return res.status(400).json({ error: "Missing userId or tier" });
       }
@@ -115014,20 +115015,20 @@ Auto-downgraded to Free.`
     try {
       const id = req.params.id;
       let deletedLocally = false;
-      const syncToTrackedJSON = (deletedId) => {
+      const syncToPersistentJSON = (deletedId) => {
         try {
-          if (import_fs3.default.existsSync(JSON_PRODUCTS_TRACKED)) {
-            const trackedData = JSON.parse(import_fs3.default.readFileSync(JSON_PRODUCTS_TRACKED, "utf8"));
-            const filteredTracked = trackedData.filter(
+          if (import_fs3.default.existsSync(JSON_DB_PATH)) {
+            const persistentData = JSON.parse(import_fs3.default.readFileSync(JSON_DB_PATH, "utf8"));
+            const filtered = persistentData.filter(
               (m2) => String(m2.id) !== String(deletedId) && String(m2.refCode || m2.ref_code || "") !== String(deletedId)
             );
-            if (filteredTracked.length < trackedData.length) {
-              import_fs3.default.writeFileSync(JSON_PRODUCTS_TRACKED, JSON.stringify(filteredTracked, null, 2), "utf8");
+            if (filtered.length < persistentData.length) {
+              import_fs3.default.writeFileSync(JSON_DB_PATH, JSON.stringify(filtered, null, 2), "utf8");
               deletedLocally = true;
             }
           }
         } catch (e2) {
-          console.warn("Failed to sync deletion to tracked JSON:", e2);
+          console.warn("Failed to sync deletion to persistent JSON:", e2);
         }
       };
       try {
@@ -115035,7 +115036,7 @@ Auto-downgraded to Free.`
         const all = await query("SELECT * FROM materials ORDER BY category, name");
         const mapped = all.rows.map(mapDBToMaterial);
         saveToJSON(JSON_DB_PATH, mapped);
-        syncToTrackedJSON(id);
+        syncToPersistentJSON(id);
         await logAdminAction(req, req.user, "DELETE_MATERIAL", `Deleted material ID/SKU ${id}`);
         if (result.rows.length === 0) {
           throw new Error("Not found in DB");
@@ -115052,7 +115053,7 @@ Auto-downgraded to Free.`
           return res.status(404).json({ error: "Material not found in fallback" });
         }
         saveToJSON(JSON_DB_PATH, filtered);
-        syncToTrackedJSON(id);
+        syncToPersistentJSON(id);
         await logAdminAction(req, req.user, "DELETE_MATERIAL", `Deleted material ID/SKU ${id} (fallback)`);
         res.json({ success: true, id, note: "Deleted from JSON fallback", permanentlyDeleted: deletedLocally });
       }
@@ -115113,7 +115114,7 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: error.message });
     }
   });
-  app.post("/api/purchase-requests", async (req, res) => {
+  app.post("/api/purchase-requests", requireAuth, async (req, res) => {
     try {
       const {
         user_id,
@@ -115274,7 +115275,7 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: error.message });
     }
   });
-  app.get("/api/purchase-requests", async (req, res) => {
+  app.get("/api/purchase-requests", requireAdmin, async (req, res) => {
     try {
       const { status } = req.query;
       let sqlQuery = "SELECT * FROM purchase_requests";
@@ -115295,7 +115296,7 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: error.message });
     }
   });
-  app.get("/api/purchase-requests/:id", async (req, res) => {
+  app.get("/api/purchase-requests/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const result = await query("SELECT * FROM purchase_requests WHERE id = $1", [id]);
@@ -115312,7 +115313,7 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: error.message });
     }
   });
-  app.patch("/api/purchase-requests/:id", async (req, res) => {
+  app.patch("/api/purchase-requests/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { status, contacted_by } = req.body;
@@ -115567,31 +115568,10 @@ Auto-downgraded to Free.`
     }
   });
   app.patch("/api/users/:id/tier", requireAuth, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { tier } = req.body;
-      if (String(req.user?.id) !== String(id)) {
-        return res.status(403).json({ error: "Can only update your own tier" });
-      }
-      const tiers = await getTiers();
-      const validTiers = Object.keys(tiers).map((k) => k.toUpperCase());
-      const isTierValid = validTiers.includes(tier.toUpperCase()) || ["FREE", "STANDARD", "PREMIUM", "LUXURY", "PRO", "ENTERPRISE"].includes(tier.toUpperCase()) || ["FREE", "STANDARD", "PREMIUM", "LUXURY", "PRO", "ENTERPRISE"].includes(tier);
-      if (!isTierValid) {
-        return res.status(400).json({ error: "Invalid tier" });
-      }
-      await query("UPDATE users SET tier = $1, updated_at = NOW() WHERE id = $2", [tier, id]);
-      try {
-        const memResult = await getUsers();
-        const memUser = memResult.find((u) => String(u.id) === String(id));
-        if (memUser) memUser.tier = tier;
-      } catch (e2) {
-      }
-      console.log(`[tier-upgrade] User ${id} self-upgraded to ${tier}`);
-      res.json({ tier, id, message: "Tier updated" });
-    } catch (e2) {
-      console.error("User tier update error:", e2);
-      res.status(500).json({ error: e2.message });
-    }
+    return res.status(403).json({
+      error: "Tier changes require Stripe checkout. Visit /pricing to upgrade.",
+      redirect: "/pricing"
+    });
   });
   app.patch("/api/admin/users/:id/tier", requireAdmin, async (req, res) => {
     try {
