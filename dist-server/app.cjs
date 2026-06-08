@@ -95714,10 +95714,39 @@ var getMimeType = (dataURI) => {
   const match = dataURI.match(/^data:(image\/\w+);base64,/);
   return match ? match[1] : "image/jpeg";
 };
+var SELF_URL = process.env.SITE_URL || "https://buildingapp.us";
 var getImageBase64 = async (urlPath) => {
   try {
     if (!urlPath) return null;
+    if (urlPath.startsWith(SELF_URL + "/products/")) {
+      const localRel = urlPath.substring(SELF_URL.length + 1);
+      const localAbs = import_path61.default.resolve(localRel);
+      if (import_fs2.default.existsSync(localAbs)) {
+        const data = import_fs2.default.readFileSync(localAbs);
+        const ext = import_path61.default.extname(localAbs).toLowerCase().replace(".", "");
+        const mimeType = ext === "webp" ? "image/webp" : ext === "png" ? "image/png" : "image/jpeg";
+        return { data: data.toString("base64"), mimeType };
+      }
+    }
     if (urlPath.startsWith("http://") || urlPath.startsWith("https://")) {
+      if (urlPath.startsWith(SELF_URL)) {
+        const localPath = urlPath.substring(SELF_URL.length);
+        const cleanPath2 = localPath.startsWith("/") ? localPath.substring(1) : localPath;
+        const possiblePaths2 = [
+          import_path61.default.join(process.cwd(), cleanPath2),
+          import_path61.default.resolve(cleanPath2)
+        ];
+        for (const p of possiblePaths2) {
+          if (import_fs2.default.existsSync(p)) {
+            const data = import_fs2.default.readFileSync(p);
+            const ext = import_path61.default.extname(p).toLowerCase().replace(".", "");
+            const mimeType2 = ext === "webp" ? "image/webp" : ext === "png" ? "image/png" : "image/jpeg";
+            return { data: data.toString("base64"), mimeType: mimeType2 };
+          }
+        }
+        console.warn(`getImageBase64: local file not found for ${urlPath}, tried ${possiblePaths2.join(", ")}`);
+        return null;
+      }
       const response = await fetch(urlPath);
       if (!response.ok) return null;
       const buffer = Buffer.from(await response.arrayBuffer());
@@ -95857,91 +95886,37 @@ STRICT RENDERING RULES:
     contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
   }
   contents.parts.push({ text: finalPrompt });
-  let usedModel = "gemini-2.5-flash-image";
+  let usedModel = "gemini-2.5-flash";
   let response;
   try {
-    response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
-      contents,
-      config: { responseModalities: ["TEXT", "IMAGE"] }
-    });
-  } catch (primaryError) {
-    console.warn("gemini-2.5-flash-image failed, trying gemini-2.5-flash:", primaryError);
-    usedModel = "gemini-2.5-flash";
     response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents,
       config: { responseModalities: ["TEXT", "IMAGE"] }
     });
+  } catch (primaryError) {
+    console.warn("gemini-2.5-flash failed, trying gemini-2.0-flash-exp-image-generation:", primaryError);
+    usedModel = "gemini-2.0-flash-exp-image-generation";
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-2.0-flash-exp-image-generation",
+        contents,
+        config: { responseModalities: ["TEXT", "IMAGE"] }
+      });
+    } catch (fallbackError) {
+      console.error("All Gemini image models failed:", fallbackError);
+      throw new Error(
+        `Gemini image generation failed with both models. Primary: ${primaryError?.message || primaryError}. Fallback: ${fallbackError?.message || fallbackError}`
+      );
+    }
   }
   const image = extractGeminiImage(response);
   return { image, model: usedModel, durationMs: elapsed() };
 }
 async function generateOverlayOpenAI(req, config) {
-  const start = Date.now();
-  const ai = getOpenAISDK(config.OPENAI_API_KEY);
-  const base64Data = cleanBase64(req.originalImage);
-  const mimeType = getMimeType(req.originalImage);
-  const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
-  const lightingHint = req.renderOptions?.lighting === "SUNSET" ? "warm golden hour sunset lighting" : req.renderOptions?.lighting === "NIGHT_LUXURY" ? "dramatic night luxury lighting with warm interior glow" : "natural ambient lighting";
-  const productRef = await getImageBase64(req.material?.imageUrl);
-  const materialIdentity = `"${req.material?.name || "selected material"}" \u2014 Category: ${req.material?.category || "general"}${req.material?.subcategory ? `, Sub: ${req.material.subcategory}` : ""}`;
-  let instruction;
-  if (isFurniture) {
-    instruction = `Place the product "${materialIdentity}" into this room photo.
-Match room perspective, scale to surrounding objects.
-Cast correct shadows (${lightingHint}).
-Do NOT alter existing furniture/objects unless asked.`;
-  } else {
-    instruction = `Photorealistically OVERLAY the material "${materialIdentity}" onto the appropriate surfaces in this room photo.
-Apply EXACT texture, pattern, color, and scale.
-Preserve all foreground objects (furniture, people, plants, windows) \u2014 do NOT paint over them.
-Match the room's 3D perspective and lighting (${lightingHint}).`;
-  }
-  if (req.userInstruction) instruction += `
-User request: "${req.userInstruction}"`;
-  const userContent = [
-    {
-      type: "image_url",
-      image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "high" }
-    }
-  ];
-  if (productRef) {
-    userContent.push({
-      type: "image_url",
-      image_url: { url: `data:${productRef.mimeType};base64,${productRef.data}`, detail: "high" }
-    });
-    userContent.push({ type: "text", text: "\u2191 Product Reference \u2014 apply this exact material" });
-  }
-  userContent.push({ type: "text", text: instruction });
-  const model = "gpt-4o";
-  const completion = await ai.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: "system",
-        content: "You are an elite architectural visualization AI. Output ONLY the final rendered image. Never describe what you did \u2014 just produce the image."
-      },
-      { role: "user", content: userContent }
-    ],
-    max_tokens: 4096
-  });
-  const text = completion.choices[0]?.message?.content || "";
-  if (text.startsWith("data:image") || text.startsWith("http")) {
-    return { image: text, model, durationMs: Date.now() - start };
-  }
-  console.log("GPT-4o returned text-only, falling back to DALL-E 3");
-  const dalleResp = await ai.images.generate({
-    model: "dall-e-3",
-    prompt: `Photorealistic architectural visualization: ${req.material?.name || ""} applied to a room. ${instruction.substring(0, 900)}`,
-    n: 1,
-    size: "1024x1024",
-    quality: "hd",
-    response_format: "b64_json"
-  });
-  const dallEImage = dalleResp.data?.[0]?.b64_json ? `data:image/png;base64,${dalleResp.data[0].b64_json}` : dalleResp.data?.[0]?.url || "";
-  if (!dallEImage) throw new Error("No image returned from OpenAI.");
-  return { image: dallEImage, model: "dall-e-3", durationMs: Date.now() - start };
+  throw new Error(
+    "OpenAI Chat API does not support image output. For photorealistic material overlays, please use the Gemini provider. Switch provider in Admin \u2192 Settings or set AI_PROVIDER to 'gemini'."
+  );
 }
 async function analyzeRoom(req, provider, config) {
   const start = Date.now();
