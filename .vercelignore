@@ -1,0 +1,8 @@
+products
+product-webp
+product-images
+node_modules
+dist-server
+android
+.git
+convert-to-webp.cjs
