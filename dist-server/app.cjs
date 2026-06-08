@@ -95895,19 +95895,19 @@ STRICT RENDERING RULES:
       config: { responseModalities: ["TEXT", "IMAGE"] }
     });
   } catch (primaryError) {
-    console.warn("gemini-2.5-flash failed, trying gemini-2.0-flash:", primaryError);
-    usedModel = "gemini-2.0-flash";
-    try {
+    const msg = primaryError?.message || String(primaryError);
+    const status = primaryError?.status || primaryError?.code;
+    if (status === 429 || status === 503 || typeof msg === "string" && (msg.includes("UNAVAILABLE") || msg.includes("overloaded"))) {
+      console.warn("gemini-2.5-flash unavailable, retrying once:", msg);
+      usedModel = "gemini-2.5-flash";
+      await new Promise((r2) => setTimeout(r2, 2e3));
       response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash",
         contents,
         config: { responseModalities: ["TEXT", "IMAGE"] }
       });
-    } catch (fallbackError) {
-      console.error("All Gemini image models failed:", fallbackError);
-      throw new Error(
-        `Gemini image generation failed with both models. Primary: ${primaryError?.message || primaryError}. Fallback: ${fallbackError?.message || fallbackError}`
-      );
+    } else {
+      throw primaryError;
     }
   }
   const image = extractGeminiImage(response);

@@ -296,22 +296,22 @@ STRICT RENDERING RULES:
             contents,
             config: { responseModalities: ["TEXT", "IMAGE"] },
         });
-    } catch (primaryError) {
-        console.warn("gemini-2.5-flash failed, trying gemini-2.0-flash:", primaryError);
-        usedModel = "gemini-2.0-flash";
-        try {
+    } catch (primaryError: any) {
+        const msg = primaryError?.message || String(primaryError);
+        const status = primaryError?.status || primaryError?.code;
+        // Only retry on transient errors (rate limit, server error), not on invalid input
+        if (status === 429 || status === 503 || (typeof msg === 'string' && (msg.includes('UNAVAILABLE') || msg.includes('overloaded')))) {
+            console.warn("gemini-2.5-flash unavailable, retrying once:", msg);
+            usedModel = "gemini-2.5-flash";
+            // Wait 2s then retry same model
+            await new Promise(r => setTimeout(r, 2000));
             response = await ai.models.generateContent({
-                model: "gemini-2.0-flash",
+                model: "gemini-2.5-flash",
                 contents,
                 config: { responseModalities: ["TEXT", "IMAGE"] },
             });
-        } catch (fallbackError) {
-            console.error("All Gemini image models failed:", fallbackError);
-            throw new Error(
-                `Gemini image generation failed with both models. ` +
-                `Primary: ${(primaryError as any)?.message || primaryError}. ` +
-                `Fallback: ${(fallbackError as any)?.message || fallbackError}`
-            );
+        } else {
+            throw primaryError;
         }
     }
 
