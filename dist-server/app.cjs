@@ -95895,11 +95895,11 @@ STRICT RENDERING RULES:
       config: { responseModalities: ["TEXT", "IMAGE"] }
     });
   } catch (primaryError) {
-    console.warn("gemini-2.5-flash failed, trying gemini-2.0-flash-exp-image-generation:", primaryError);
-    usedModel = "gemini-2.0-flash-exp-image-generation";
+    console.warn("gemini-2.5-flash failed, trying gemini-2.0-flash:", primaryError);
+    usedModel = "gemini-2.0-flash";
     try {
       response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp-image-generation",
+        model: "gemini-2.0-flash",
         contents,
         config: { responseModalities: ["TEXT", "IMAGE"] }
       });
