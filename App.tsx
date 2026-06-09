@@ -504,7 +504,9 @@ const App: React.FC = () => {
     const fetchAnalytics = async () => {
         setIsLoadingAnalytics(true);
         try {
-            const res = await fetch('/api/admin/analytics');
+            const res = await fetch('/api/admin/analytics', {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
             if (res.ok) {
                 const data = await res.json();
                 setAnalyticsData(data);
@@ -519,7 +521,9 @@ const App: React.FC = () => {
     const fetchAllUsers = async () => {
         setIsLoadingUsers(true);
         try {
-            const res = await fetch("/api/admin/users");
+            const res = await fetch("/api/admin/users", {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
             if (res.ok) {
                 const data = await res.json();
                 setAllUsers(data);
@@ -534,7 +538,9 @@ const App: React.FC = () => {
     const fetchAuditLogs = async () => {
         setIsLoadingAuditLogs(true);
         try {
-            const res = await fetch("/api/admin/audit-logs");
+            const res = await fetch("/api/admin/audit-logs", {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
             if (res.ok) {
                 const data = await res.json();
                 setAuditLogs(data);
@@ -548,7 +554,9 @@ const App: React.FC = () => {
 
     const fetchSecureConfig = async () => {
         try {
-            const res = await fetch("/api/admin/config");
+            const res = await fetch("/api/admin/config", {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
             if (res.ok) {
                 const data = await res.json();
                 setSecureConfig(data);
@@ -1938,6 +1946,7 @@ const App: React.FC = () => {
                                 role: 'admin',
                                 tier: 'Enterprise',
                                 generations_used: 0,
+                                session_token: 'test_admin_token_12345',
                                 photoURL: 'https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/APP_Horizontal_-07_ydmd3m.jpg',
                                 created_at: new Date().toISOString()
                             };
