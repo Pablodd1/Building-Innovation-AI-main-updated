@@ -1881,16 +1881,18 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
         const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider } = req.body;
 
         // Input validation: image must be a valid data URL and under 5MB
-        if (originalImage && typeof originalImage === 'string') {
-            const match = originalImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
-            if (!match) {
-                return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
-            }
-            const base64Data = match[3];
-            const approxBytes = (base64Data.length * 3) / 4;
-            if (approxBytes > 5 * 1024 * 1024) {
-                return res.status(413).json({ error: 'Image too large. Max 5MB.' });
-            }
+        if (!originalImage || typeof originalImage !== 'string') {
+            return res.status(400).json({ error: 'originalImage is required and must be a string' });
+        }
+
+        const match = originalImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        if (!match) {
+            return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
+        }
+        const base64Data = match[3];
+        const approxBytes = (base64Data.length * 3) / 4;
+        if (approxBytes > 5 * 1024 * 1024) {
+            return res.status(413).json({ error: 'Image too large. Max 5MB.' });
         }
         
         // Check quota
@@ -1989,16 +1991,18 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
         const { image, userId, lang, provider: userProvider } = req.body;
 
         // Input validation: image must be a valid data URL and under 5MB
-        if (image && typeof image === 'string') {
-            const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
-            if (!match) {
-                return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
-            }
-            const base64Data = match[3];
-            const approxBytes = (base64Data.length * 3) / 4;
-            if (approxBytes > 5 * 1024 * 1024) {
-                return res.status(413).json({ error: 'Image too large. Max 5MB.' });
-            }
+        if (!image || typeof image !== 'string') {
+            return res.status(400).json({ error: 'image is required and must be a string' });
+        }
+
+        const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        if (!match) {
+            return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
+        }
+        const base64Data = match[3];
+        const approxBytes = (base64Data.length * 3) / 4;
+        if (approxBytes > 5 * 1024 * 1024) {
+            return res.status(413).json({ error: 'Image too large. Max 5MB.' });
         }
         
         if (userId) {
