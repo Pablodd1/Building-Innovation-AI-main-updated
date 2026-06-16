@@ -95886,11 +95886,11 @@ STRICT RENDERING RULES:
     contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
   }
   contents.parts.push({ text: finalPrompt });
-  let usedModel = "gemini-2.0-flash-exp";
+  let usedModel = "gemini-2.5-flash-image";
   let response;
   try {
     response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
+      model: "gemini-2.5-flash-image",
       contents,
       config: { responseModalities: ["TEXT", "IMAGE"] }
     });
@@ -95898,11 +95898,11 @@ STRICT RENDERING RULES:
     const msg = primaryError?.message || String(primaryError);
     const status = primaryError?.status || primaryError?.code;
     if (status === 429 || status === 503 || typeof msg === "string" && (msg.includes("UNAVAILABLE") || msg.includes("overloaded"))) {
-      console.warn("gemini-2.0-flash-exp unavailable, retrying once:", msg);
-      usedModel = "gemini-2.0-flash-exp";
+      console.warn("gemini-2.5-flash-image unavailable, retrying once:", msg);
+      usedModel = "gemini-2.5-flash-image";
       await new Promise((r2) => setTimeout(r2, 2e3));
       response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.5-flash-image",
         contents,
         config: { responseModalities: ["TEXT", "IMAGE"] }
       });
