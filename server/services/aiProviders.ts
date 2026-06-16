@@ -288,31 +288,68 @@ STRICT RENDERING RULES:
     }
     contents.parts.push({ text: finalPrompt });
 
-    let usedModel = "gemini-2.5-flash-image";
+    // Model fallback chain: try best image model, fall back to stable alternatives
+    const IMAGE_MODELS = [
+        { name: "gemini-2.5-flash-image", supportsImageOutput: true },
+        { name: "gemini-2.0-flash-exp", supportsImageOutput: true },
+        { name: "gemini-1.5-pro", supportsImageOutput: false }, // Text-only fallback
+    ];
+
     let response;
-    try {
-        response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-image",
-            contents,
-            config: { responseModalities: ["TEXT", "IMAGE"] },
-        });
-    } catch (primaryError: any) {
-        const msg = primaryError?.message || String(primaryError);
-        const status = primaryError?.status || primaryError?.code;
-        // Only retry on transient errors (rate limit, server error), not on invalid input
-        if (status === 429 || status === 503 || (typeof msg === 'string' && (msg.includes('UNAVAILABLE') || msg.includes('overloaded')))) {
-            console.warn("gemini-2.5-flash-image unavailable, retrying once:", msg);
-            usedModel = "gemini-2.5-flash-image";
-            // Wait 2s then retry same model
-            await new Promise(r => setTimeout(r, 2000));
+    let usedModel = IMAGE_MODELS[0].name;
+    let lastError: any = null;
+
+    for (const modelInfo of IMAGE_MODELS) {
+        try {
+            console.log(`[AI] Trying model: ${modelInfo.name} for image generation...`);
             response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-image",
+                model: modelInfo.name,
                 contents,
                 config: { responseModalities: ["TEXT", "IMAGE"] },
             });
-        } else {
-            throw primaryError;
+            usedModel = modelInfo.name;
+            console.log(`[AI] Successfully used model: ${modelInfo.name}`);
+            break; // Success, exit loop
+        } catch (error: any) {
+            const msg = error?.message || String(error);
+            const status = error?.status || error?.code;
+            lastError = error;
+
+            // Check if this is a model-not-found error (retry with next model)
+            const isModelError = msg.includes("not found") ||
+                                msg.includes("not supported") ||
+                                msg.includes("INVALID_ARGUMENT") ||
+                                status === 404;
+
+            if (isModelError && modelInfo !== IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
+                console.warn(`[AI] Model ${modelInfo.name} failed (${msg}), trying next...`);
+                continue; // Try next model
+            }
+
+            // For transient errors on the last model, retry once after delay
+            if ((status === 429 || status === 503 || msg.includes('UNAVAILABLE')) &&
+                modelInfo === IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
+                console.warn(`[AI] Rate limited on ${modelInfo.name}, retrying after 2s...`);
+                await new Promise(r => setTimeout(r, 2000));
+                try {
+                    response = await ai.models.generateContent({
+                        model: modelInfo.name,
+                        contents,
+                        config: { responseModalities: ["TEXT", "IMAGE"] },
+                    });
+                    usedModel = modelInfo.name;
+                    break;
+                } catch (retryError) {
+                    lastError = retryError;
+                }
+            }
+
+            throw error; // Non-recoverable error
         }
+    }
+
+    if (!response) {
+        throw new Error(`All image models failed. Last error: ${lastError?.message || 'Unknown'}`);
     }
 
     const image = extractGeminiImage(response);
