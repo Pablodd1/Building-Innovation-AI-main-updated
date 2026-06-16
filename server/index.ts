@@ -536,7 +536,7 @@ class SystemMonitor {
 
       // Default: Gemini
       if (!geminiKey) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
-      if (!geminiKey.startsWith('AIza')) return { ok: false, message: 'Gemini API key format invalid (should start with AIza)' };
+      if (!geminiKey.startsWith('AIza') && !geminiKey.startsWith('AQ.')) return { ok: false, message: 'Gemini API key format invalid (should start with AIza or AQ.)' };
       return { ok: true, message: `Gemini key valid (active provider: ${provider})` };
     } catch (e: any) {
       return { ok: false, message: `Config error: ${e.message}` };

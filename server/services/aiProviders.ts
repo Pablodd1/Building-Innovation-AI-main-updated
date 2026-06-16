@@ -463,23 +463,21 @@ export async function checkProviderHealth(
     provider: AIProvider,
     apiKey: string
 ): Promise<{ ok: boolean; message: string }> {
+    // FORMAT-BASED VALIDATION ONLY — no API calls.
+    // Real API pings waste tokens and count against rate limits.
+    // Google suspended our key once already; never ping just to check health.
     if (!apiKey) {
         return { ok: false, message: `No API key configured for ${provider}` };
     }
-    try {
-        if (provider === "openai") {
-            const ai = getOpenAISDK(apiKey);
-            await ai.models.list();
-            return { ok: true, message: "OpenAI API key valid" };
+    if (provider === "openai") {
+        if (!apiKey.startsWith("sk-")) {
+            return { ok: false, message: "OpenAI API key format invalid (should start with sk-)" };
         }
-        // Gemini quick check — just verify the SDK can initialize
-        const ai = getGeminiSDK(apiKey);
-        await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: { parts: [{ text: "ping" }] },
-        });
-        return { ok: true, message: "Gemini API key valid" };
-    } catch (e: any) {
-        return { ok: false, message: e.message || `${provider} check failed` };
+        return { ok: true, message: "OpenAI API key present (format valid)" };
     }
+    // Gemini: validate key exists and has reasonable length
+    if (apiKey.length < 20) {
+        return { ok: false, message: "Gemini API key too short — invalid format" };
+    }
+    return { ok: true, message: "Gemini API key present" };
 }

@@ -113689,7 +113689,7 @@ try {
           return { ok: true, message: `OpenAI key valid (active provider: ${provider})` };
         }
         if (!geminiKey) return { ok: false, message: "GEMINI_API_KEY not found in config or env" };
-        if (!geminiKey.startsWith("AIza")) return { ok: false, message: "Gemini API key format invalid (should start with AIza)" };
+        if (!geminiKey.startsWith("AIza") && !geminiKey.startsWith("AQ.")) return { ok: false, message: "Gemini API key format invalid (should start with AIza or AQ.)" };
         return { ok: true, message: `Gemini key valid (active provider: ${provider})` };
       } catch (e2) {
         return { ok: false, message: `Config error: ${e2.message}` };
