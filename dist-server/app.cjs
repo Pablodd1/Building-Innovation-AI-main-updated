@@ -95769,6 +95769,40 @@ function isUndiciDispatcherVersionMismatchError(error) {
 // server/services/aiProviders.ts
 var import_fs2 = __toESM(require("fs"), 1);
 var import_path61 = __toESM(require("path"), 1);
+var circuitBreakers = /* @__PURE__ */ new Map();
+var CIRCUIT_THRESHOLD = 3;
+var CIRCUIT_RESET_MS = 3e5;
+function getCircuit(provider) {
+  if (!circuitBreakers.has(provider)) {
+    circuitBreakers.set(provider, { failures: 0, lastFailure: 0, isOpen: false });
+  }
+  return circuitBreakers.get(provider);
+}
+function recordFailure(provider) {
+  const circuit = getCircuit(provider);
+  circuit.failures++;
+  circuit.lastFailure = Date.now();
+  if (circuit.failures >= CIRCUIT_THRESHOLD) {
+    circuit.isOpen = true;
+    console.warn(`[CircuitBreaker] ${provider} circuit OPENED after ${circuit.failures} failures`);
+  }
+}
+function recordSuccess(provider) {
+  const circuit = getCircuit(provider);
+  circuit.failures = 0;
+  circuit.isOpen = false;
+}
+function isCircuitOpen(provider) {
+  const circuit = getCircuit(provider);
+  if (!circuit.isOpen) return false;
+  if (Date.now() - circuit.lastFailure > CIRCUIT_RESET_MS) {
+    console.log(`[CircuitBreaker] ${provider} circuit reset after cooldown`);
+    circuit.isOpen = false;
+    circuit.failures = 0;
+    return false;
+  }
+  return true;
+}
 var SERVER_DIR = typeof __dirname !== "undefined" ? __dirname : import_path61.default.resolve();
 var cleanBase64 = (dataURI) => dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
 var getMimeType = (dataURI) => {
@@ -95805,7 +95839,7 @@ var getImageBase64 = async (urlPath) => {
             return { data: data.toString("base64"), mimeType: mimeType2 };
           }
         }
-        console.warn(`getImageBase64: local file not found for ${urlPath}, tried ${possiblePaths2.join(", ")}`);
+        console.warn(`getImageBase64: local file not found for ${urlPath}`);
         return null;
       }
       const response = await fetch(urlPath);
@@ -95848,7 +95882,8 @@ function loadConfig() {
   const defaults3 = {
     AI_PROVIDER: "gemini",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "",
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY || ""
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || ""
   };
   const configPath = findConfigPath();
   if (configPath) {
@@ -95858,6 +95893,7 @@ function loadConfig() {
         AI_PROVIDER: file.AI_PROVIDER || defaults3.AI_PROVIDER,
         GEMINI_API_KEY: file.GEMINI_API_KEY || defaults3.GEMINI_API_KEY,
         OPENAI_API_KEY: file.OPENAI_API_KEY || defaults3.OPENAI_API_KEY,
+        OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults3.OPENROUTER_API_KEY,
         STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
         STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || ""
       };
@@ -95874,6 +95910,8 @@ var _cachedGeminiKey = "";
 var _cachedGemini = null;
 var _cachedOpenAIKey = "";
 var _cachedOpenAI = null;
+var _cachedOpenRouterKey = "";
+var _cachedOpenRouter = null;
 function getGeminiSDK(apiKey) {
   if (_cachedGemini && _cachedGeminiKey === apiKey) return _cachedGemini;
   _cachedGemini = new GoogleGenAI({ apiKey });
@@ -95886,6 +95924,15 @@ function getOpenAISDK(apiKey) {
   _cachedOpenAIKey = apiKey;
   return _cachedOpenAI;
 }
+function getOpenRouterSDK(apiKey) {
+  if (_cachedOpenRouter && _cachedOpenRouterKey === apiKey) return _cachedOpenRouter;
+  _cachedOpenRouter = new OpenAI({
+    apiKey,
+    baseURL: "https://openrouter.ai/api/v1"
+  });
+  _cachedOpenRouterKey = apiKey;
+  return _cachedOpenRouter;
+}
 function extractGeminiImage(response) {
   if (response.candidates?.[0]?.content?.parts) {
     for (const part of response.candidates[0].content.parts) {
@@ -95896,25 +95943,13 @@ function extractGeminiImage(response) {
   }
   throw new Error("No image generated in Gemini response.");
 }
-async function generateOverlay(req, provider, config) {
-  const start = Date.now();
-  if (provider === "openai") {
-    return generateOverlayOpenAI(req, config);
-  }
-  return generateOverlayGemini(req, config, () => Date.now() - start);
-}
-async function generateOverlayGemini(req, config, elapsed) {
-  const ai = getGeminiSDK(config.GEMINI_API_KEY);
-  const base64Data = cleanBase64(req.originalImage);
-  const mimeType = getMimeType(req.originalImage);
+function buildOverlayPrompt(req) {
   const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
   const lightingHint = req.renderOptions?.lighting === "SUNSET" ? "warm golden hour sunset lighting" : req.renderOptions?.lighting === "NIGHT_LUXURY" ? "dramatic night luxury lighting with warm interior glow" : "natural ambient lighting";
-  const productRef = await getImageBase64(req.material?.imageUrl);
-  const hasProductImage = !!productRef;
   const materialIdentity = `"${req.material?.name || "selected material"}" \u2014 Category: ${req.material?.category || "general"}${req.material?.subcategory ? `, Sub: ${req.material.subcategory}` : ""}`;
-  let finalPrompt;
+  let prompt;
   if (isFurniture) {
-    finalPrompt = `You are a professional virtual stager.
+    prompt = `You are a professional virtual stager.
 Place the product shown in the "Product Reference" image into this room.
 Product Name: ${materialIdentity}
 Style: ${req.material?.promptModifier || "modern"}.
@@ -95926,7 +95961,7 @@ Rules:
 - Do NOT alter existing furniture/objects unless user asks
 - Output ONLY the final image`;
   } else {
-    finalPrompt = `You are an elite architectural visualization specialist.
+    prompt = `You are an elite architectural visualization specialist.
 Your task is to photorealistically OVERLAY the material from the "Product Reference" image onto the appropriate surfaces in the user's original room photo.
 Material: ${materialIdentity}
 ${req.userInstruction ? `User request: "${req.userInstruction}"` : ""}
@@ -95939,78 +95974,7 @@ STRICT RENDERING RULES:
 5. Lighting conditions: ${lightingHint}
 6. Output ONLY the final high-quality image.`;
   }
-  const contents = {
-    parts: [{ inlineData: { data: base64Data, mimeType } }]
-  };
-  if (hasProductImage) {
-    contents.parts.push({ text: "Product Reference Image:" });
-    contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
-  }
-  contents.parts.push({ text: finalPrompt });
-  const IMAGE_MODELS = [
-    { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: true },
-    { name: "gemini-2.5-flash", supportsImageOutput: true },
-    { name: "gemini-2.0-flash-exp", supportsImageOutput: false }
-    // Text-only fallback
-  ];
-  let response;
-  let usedModel = IMAGE_MODELS[0].name;
-  let lastError = null;
-  for (const modelInfo of IMAGE_MODELS) {
-    try {
-      console.log(`[AI] Trying model: ${modelInfo.name} for image generation...`);
-      response = await ai.models.generateContent({
-        model: modelInfo.name,
-        contents,
-        config: { responseModalities: ["TEXT", "IMAGE"] }
-      });
-      usedModel = modelInfo.name;
-      console.log(`[AI] Successfully used model: ${modelInfo.name}`);
-      break;
-    } catch (error) {
-      const msg = error?.message || String(error);
-      const status = error?.status || error?.code;
-      lastError = error;
-      const isModelError = msg.includes("not found") || msg.includes("not supported") || msg.includes("INVALID_ARGUMENT") || status === 404;
-      if (isModelError && modelInfo !== IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
-        console.warn(`[AI] Model ${modelInfo.name} failed (${msg}), trying next...`);
-        continue;
-      }
-      if ((status === 429 || status === 503 || msg.includes("UNAVAILABLE")) && modelInfo === IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
-        console.warn(`[AI] Rate limited on ${modelInfo.name}, retrying after 2s...`);
-        await new Promise((r2) => setTimeout(r2, 2e3));
-        try {
-          response = await ai.models.generateContent({
-            model: modelInfo.name,
-            contents,
-            config: { responseModalities: ["TEXT", "IMAGE"] }
-          });
-          usedModel = modelInfo.name;
-          break;
-        } catch (retryError) {
-          lastError = retryError;
-        }
-      }
-      throw error;
-    }
-  }
-  if (!response) {
-    throw new Error(`All image models failed. Last error: ${lastError?.message || "Unknown"}`);
-  }
-  const image = extractGeminiImage(response);
-  return { image, model: usedModel, durationMs: elapsed() };
-}
-async function generateOverlayOpenAI(req, config) {
-  throw new Error(
-    "OpenAI Chat API does not support image output. For photorealistic material overlays, please use the Gemini provider. Switch provider in Admin \u2192 Settings or set AI_PROVIDER to 'gemini'."
-  );
-}
-async function analyzeRoom(req, provider, config) {
-  const start = Date.now();
-  if (provider === "openai") {
-    return analyzeRoomOpenAI(req, config);
-  }
-  return analyzeRoomGemini(req, config, () => Date.now() - start);
+  return { prompt, isFurniture };
 }
 var ANALYSIS_PROMPT = `Analyze this interior/exterior space as a Senior Architect.
 
@@ -96028,59 +95992,409 @@ Return your response in this EXACT JSON format:
 }
 
 For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
-async function analyzeRoomGemini(req, config, elapsed) {
-  const ai = getGeminiSDK(config.GEMINI_API_KEY);
-  const base64Data = cleanBase64(req.image);
-  const mimeType = getMimeType(req.image);
-  const model = "gemini-2.5-flash";
-  const response = await ai.models.generateContent({
-    model,
-    contents: {
-      parts: [
-        { inlineData: { data: base64Data, mimeType } },
-        { text: ANALYSIS_PROMPT }
-      ]
-    }
-  });
-  const rawText = response.text || '{"text":"Could not analyze the room."}';
-  return parseAnalysisResponse(rawText, model, elapsed());
-}
-async function analyzeRoomOpenAI(req, config) {
-  const start = Date.now();
-  const ai = getOpenAISDK(config.OPENAI_API_KEY);
-  const mimeType = getMimeType(req.image);
-  const base64Data = cleanBase64(req.image);
-  const model = "gpt-4o-mini";
-  const completion = await ai.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" }
-          },
-          { type: "text", text: ANALYSIS_PROMPT }
-        ]
-      }
-    ],
-    max_tokens: 500
-  });
-  const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze the room."}';
-  return parseAnalysisResponse(rawText, model, Date.now() - start);
-}
-function parseAnalysisResponse(rawText, model, durationMs) {
+function parseAnalysisResponse(rawText, model, provider, durationMs) {
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
     const parsed = JSON.parse(jsonStr);
     const text = parsed.text || "Could not analyze the room.";
     const dimensions = parsed.dimensions && typeof parsed.dimensions.width === "number" && typeof parsed.dimensions.height === "number" && typeof parsed.dimensions.areaM2 === "number" ? parsed.dimensions : void 0;
-    return { analysis: text, dimensions, model, durationMs };
+    return { analysis: text, dimensions, model, provider, durationMs };
   } catch (e2) {
-    return { analysis: rawText, model, durationMs };
+    return { analysis: rawText, model, provider, durationMs };
   }
+}
+async function generateGenericOverlay(req) {
+  console.warn("[AI] All providers failed. Using generic fallback response.");
+  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+        <rect fill="#1a1a2e" width="800" height="600"/>
+        <text fill="#e94560" x="400" y="250" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">AI Generation Temporarily Unavailable</text>
+        <text fill="#eee" x="400" y="300" text-anchor="middle" font-family="Arial" font-size="16">We're experiencing high demand. Please try again in a moment.</text>
+        <text fill="#888" x="400" y="350" text-anchor="middle" font-family="Arial" font-size="14">Material: ${req.material?.name || "Unknown"}</text>
+    </svg>`;
+  const base64Svg = Buffer.from(svgContent).toString("base64");
+  return {
+    image: `data:image/svg+xml;base64,${base64Svg}`,
+    model: "generic-fallback",
+    durationMs: 0,
+    provider: "generic"
+  };
+}
+async function generateOverlayGemini(req, config, startTime) {
+  if (isCircuitOpen("gemini")) {
+    throw new Error("Gemini circuit breaker is open \u2014 skipping due to recent failures");
+  }
+  const ai = getGeminiSDK(config.GEMINI_API_KEY);
+  const base64Data = cleanBase64(req.originalImage);
+  const mimeType = getMimeType(req.originalImage);
+  const { prompt: finalPrompt } = buildOverlayPrompt(req);
+  const productRef = await getImageBase64(req.material?.imageUrl);
+  const hasProductImage = !!productRef;
+  const contents = {
+    parts: [{ inlineData: { data: base64Data, mimeType } }]
+  };
+  if (hasProductImage) {
+    contents.parts.push({ text: "Product Reference Image:" });
+    contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
+  }
+  contents.parts.push({ text: finalPrompt });
+  const IMAGE_MODELS = [
+    // CURRENT (2026-06): Native image generation, experimental but working
+    { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: true, note: "Primary \u2014 native image output" },
+    // Stable fallback — may or may not support images depending on Google updates
+    { name: "gemini-2.5-flash", supportsImageOutput: true, note: "Fallback \u2014 stable, fast" },
+    // Legacy experimental — text-only fallback if all else fails
+    { name: "gemini-2.0-flash-exp", supportsImageOutput: false, note: "Last resort \u2014 text only" }
+    // DEPRECATED MODELS (kept as comments for reference, DO NOT USE):
+    // { name: "gemini-1.5-pro", supportsImageOutput: false, note: "DEPRECATED 2025 — returns 404" },
+    // { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "NEVER EXISTED — was a hallucination" },
+  ];
+  let response;
+  let usedModel = IMAGE_MODELS[0].name;
+  let lastError = null;
+  for (const modelInfo of IMAGE_MODELS) {
+    try {
+      console.log(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
+      response = await ai.models.generateContent({
+        model: modelInfo.name,
+        contents,
+        config: { responseModalities: ["TEXT", "IMAGE"] }
+      });
+      usedModel = modelInfo.name;
+      console.log(`[AI] \u2705 Gemini success with model: ${modelInfo.name}`);
+      recordSuccess("gemini");
+      break;
+    } catch (error) {
+      const msg = error?.message || String(error);
+      const status = error?.status || error?.code;
+      lastError = error;
+      const isModelError = msg.includes("not found") || msg.includes("not supported") || msg.includes("INVALID_ARGUMENT") || status === 404 || status === 400;
+      const isLastModel = modelInfo === IMAGE_MODELS[IMAGE_MODELS.length - 1];
+      if (isModelError && !isLastModel) {
+        console.warn(`[AI] \u26A0\uFE0F Gemini model ${modelInfo.name} failed (${msg}), trying next...`);
+        continue;
+      }
+      if ((status === 429 || status === 503 || msg.includes("UNAVAILABLE")) && isLastModel) {
+        console.warn(`[AI] \u23F3 Rate limited on ${modelInfo.name}, retrying after 2s...`);
+        await new Promise((r2) => setTimeout(r2, 2e3));
+        try {
+          response = await ai.models.generateContent({
+            model: modelInfo.name,
+            contents,
+            config: { responseModalities: ["TEXT", "IMAGE"] }
+          });
+          usedModel = modelInfo.name;
+          recordSuccess("gemini");
+          break;
+        } catch (retryError) {
+          lastError = retryError;
+        }
+      }
+      recordFailure("gemini");
+      throw error;
+    }
+  }
+  if (!response) {
+    recordFailure("gemini");
+    throw new Error(`All Gemini image models failed. Last error: ${lastError?.message || "Unknown"}`);
+  }
+  const image = extractGeminiImage(response);
+  return { image, model: usedModel, durationMs: Date.now() - startTime, provider: "gemini" };
+}
+async function analyzeRoomGemini(req, config) {
+  if (isCircuitOpen("gemini")) {
+    throw new Error("Gemini circuit breaker is open");
+  }
+  const start = Date.now();
+  const ai = getGeminiSDK(config.GEMINI_API_KEY);
+  const base64Data = cleanBase64(req.image);
+  const mimeType = getMimeType(req.image);
+  const ANALYSIS_MODELS = [
+    { name: "gemini-2.5-flash", note: "Primary \u2014 stable and fast" },
+    { name: "gemini-2.0-flash-exp", note: "Fallback \u2014 experimental" }
+  ];
+  let lastError = null;
+  for (const modelInfo of ANALYSIS_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelInfo.name,
+        contents: {
+          parts: [
+            { inlineData: { data: base64Data, mimeType } },
+            { text: ANALYSIS_PROMPT }
+          ]
+        }
+      });
+      const rawText = response.text || '{"text":"Could not analyze the room."}';
+      recordSuccess("gemini");
+      return parseAnalysisResponse(rawText, modelInfo.name, "gemini", Date.now() - start);
+    } catch (error) {
+      lastError = error;
+      const msg = error?.message || String(error);
+      const isLast = modelInfo === ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
+      if ((msg.includes("not found") || msg.includes("not supported")) && !isLast) {
+        console.warn(`[AI] \u26A0\uFE0F Analysis model ${modelInfo.name} failed, trying next...`);
+        continue;
+      }
+      recordFailure("gemini");
+      if (isLast) throw error;
+    }
+  }
+  throw lastError || new Error("All Gemini analysis models failed");
+}
+async function generateOverlayOpenRouter(req, config, startTime) {
+  if (!config.OPENROUTER_API_KEY) {
+    throw new Error("OpenRouter API key not configured");
+  }
+  if (isCircuitOpen("openrouter")) {
+    throw new Error("OpenRouter circuit breaker is open");
+  }
+  const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
+  const base64Data = cleanBase64(req.originalImage);
+  const { prompt: finalPrompt } = buildOverlayPrompt(req);
+  const OR_IMAGE_MODELS = [
+    "google/gemini-2.0-flash-exp:free",
+    // Free tier available
+    "google/gemini-2.5-flash",
+    // Standard tier
+    "anthropic/claude-3.5-sonnet"
+    // No image output, text fallback
+  ];
+  let lastError = null;
+  for (const modelName of OR_IMAGE_MODELS) {
+    try {
+      console.log(`[AI] Trying OpenRouter model: ${modelName}...`);
+      const response = await ai.chat.completions.create({
+        model: modelName,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
+              { type: "text", text: finalPrompt + "\n\nIMPORTANT: Return a detailed text description of what the final image would look like." }
+            ]
+          }
+        ],
+        max_tokens: 1e3
+      });
+      const text = response.choices[0]?.message?.content || "Image generation unavailable";
+      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+                <rect fill="#f0f0f0" width="800" height="600"/>
+                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
+                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, "&quot;")}...</text>
+                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
+            </svg>`;
+      const base64Svg = Buffer.from(svgContent).toString("base64");
+      console.log(`[AI] \u2705 OpenRouter success with model: ${modelName}`);
+      recordSuccess("openrouter");
+      return {
+        image: `data:image/svg+xml;base64,${base64Svg}`,
+        model: modelName,
+        durationMs: Date.now() - startTime,
+        provider: "openrouter"
+      };
+    } catch (error) {
+      lastError = error;
+      console.warn(`[AI] \u26A0\uFE0F OpenRouter model ${modelName} failed: ${error.message}`);
+    }
+  }
+  recordFailure("openrouter");
+  throw lastError || new Error("All OpenRouter models failed");
+}
+async function analyzeRoomOpenRouter(req, config) {
+  if (!config.OPENROUTER_API_KEY) {
+    throw new Error("OpenRouter API key not configured");
+  }
+  if (isCircuitOpen("openrouter")) {
+    throw new Error("OpenRouter circuit breaker is open");
+  }
+  const start = Date.now();
+  const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
+  const base64Data = cleanBase64(req.image);
+  const mimeType = getMimeType(req.image);
+  const OR_ANALYSIS_MODELS = [
+    "google/gemini-2.5-flash",
+    "openai/gpt-4o-mini",
+    "anthropic/claude-3.5-sonnet"
+  ];
+  let lastError = null;
+  for (const modelName of OR_ANALYSIS_MODELS) {
+    try {
+      const response = await ai.chat.completions.create({
+        model: modelName,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } },
+              { type: "text", text: ANALYSIS_PROMPT }
+            ]
+          }
+        ],
+        max_tokens: 500
+      });
+      const rawText = response.choices[0]?.message?.content || '{"text":"Could not analyze."}';
+      recordSuccess("openrouter");
+      return parseAnalysisResponse(rawText, modelName, "openrouter", Date.now() - start);
+    } catch (error) {
+      lastError = error;
+      console.warn(`[AI] \u26A0\uFE0F OpenRouter analysis model ${modelName} failed: ${error.message}`);
+    }
+  }
+  recordFailure("openrouter");
+  throw lastError || new Error("All OpenRouter analysis models failed");
+}
+async function analyzeRoomOpenAI(req, config) {
+  if (!config.OPENAI_API_KEY) {
+    throw new Error("OpenAI API key not configured");
+  }
+  if (isCircuitOpen("openai")) {
+    throw new Error("OpenAI circuit breaker is open");
+  }
+  const start = Date.now();
+  const ai = getOpenAISDK(config.OPENAI_API_KEY);
+  const mimeType = getMimeType(req.image);
+  const base64Data = cleanBase64(req.image);
+  try {
+    const model = "gpt-4o-mini";
+    const completion = await ai.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image_url",
+              image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" }
+            },
+            { type: "text", text: ANALYSIS_PROMPT }
+          ]
+        }
+      ],
+      max_tokens: 500
+    });
+    const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze."}';
+    recordSuccess("openai");
+    return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
+  } catch (error) {
+    recordFailure("openai");
+    throw error;
+  }
+}
+async function generateOverlay(req, preferredProvider, config) {
+  const start = Date.now();
+  const errors = [];
+  const providerChain = [preferredProvider, "openrouter", "generic"].filter((p, i2, arr) => arr.indexOf(p) === i2);
+  console.log(`[AI] Starting image generation with provider chain: ${providerChain.join(" \u2192 ")}`);
+  for (const provider of providerChain) {
+    try {
+      switch (provider) {
+        case "gemini":
+          if (!config.GEMINI_API_KEY) {
+            errors.push("Gemini: No API key configured");
+            continue;
+          }
+          return await generateOverlayGemini(req, config, start);
+        case "openrouter":
+          if (!config.OPENROUTER_API_KEY) {
+            errors.push("OpenRouter: No API key configured");
+            continue;
+          }
+          return await generateOverlayOpenRouter(req, config, start);
+        case "generic":
+          return await generateGenericOverlay(req);
+        case "openai":
+          errors.push("OpenAI: Chat API does not support image output");
+          continue;
+        default:
+          errors.push(`${provider}: Unknown provider`);
+      }
+    } catch (error) {
+      const msg = error?.message || String(error);
+      console.error(`[AI] \u274C Provider ${provider} failed: ${msg}`);
+      errors.push(`${provider}: ${msg}`);
+    }
+  }
+  console.error(`[AI] All providers failed. Errors: ${errors.join("; ")}`);
+  return generateGenericOverlay(req);
+}
+async function analyzeRoom(req, preferredProvider, config) {
+  const start = Date.now();
+  const errors = [];
+  const providerChain = [preferredProvider, "openrouter", "openai", "generic"].filter((p, i2, arr) => arr.indexOf(p) === i2);
+  console.log(`[AI] Starting room analysis with provider chain: ${providerChain.join(" \u2192 ")}`);
+  for (const provider of providerChain) {
+    try {
+      switch (provider) {
+        case "gemini":
+          if (!config.GEMINI_API_KEY) {
+            errors.push("Gemini: No API key configured");
+            continue;
+          }
+          return await analyzeRoomGemini(req, config);
+        case "openrouter":
+          if (!config.OPENROUTER_API_KEY) {
+            errors.push("OpenRouter: No API key configured");
+            continue;
+          }
+          return await analyzeRoomOpenRouter(req, config);
+        case "openai":
+          if (!config.OPENAI_API_KEY) {
+            errors.push("OpenAI: No API key configured");
+            continue;
+          }
+          return await analyzeRoomOpenAI(req, config);
+        case "generic":
+          return {
+            analysis: "Room analysis temporarily unavailable. Please try again later.",
+            model: "generic-fallback",
+            provider: "generic",
+            durationMs: Date.now() - start
+          };
+        default:
+          errors.push(`${provider}: Unknown provider`);
+      }
+    } catch (error) {
+      const msg = error?.message || String(error);
+      console.error(`[AI] \u274C Provider ${provider} failed: ${msg}`);
+      errors.push(`${provider}: ${msg}`);
+    }
+  }
+  console.error(`[AI] All analysis providers failed. Errors: ${errors.join("; ")}`);
+  return {
+    analysis: "Unable to analyze room at this time. All AI providers are unavailable. Please try again later.",
+    model: "generic-fallback",
+    provider: "generic",
+    durationMs: Date.now() - start
+  };
+}
+async function checkProviderHealth(provider, config) {
+  const circuit = getCircuit(provider);
+  if (provider === "generic") {
+    return { ok: true, message: "Generic fallback always available", circuitOpen: false };
+  }
+  const apiKey = provider === "gemini" ? config.GEMINI_API_KEY : provider === "openai" ? config.OPENAI_API_KEY : provider === "openrouter" ? config.OPENROUTER_API_KEY : "";
+  if (!apiKey) {
+    return { ok: false, message: `No API key configured for ${provider}`, circuitOpen: circuit.isOpen };
+  }
+  if (circuit.isOpen) {
+    return { ok: false, message: `Circuit breaker open (${circuit.failures} failures)`, circuitOpen: true };
+  }
+  if (provider === "openai" && !apiKey.startsWith("sk-")) {
+    return { ok: false, message: "OpenAI key format invalid (should start with sk-)", circuitOpen: false };
+  }
+  if (provider === "gemini" && apiKey.length < 20) {
+    return { ok: false, message: "Gemini key too short", circuitOpen: false };
+  }
+  return { ok: true, message: `${provider} API key present (format valid)`, circuitOpen: false };
+}
+async function getAllProviderHealth(config) {
+  const providers = ["gemini", "openai", "openrouter", "generic"];
+  const results = {};
+  for (const provider of providers) {
+    results[provider] = await checkProviderHealth(provider, config);
+  }
+  return results;
 }
 
 // node_modules/stripe/esm/Error.js
@@ -114378,12 +114692,25 @@ Auto-downgraded to Free.`
     });
     next();
   });
-  app.get("/api/health", (req, res) => {
-    res.json({
-      status: "ok",
-      database: "fallback_enabled",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString()
-    });
+  app.get("/api/health", async (req, res) => {
+    try {
+      const config = loadConfig();
+      const providers = await getAllProviderHealth(config);
+      const anyProviderOk = Object.values(providers).some((p) => p.ok);
+      res.json({
+        status: anyProviderOk ? "ok" : "degraded",
+        database: "fallback_enabled",
+        providers,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    } catch (e2) {
+      res.json({
+        status: "ok",
+        database: "fallback_enabled",
+        error: e2.message,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
   });
   app.get("/api/build", (req, res) => {
     res.json({

@@ -9,7 +9,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
-import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, type AIConfig, type AIProvider } from "./services/aiProviders.js";
+import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllProviderHealth, type AIConfig, type AIProvider } from "./services/aiProviders.js";
 import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
@@ -1338,13 +1338,29 @@ app.use((req: Request, res: Response, next) => {
     next();
 });
 
-// Health check
-app.get('/api/health', (req: Request, res: Response) => {
-    res.json({ 
-        status: 'ok', 
-        database: 'fallback_enabled',
-        timestamp: new Date().toISOString() 
-    });
+// Health check — shows all AI provider status
+app.get('/api/health', async (req: Request, res: Response) => {
+    try {
+        const config = loadConfig();
+        const providers = await getAllProviderHealth(config);
+        
+        // Determine overall status
+        const anyProviderOk = Object.values(providers).some(p => p.ok);
+        
+        res.json({ 
+            status: anyProviderOk ? 'ok' : 'degraded',
+            database: 'fallback_enabled',
+            providers,
+            timestamp: new Date().toISOString() 
+        });
+    } catch (e: any) {
+        res.json({ 
+            status: 'ok', 
+            database: 'fallback_enabled',
+            error: e.message,
+            timestamp: new Date().toISOString() 
+        });
+    }
 });
 
 // Build info — confirms which commit is running

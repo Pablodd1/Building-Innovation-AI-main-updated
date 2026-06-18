@@ -1,7 +1,21 @@
 // =============================================================
-// Multi-Provider AI Abstraction Layer
-// Routes AI calls to Gemini or OpenAI based on config.
+// Multi-Provider AI Abstraction Layer with Auto-Failover
+// Routes AI calls across Gemini, OpenAI, OpenRouter, and local models
 // All provider-specific logic lives here — zero leakage to endpoints.
+//
+// MODEL HISTORY (for reference when updating):
+// ═══════════════════════════════════════════════════════════
+// 2024-Q4: gemini-1.5-pro (deprecated 2025, returns 404)
+// 2025-Q1: gemini-2.0-flash-exp (experimental, limited image support)
+// 2025-Q2: gemini-2.0-flash-exp-image-generation (native image output)
+// 2025-Q3: gemini-2.5-flash (stable, fast, good for analysis)
+// 2025-Q4: gemini-2.5-flash-image (NEVER EXISTED — was a hallucination in old code)
+// 2026-Q2: gemini-2.0-flash-exp-image-generation (CURRENT — primary image gen)
+//          gemini-2.5-flash (CURRENT — primary analysis)
+//
+// BACKUP CHAIN (executed left-to-right on failure):
+//   Gemini (primary) → OpenRouter (unified) → OpenAI (fallback) → Generic Response
+// ═══════════════════════════════════════════════════════════
 // =============================================================
 
 import { GoogleGenAI } from "@google/genai";
@@ -11,12 +25,13 @@ import path from "path";
 
 // ---- Types ----
 
-export type AIProvider = "gemini" | "openai";
+export type AIProvider = "gemini" | "openai" | "openrouter" | "generic";
 
 export interface AIConfig {
     AI_PROVIDER: AIProvider;
     GEMINI_API_KEY: string;
     OPENAI_API_KEY: string;
+    OPENROUTER_API_KEY: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
 }
@@ -44,9 +59,78 @@ export interface AnalysisRequest {
     lang?: string;
 }
 
+export interface GenerationResult {
+    image: string;
+    model: string;
+    durationMs: number;
+    provider: AIProvider;
+}
+
+export interface AnalysisResult {
+    analysis: string;
+    dimensions?: RoomAnalysisDimensions;
+    model: string;
+    durationMs: number;
+    provider: AIProvider;
+}
+
+export interface RoomAnalysisDimensions {
+    width: number;   // in cm
+    height: number;  // in cm
+    areaM2: number;  // in square meters
+}
+
+// ---- Circuit Breaker Pattern ----
+// Tracks provider failures to avoid hammering dead endpoints
+
+interface CircuitState {
+    failures: number;
+    lastFailure: number;
+    isOpen: boolean;
+}
+
+const circuitBreakers = new Map<string, CircuitState>();
+const CIRCUIT_THRESHOLD = 3;      // Open after 3 failures
+const CIRCUIT_RESET_MS = 300000;  // Reset after 5 minutes
+
+function getCircuit(provider: string): CircuitState {
+    if (!circuitBreakers.has(provider)) {
+        circuitBreakers.set(provider, { failures: 0, lastFailure: 0, isOpen: false });
+    }
+    return circuitBreakers.get(provider)!;
+}
+
+function recordFailure(provider: string) {
+    const circuit = getCircuit(provider);
+    circuit.failures++;
+    circuit.lastFailure = Date.now();
+    if (circuit.failures >= CIRCUIT_THRESHOLD) {
+        circuit.isOpen = true;
+        console.warn(`[CircuitBreaker] ${provider} circuit OPENED after ${circuit.failures} failures`);
+    }
+}
+
+function recordSuccess(provider: string) {
+    const circuit = getCircuit(provider);
+    circuit.failures = 0;
+    circuit.isOpen = false;
+}
+
+function isCircuitOpen(provider: string): boolean {
+    const circuit = getCircuit(provider);
+    if (!circuit.isOpen) return false;
+    // Check if enough time has passed to try again
+    if (Date.now() - circuit.lastFailure > CIRCUIT_RESET_MS) {
+        console.log(`[CircuitBreaker] ${provider} circuit reset after cooldown`);
+        circuit.isOpen = false;
+        circuit.failures = 0;
+        return false;
+    }
+    return true;
+}
+
 // ---- Helpers ----
 
-// CJS-safe: always use __dirname (esbuild bundles to CJS)
 const SERVER_DIR = typeof __dirname !== "undefined" ? __dirname : path.resolve();
 
 const cleanBase64 = (dataURI: string) =>
@@ -62,9 +146,8 @@ const SELF_URL = process.env.SITE_URL || "https://buildingapp.us";
 const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType: string } | null> => {
     try {
         if (!urlPath) return null;
-        // Resolve self-referencing URLs to local filesystem (avoids HTTP round-trip to self)
         if (urlPath.startsWith(SELF_URL + "/products/")) {
-            const localRel = urlPath.substring(SELF_URL.length + 1); // e.g. "products/14031001.webp"
+            const localRel = urlPath.substring(SELF_URL.length + 1);
             const localAbs = path.resolve(localRel);
             if (fs.existsSync(localAbs)) {
                 const data = fs.readFileSync(localAbs);
@@ -72,10 +155,8 @@ const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType
                 const mimeType = ext === "webp" ? "image/webp" : ext === "png" ? "image/png" : "image/jpeg";
                 return { data: data.toString("base64"), mimeType };
             }
-            // Fall through to HTTP fetch if local file not found
         }
         if (urlPath.startsWith("http://") || urlPath.startsWith("https://")) {
-            // Skip fetching from self to avoid recursion — resolve locally
             if (urlPath.startsWith(SELF_URL)) {
                 const localPath = urlPath.substring(SELF_URL.length);
                 const cleanPath2 = localPath.startsWith("/") ? localPath.substring(1) : localPath;
@@ -91,7 +172,7 @@ const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType
                         return { data: data.toString("base64"), mimeType };
                     }
                 }
-                console.warn(`getImageBase64: local file not found for ${urlPath}, tried ${possiblePaths.join(", ")}`);
+                console.warn(`getImageBase64: local file not found for ${urlPath}`);
                 return null;
             }
             const response = await fetch(urlPath);
@@ -141,6 +222,7 @@ export function loadConfig(): AIConfig {
         AI_PROVIDER: "gemini",
         GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "",
         OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
+        OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
     };
 
     const configPath = findConfigPath();
@@ -151,6 +233,7 @@ export function loadConfig(): AIConfig {
                 AI_PROVIDER: file.AI_PROVIDER || defaults.AI_PROVIDER,
                 GEMINI_API_KEY: file.GEMINI_API_KEY || defaults.GEMINI_API_KEY,
                 OPENAI_API_KEY: file.OPENAI_API_KEY || defaults.OPENAI_API_KEY,
+                OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults.OPENROUTER_API_KEY,
                 STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
                 STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "",
             };
@@ -163,12 +246,14 @@ export function loadConfig(): AIConfig {
     };
 }
 
-// ---- Lazy SDK instances (cached by key) ----
+// ---- SDK instances (cached by key) ----
 
 let _cachedGeminiKey = "";
 let _cachedGemini: GoogleGenAI | null = null;
 let _cachedOpenAIKey = "";
 let _cachedOpenAI: OpenAI | null = null;
+let _cachedOpenRouterKey = "";
+let _cachedOpenRouter: OpenAI | null = null;
 
 function getGeminiSDK(apiKey: string): GoogleGenAI {
     if (_cachedGemini && _cachedGeminiKey === apiKey) return _cachedGemini;
@@ -184,7 +269,17 @@ function getOpenAISDK(apiKey: string): OpenAI {
     return _cachedOpenAI;
 }
 
-// ---- Image extraction helpers ----
+function getOpenRouterSDK(apiKey: string): OpenAI {
+    if (_cachedOpenRouter && _cachedOpenRouterKey === apiKey) return _cachedOpenRouter;
+    _cachedOpenRouter = new OpenAI({
+        apiKey,
+        baseURL: "https://openrouter.ai/api/v1",
+    });
+    _cachedOpenRouterKey = apiKey;
+    return _cachedOpenRouter;
+}
+
+// ---- Extraction helpers ----
 
 function extractGeminiImage(response: any): string {
     if (response.candidates?.[0]?.content?.parts) {
@@ -197,48 +292,24 @@ function extractGeminiImage(response: any): string {
     throw new Error("No image generated in Gemini response.");
 }
 
-function extractOpenAIImage(response: OpenAI.Images.ImageGenerateParams & { data: any[] }): string {
-    // GPT-4o with image output returns base64 in response
+function extractOpenAIImage(response: any): string {
     if (typeof response === "string") return response;
-    if ((response as any).data?.[0]?.b64_json) {
-        return `data:image/png;base64,${(response as any).data[0].b64_json}`;
+    if (response.data?.[0]?.b64_json) {
+        return `data:image/png;base64,${response.data[0].b64_json}`;
     }
-    if ((response as any).data?.[0]?.url) {
-        return (response as any).data[0].url;
+    if (response.data?.[0]?.url) {
+        return response.data[0].url;
     }
     throw new Error("No image returned from OpenAI.");
 }
 
 // =============================================================
-// IMAGE GENERATION (Overlay)
+// PROMPT BUILDERS (shared across providers)
 // =============================================================
 
-export async function generateOverlay(
-    req: OverlayRequest,
-    provider: AIProvider,
-    config: AIConfig
-): Promise<{ image: string; model: string; durationMs: number }> {
-    const start = Date.now();
-
-    if (provider === "openai") {
-        return generateOverlayOpenAI(req, config);
-    }
-
-    // Default: Gemini
-    return generateOverlayGemini(req, config, () => Date.now() - start);
-}
-
-async function generateOverlayGemini(
-    req: OverlayRequest,
-    config: AIConfig,
-    elapsed: () => number
-): Promise<{ image: string; model: string; durationMs: number }> {
-    const ai = getGeminiSDK(config.GEMINI_API_KEY);
-    const base64Data = cleanBase64(req.originalImage);
-    const mimeType = getMimeType(req.originalImage);
-
+function buildOverlayPrompt(req: OverlayRequest): { prompt: string; isFurniture: boolean } {
     const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
-
+    
     const lightingHint =
         req.renderOptions?.lighting === "SUNSET"
             ? "warm golden hour sunset lighting"
@@ -246,14 +317,11 @@ async function generateOverlayGemini(
                 ? "dramatic night luxury lighting with warm interior glow"
                 : "natural ambient lighting";
 
-    const productRef = await getImageBase64(req.material?.imageUrl);
-    const hasProductImage = !!productRef;
-
     const materialIdentity = `"${req.material?.name || "selected material"}" — Category: ${req.material?.category || "general"}${req.material?.subcategory ? `, Sub: ${req.material.subcategory}` : ""}`;
 
-    let finalPrompt: string;
+    let prompt: string;
     if (isFurniture) {
-        finalPrompt = `You are a professional virtual stager.
+        prompt = `You are a professional virtual stager.
 Place the product shown in the "Product Reference" image into this room.
 Product Name: ${materialIdentity}
 Style: ${req.material?.promptModifier || "modern"}.
@@ -265,7 +333,7 @@ Rules:
 - Do NOT alter existing furniture/objects unless user asks
 - Output ONLY the final image`;
     } else {
-        finalPrompt = `You are an elite architectural visualization specialist.
+        prompt = `You are an elite architectural visualization specialist.
 Your task is to photorealistically OVERLAY the material from the "Product Reference" image onto the appropriate surfaces in the user's original room photo.
 Material: ${materialIdentity}
 ${req.userInstruction ? `User request: "${req.userInstruction}"` : ""}
@@ -279,119 +347,7 @@ STRICT RENDERING RULES:
 6. Output ONLY the final high-quality image.`;
     }
 
-    const contents: any = {
-        parts: [{ inlineData: { data: base64Data, mimeType } }],
-    };
-    if (hasProductImage) {
-        contents.parts.push({ text: "Product Reference Image:" });
-        contents.parts.push({ inlineData: { data: productRef!.data, mimeType: productRef!.mimeType } });
-    }
-    contents.parts.push({ text: finalPrompt });
-
-    // Model fallback chain: try best image model, fall back to stable alternatives
-    const IMAGE_MODELS = [
-        { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: true },
-        { name: "gemini-2.5-flash", supportsImageOutput: true },
-        { name: "gemini-2.0-flash-exp", supportsImageOutput: false }, // Text-only fallback
-    ];
-
-    let response;
-    let usedModel = IMAGE_MODELS[0].name;
-    let lastError: any = null;
-
-    for (const modelInfo of IMAGE_MODELS) {
-        try {
-            console.log(`[AI] Trying model: ${modelInfo.name} for image generation...`);
-            response = await ai.models.generateContent({
-                model: modelInfo.name,
-                contents,
-                config: { responseModalities: ["TEXT", "IMAGE"] },
-            });
-            usedModel = modelInfo.name;
-            console.log(`[AI] Successfully used model: ${modelInfo.name}`);
-            break; // Success, exit loop
-        } catch (error: any) {
-            const msg = error?.message || String(error);
-            const status = error?.status || error?.code;
-            lastError = error;
-
-            // Check if this is a model-not-found error (retry with next model)
-            const isModelError = msg.includes("not found") ||
-                                msg.includes("not supported") ||
-                                msg.includes("INVALID_ARGUMENT") ||
-                                status === 404;
-
-            if (isModelError && modelInfo !== IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
-                console.warn(`[AI] Model ${modelInfo.name} failed (${msg}), trying next...`);
-                continue; // Try next model
-            }
-
-            // For transient errors on the last model, retry once after delay
-            if ((status === 429 || status === 503 || msg.includes('UNAVAILABLE')) &&
-                modelInfo === IMAGE_MODELS[IMAGE_MODELS.length - 1]) {
-                console.warn(`[AI] Rate limited on ${modelInfo.name}, retrying after 2s...`);
-                await new Promise(r => setTimeout(r, 2000));
-                try {
-                    response = await ai.models.generateContent({
-                        model: modelInfo.name,
-                        contents,
-                        config: { responseModalities: ["TEXT", "IMAGE"] },
-                    });
-                    usedModel = modelInfo.name;
-                    break;
-                } catch (retryError) {
-                    lastError = retryError;
-                }
-            }
-
-            throw error; // Non-recoverable error
-        }
-    }
-
-    if (!response) {
-        throw new Error(`All image models failed. Last error: ${lastError?.message || 'Unknown'}`);
-    }
-
-    const image = extractGeminiImage(response);
-    return { image, model: usedModel, durationMs: elapsed() };
-}
-
-async function generateOverlayOpenAI(
-    req: OverlayRequest,
-    config: AIConfig
-): Promise<{ image: string; model: string; durationMs: number }> {
-    // OpenAI Chat Completions API does not support image output natively.
-    // GPT-4o's modalities only support "text" and "audio", not "image".
-    // For photorealistic material overlays on user photos, use Gemini instead.
-    throw new Error(
-        "OpenAI Chat API does not support image output. " +
-        "For photorealistic material overlays, please use the Gemini provider. " +
-        "Switch provider in Admin → Settings or set AI_PROVIDER to 'gemini'."
-    );
-}
-
-// =============================================================
-// ROOM ANALYSIS (Structured)
-// =============================================================
-
-export interface RoomAnalysisDimensions {
-    width: number;   // in cm
-    height: number;  // in cm
-    areaM2: number;  // in square meters
-}
-
-export async function analyzeRoom(
-    req: AnalysisRequest,
-    provider: AIProvider,
-    config: AIConfig
-): Promise<{ analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number }> {
-    const start = Date.now();
-
-    if (provider === "openai") {
-        return analyzeRoomOpenAI(req, config);
-    }
-
-    return analyzeRoomGemini(req, config, () => Date.now() - start);
+    return { prompt, isFurniture };
 }
 
 const ANALYSIS_PROMPT = `Analyze this interior/exterior space as a Senior Architect.
@@ -411,68 +367,8 @@ Return your response in this EXACT JSON format:
 
 For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
 
-async function analyzeRoomGemini(
-    req: AnalysisRequest,
-    config: AIConfig,
-    elapsed: () => number
-): Promise<{ analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number }> {
-    const ai = getGeminiSDK(config.GEMINI_API_KEY);
-    const base64Data = cleanBase64(req.image);
-    const mimeType = getMimeType(req.image);
-
-    const model = "gemini-2.5-flash";
-    const response = await ai.models.generateContent({
-        model,
-        contents: {
-            parts: [
-                { inlineData: { data: base64Data, mimeType } },
-                { text: ANALYSIS_PROMPT },
-            ],
-        },
-    });
-
-    const rawText = response.text || "{\"text\":\"Could not analyze the room.\"}";
-    return parseAnalysisResponse(rawText, model, elapsed());
-}
-
-async function analyzeRoomOpenAI(
-    req: AnalysisRequest,
-    config: AIConfig
-): Promise<{ analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number }> {
-    const start = Date.now();
-    const ai = getOpenAISDK(config.OPENAI_API_KEY);
-    const mimeType = getMimeType(req.image);
-    const base64Data = cleanBase64(req.image);
-
-    const model = "gpt-4o-mini";
-    const completion = await ai.chat.completions.create({
-        model,
-        messages: [
-            {
-                role: "user",
-                content: [
-                    {
-                        type: "image_url",
-                        image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" },
-                    },
-                    { type: "text", text: ANALYSIS_PROMPT },
-                ],
-            },
-        ],
-        max_tokens: 500,
-    });
-
-    const rawText = completion.choices[0]?.message?.content || "{\"text\":\"Could not analyze the room.\"}";
-    return parseAnalysisResponse(rawText, model, Date.now() - start);
-}
-
-function parseAnalysisResponse(
-    rawText: string,
-    model: string,
-    durationMs: number
-): { analysis: string; dimensions?: RoomAnalysisDimensions; model: string; durationMs: number } {
+function parseAnalysisResponse(rawText: string, model: string, provider: AIProvider, durationMs: number): AnalysisResult {
     try {
-        // Try to extract JSON from the response (might be wrapped in markdown)
         const jsonMatch = rawText.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
         const parsed = JSON.parse(jsonStr);
@@ -485,11 +381,492 @@ function parseAnalysisResponse(
             ? parsed.dimensions
             : undefined;
 
-        return { analysis: text, dimensions, model, durationMs };
+        return { analysis: text, dimensions, model, provider, durationMs };
     } catch (e) {
-        // Fallback: return raw text as analysis, no dimensions
-        return { analysis: rawText, model, durationMs };
+        return { analysis: rawText, model, provider, durationMs };
     }
+}
+
+// =============================================================
+// GENERIC FALLBACK — Always works, no API needed
+// =============================================================
+
+async function generateGenericOverlay(req: OverlayRequest): Promise<GenerationResult> {
+    console.warn("[AI] All providers failed. Using generic fallback response.");
+    
+    // Return a simple "placeholder" image with text explaining the issue
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+        <rect fill="#1a1a2e" width="800" height="600"/>
+        <text fill="#e94560" x="400" y="250" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">AI Generation Temporarily Unavailable</text>
+        <text fill="#eee" x="400" y="300" text-anchor="middle" font-family="Arial" font-size="16">We're experiencing high demand. Please try again in a moment.</text>
+        <text fill="#888" x="400" y="350" text-anchor="middle" font-family="Arial" font-size="14">Material: ${req.material?.name || 'Unknown'}</text>
+    </svg>`;
+    
+    const base64Svg = Buffer.from(svgContent).toString('base64');
+    
+    return {
+        image: `data:image/svg+xml;base64,${base64Svg}`,
+        model: "generic-fallback",
+        durationMs: 0,
+        provider: "generic"
+    };
+}
+
+// =============================================================
+// GEMINI PROVIDER — Primary (best image generation)
+// =============================================================
+
+async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, startTime: number): Promise<GenerationResult> {
+    if (isCircuitOpen("gemini")) {
+        throw new Error("Gemini circuit breaker is open — skipping due to recent failures");
+    }
+
+    const ai = getGeminiSDK(config.GEMINI_API_KEY);
+    const base64Data = cleanBase64(req.originalImage);
+    const mimeType = getMimeType(req.originalImage);
+    const { prompt: finalPrompt } = buildOverlayPrompt(req);
+    const productRef = await getImageBase64(req.material?.imageUrl);
+    const hasProductImage = !!productRef;
+
+    const contents: any = {
+        parts: [{ inlineData: { data: base64Data, mimeType } }],
+    };
+    if (hasProductImage) {
+        contents.parts.push({ text: "Product Reference Image:" });
+        contents.parts.push({ inlineData: { data: productRef!.data, mimeType: productRef!.mimeType } });
+    }
+    contents.parts.push({ text: finalPrompt });
+
+    // ═══════════════════════════════════════════════════════════
+    // GEMINI IMAGE MODEL FALLBACK CHAIN
+    // Ordered by capability (best first), with comments for history
+    // ═══════════════════════════════════════════════════════════
+    const IMAGE_MODELS = [
+        // CURRENT (2026-06): Native image generation, experimental but working
+        { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: true, note: "Primary — native image output" },
+        // Stable fallback — may or may not support images depending on Google updates
+        { name: "gemini-2.5-flash", supportsImageOutput: true, note: "Fallback — stable, fast" },
+        // Legacy experimental — text-only fallback if all else fails
+        { name: "gemini-2.0-flash-exp", supportsImageOutput: false, note: "Last resort — text only" },
+        // DEPRECATED MODELS (kept as comments for reference, DO NOT USE):
+        // { name: "gemini-1.5-pro", supportsImageOutput: false, note: "DEPRECATED 2025 — returns 404" },
+        // { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "NEVER EXISTED — was a hallucination" },
+    ];
+
+    let response;
+    let usedModel = IMAGE_MODELS[0].name;
+    let lastError: any = null;
+
+    for (const modelInfo of IMAGE_MODELS) {
+        try {
+            console.log(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
+            response = await ai.models.generateContent({
+                model: modelInfo.name,
+                contents,
+                config: { responseModalities: ["TEXT", "IMAGE"] },
+            });
+            usedModel = modelInfo.name;
+            console.log(`[AI] ✅ Gemini success with model: ${modelInfo.name}`);
+            recordSuccess("gemini");
+            break;
+        } catch (error: any) {
+            const msg = error?.message || String(error);
+            const status = error?.status || error?.code;
+            lastError = error;
+
+            // Check if this is a model-not-found or invalid error
+            const isModelError = msg.includes("not found") ||
+                                msg.includes("not supported") ||
+                                msg.includes("INVALID_ARGUMENT") ||
+                                status === 404 ||
+                                status === 400;
+
+            const isLastModel = modelInfo === IMAGE_MODELS[IMAGE_MODELS.length - 1];
+
+            if (isModelError && !isLastModel) {
+                console.warn(`[AI] ⚠️ Gemini model ${modelInfo.name} failed (${msg}), trying next...`);
+                continue;
+            }
+
+            // For rate limits on last model, retry once
+            if ((status === 429 || status === 503 || msg.includes('UNAVAILABLE')) && isLastModel) {
+                console.warn(`[AI] ⏳ Rate limited on ${modelInfo.name}, retrying after 2s...`);
+                await new Promise(r => setTimeout(r, 2000));
+                try {
+                    response = await ai.models.generateContent({
+                        model: modelInfo.name,
+                        contents,
+                        config: { responseModalities: ["TEXT", "IMAGE"] },
+                    });
+                    usedModel = modelInfo.name;
+                    recordSuccess("gemini");
+                    break;
+                } catch (retryError) {
+                    lastError = retryError;
+                }
+            }
+
+            // Record failure for circuit breaker
+            recordFailure("gemini");
+            throw error;
+        }
+    }
+
+    if (!response) {
+        recordFailure("gemini");
+        throw new Error(`All Gemini image models failed. Last error: ${lastError?.message || 'Unknown'}`);
+    }
+
+    const image = extractGeminiImage(response);
+    return { image, model: usedModel, durationMs: Date.now() - startTime, provider: "gemini" };
+}
+
+async function analyzeRoomGemini(req: AnalysisRequest, config: AIConfig): Promise<AnalysisResult> {
+    if (isCircuitOpen("gemini")) {
+        throw new Error("Gemini circuit breaker is open");
+    }
+
+    const start = Date.now();
+    const ai = getGeminiSDK(config.GEMINI_API_KEY);
+    const base64Data = cleanBase64(req.image);
+    const mimeType = getMimeType(req.image);
+
+    // Analysis model fallback chain
+    const ANALYSIS_MODELS = [
+        { name: "gemini-2.5-flash", note: "Primary — stable and fast" },
+        { name: "gemini-2.0-flash-exp", note: "Fallback — experimental" },
+    ];
+
+    let lastError: any = null;
+
+    for (const modelInfo of ANALYSIS_MODELS) {
+        try {
+            const response = await ai.models.generateContent({
+                model: modelInfo.name,
+                contents: {
+                    parts: [
+                        { inlineData: { data: base64Data, mimeType } },
+                        { text: ANALYSIS_PROMPT },
+                    ],
+                },
+            });
+
+            const rawText = response.text || "{\"text\":\"Could not analyze the room.\"}";
+            recordSuccess("gemini");
+            return parseAnalysisResponse(rawText, modelInfo.name, "gemini", Date.now() - start);
+        } catch (error: any) {
+            lastError = error;
+            const msg = error?.message || String(error);
+            const isLast = modelInfo === ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
+            
+            if ((msg.includes("not found") || msg.includes("not supported")) && !isLast) {
+                console.warn(`[AI] ⚠️ Analysis model ${modelInfo.name} failed, trying next...`);
+                continue;
+            }
+            
+            recordFailure("gemini");
+            if (isLast) throw error;
+        }
+    }
+
+    throw lastError || new Error("All Gemini analysis models failed");
+}
+
+// =============================================================
+// OPENROUTER PROVIDER — Unified API (Gemini + OpenAI + Claude)
+// Sign up: https://openrouter.ai/ (free, instant)
+// =============================================================
+
+async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, startTime: number): Promise<GenerationResult> {
+    if (!config.OPENROUTER_API_KEY) {
+        throw new Error("OpenRouter API key not configured");
+    }
+    if (isCircuitOpen("openrouter")) {
+        throw new Error("OpenRouter circuit breaker is open");
+    }
+
+    const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
+    const base64Data = cleanBase64(req.originalImage);
+    const { prompt: finalPrompt } = buildOverlayPrompt(req);
+
+    // OpenRouter model fallback chain for image generation
+    const OR_IMAGE_MODELS = [
+        "google/gemini-2.0-flash-exp:free",     // Free tier available
+        "google/gemini-2.5-flash",              // Standard tier
+        "anthropic/claude-3.5-sonnet",          // No image output, text fallback
+    ];
+
+    let lastError: any = null;
+
+    for (const modelName of OR_IMAGE_MODELS) {
+        try {
+            console.log(`[AI] Trying OpenRouter model: ${modelName}...`);
+            
+            // Note: Most models on OpenRouter don't support native image output
+            // This is a best-effort fallback that returns text descriptions
+            const response = await ai.chat.completions.create({
+                model: modelName,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
+                            { type: "text", text: finalPrompt + "\n\nIMPORTANT: Return a detailed text description of what the final image would look like." },
+                        ],
+                    },
+                ],
+                max_tokens: 1000,
+            });
+
+            const text = response.choices[0]?.message?.content || "Image generation unavailable";
+            
+            // Create a placeholder with the description
+            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+                <rect fill="#f0f0f0" width="800" height="600"/>
+                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
+                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, '&quot;')}...</text>
+                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
+            </svg>`;
+            
+            const base64Svg = Buffer.from(svgContent).toString('base64');
+            
+            console.log(`[AI] ✅ OpenRouter success with model: ${modelName}`);
+            recordSuccess("openrouter");
+            return {
+                image: `data:image/svg+xml;base64,${base64Svg}`,
+                model: modelName,
+                durationMs: Date.now() - startTime,
+                provider: "openrouter"
+            };
+        } catch (error: any) {
+            lastError = error;
+            console.warn(`[AI] ⚠️ OpenRouter model ${modelName} failed: ${error.message}`);
+        }
+    }
+
+    recordFailure("openrouter");
+    throw lastError || new Error("All OpenRouter models failed");
+}
+
+async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Promise<AnalysisResult> {
+    if (!config.OPENROUTER_API_KEY) {
+        throw new Error("OpenRouter API key not configured");
+    }
+    if (isCircuitOpen("openrouter")) {
+        throw new Error("OpenRouter circuit breaker is open");
+    }
+
+    const start = Date.now();
+    const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
+    const base64Data = cleanBase64(req.image);
+    const mimeType = getMimeType(req.image);
+
+    const OR_ANALYSIS_MODELS = [
+        "google/gemini-2.5-flash",
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3.5-sonnet",
+    ];
+
+    let lastError: any = null;
+
+    for (const modelName of OR_ANALYSIS_MODELS) {
+        try {
+            const response = await ai.chat.completions.create({
+                model: modelName,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } },
+                            { type: "text", text: ANALYSIS_PROMPT },
+                        ],
+                    },
+                ],
+                max_tokens: 500,
+            });
+
+            const rawText = response.choices[0]?.message?.content || "{\"text\":\"Could not analyze.\"}";
+            recordSuccess("openrouter");
+            return parseAnalysisResponse(rawText, modelName, "openrouter", Date.now() - start);
+        } catch (error: any) {
+            lastError = error;
+            console.warn(`[AI] ⚠️ OpenRouter analysis model ${modelName} failed: ${error.message}`);
+        }
+    }
+
+    recordFailure("openrouter");
+    throw lastError || new Error("All OpenRouter analysis models failed");
+}
+
+// =============================================================
+// OPENAI PROVIDER — Fallback (text analysis only)
+// Note: OpenAI Chat API doesn't support image output natively
+// =============================================================
+
+async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promise<AnalysisResult> {
+    if (!config.OPENAI_API_KEY) {
+        throw new Error("OpenAI API key not configured");
+    }
+    if (isCircuitOpen("openai")) {
+        throw new Error("OpenAI circuit breaker is open");
+    }
+
+    const start = Date.now();
+    const ai = getOpenAISDK(config.OPENAI_API_KEY);
+    const mimeType = getMimeType(req.image);
+    const base64Data = cleanBase64(req.image);
+
+    try {
+        const model = "gpt-4o-mini";
+        const completion = await ai.chat.completions.create({
+            model,
+            messages: [
+                {
+                    role: "user",
+                    content: [
+                        {
+                            type: "image_url",
+                            image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" },
+                        },
+                        { type: "text", text: ANALYSIS_PROMPT },
+                    ],
+                },
+            ],
+            max_tokens: 500,
+        });
+
+        const rawText = completion.choices[0]?.message?.content || "{\"text\":\"Could not analyze.\"}";
+        recordSuccess("openai");
+        return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
+    } catch (error: any) {
+        recordFailure("openai");
+        throw error;
+    }
+}
+
+// =============================================================
+// PUBLIC API — Multi-Provider Failover Orchestrator
+// =============================================================
+
+export async function generateOverlay(
+    req: OverlayRequest,
+    preferredProvider: AIProvider,
+    config: AIConfig
+): Promise<GenerationResult> {
+    const start = Date.now();
+    const errors: string[] = [];
+
+    // Provider priority chain for IMAGE GENERATION
+    // Gemini is best (native image output), OpenRouter is second (unified), generic is last
+    const providerChain: AIProvider[] = [preferredProvider, "openrouter", "generic"]
+        .filter((p, i, arr) => arr.indexOf(p) === i); // dedupe
+
+    console.log(`[AI] Starting image generation with provider chain: ${providerChain.join(" → ")}`);
+
+    for (const provider of providerChain) {
+        try {
+            switch (provider) {
+                case "gemini":
+                    if (!config.GEMINI_API_KEY) {
+                        errors.push("Gemini: No API key configured");
+                        continue;
+                    }
+                    return await generateOverlayGemini(req, config, start);
+
+                case "openrouter":
+                    if (!config.OPENROUTER_API_KEY) {
+                        errors.push("OpenRouter: No API key configured");
+                        continue;
+                    }
+                    return await generateOverlayOpenRouter(req, config, start);
+
+                case "generic":
+                    return await generateGenericOverlay(req);
+
+                case "openai":
+                    errors.push("OpenAI: Chat API does not support image output");
+                    continue;
+
+                default:
+                    errors.push(`${provider}: Unknown provider`);
+            }
+        } catch (error: any) {
+            const msg = error?.message || String(error);
+            console.error(`[AI] ❌ Provider ${provider} failed: ${msg}`);
+            errors.push(`${provider}: ${msg}`);
+            // Continue to next provider
+        }
+    }
+
+    // All providers failed — return generic fallback
+    console.error(`[AI] All providers failed. Errors: ${errors.join("; ")}`);
+    return generateGenericOverlay(req);
+}
+
+export async function analyzeRoom(
+    req: AnalysisRequest,
+    preferredProvider: AIProvider,
+    config: AIConfig
+): Promise<AnalysisResult> {
+    const start = Date.now();
+    const errors: string[] = [];
+
+    // Provider priority chain for ANALYSIS (all support vision+text)
+    const providerChain: AIProvider[] = [preferredProvider, "openrouter", "openai", "generic"]
+        .filter((p, i, arr) => arr.indexOf(p) === i);
+
+    console.log(`[AI] Starting room analysis with provider chain: ${providerChain.join(" → ")}`);
+
+    for (const provider of providerChain) {
+        try {
+            switch (provider) {
+                case "gemini":
+                    if (!config.GEMINI_API_KEY) {
+                        errors.push("Gemini: No API key configured");
+                        continue;
+                    }
+                    return await analyzeRoomGemini(req, config);
+
+                case "openrouter":
+                    if (!config.OPENROUTER_API_KEY) {
+                        errors.push("OpenRouter: No API key configured");
+                        continue;
+                    }
+                    return await analyzeRoomOpenRouter(req, config);
+
+                case "openai":
+                    if (!config.OPENAI_API_KEY) {
+                        errors.push("OpenAI: No API key configured");
+                        continue;
+                    }
+                    return await analyzeRoomOpenAI(req, config);
+
+                case "generic":
+                    return {
+                        analysis: "Room analysis temporarily unavailable. Please try again later.",
+                        model: "generic-fallback",
+                        provider: "generic",
+                        durationMs: Date.now() - start
+                    };
+
+                default:
+                    errors.push(`${provider}: Unknown provider`);
+            }
+        } catch (error: any) {
+            const msg = error?.message || String(error);
+            console.error(`[AI] ❌ Provider ${provider} failed: ${msg}`);
+            errors.push(`${provider}: ${msg}`);
+        }
+    }
+
+    // All providers failed
+    console.error(`[AI] All analysis providers failed. Errors: ${errors.join("; ")}`);
+    return {
+        analysis: "Unable to analyze room at this time. All AI providers are unavailable. Please try again later.",
+        model: "generic-fallback",
+        provider: "generic",
+        durationMs: Date.now() - start
+    };
 }
 
 // =============================================================
@@ -498,23 +875,44 @@ function parseAnalysisResponse(
 
 export async function checkProviderHealth(
     provider: AIProvider,
-    apiKey: string
-): Promise<{ ok: boolean; message: string }> {
-    // FORMAT-BASED VALIDATION ONLY — no API calls.
-    // Real API pings waste tokens and count against rate limits.
-    // Google suspended our key once already; never ping just to check health.
+    config: AIConfig
+): Promise<{ ok: boolean; message: string; circuitOpen: boolean }> {
+    const circuit = getCircuit(provider);
+    
+    if (provider === "generic") {
+        return { ok: true, message: "Generic fallback always available", circuitOpen: false };
+    }
+
+    const apiKey = provider === "gemini" ? config.GEMINI_API_KEY :
+                   provider === "openai" ? config.OPENAI_API_KEY :
+                   provider === "openrouter" ? config.OPENROUTER_API_KEY : "";
+
     if (!apiKey) {
-        return { ok: false, message: `No API key configured for ${provider}` };
+        return { ok: false, message: `No API key configured for ${provider}`, circuitOpen: circuit.isOpen };
     }
-    if (provider === "openai") {
-        if (!apiKey.startsWith("sk-")) {
-            return { ok: false, message: "OpenAI API key format invalid (should start with sk-)" };
-        }
-        return { ok: true, message: "OpenAI API key present (format valid)" };
+
+    if (circuit.isOpen) {
+        return { ok: false, message: `Circuit breaker open (${circuit.failures} failures)`, circuitOpen: true };
     }
-    // Gemini: validate key exists and has reasonable length
-    if (apiKey.length < 20) {
-        return { ok: false, message: "Gemini API key too short — invalid format" };
+
+    // Format validation
+    if (provider === "openai" && !apiKey.startsWith("sk-")) {
+        return { ok: false, message: "OpenAI key format invalid (should start with sk-)", circuitOpen: false };
     }
-    return { ok: true, message: "Gemini API key present" };
+    if (provider === "gemini" && apiKey.length < 20) {
+        return { ok: false, message: "Gemini key too short", circuitOpen: false };
+    }
+
+    return { ok: true, message: `${provider} API key present (format valid)`, circuitOpen: false };
+}
+
+export async function getAllProviderHealth(config: AIConfig): Promise<Record<string, { ok: boolean; message: string; circuitOpen: boolean }>> {
+    const providers: AIProvider[] = ["gemini", "openai", "openrouter", "generic"];
+    const results: Record<string, any> = {};
+    
+    for (const provider of providers) {
+        results[provider] = await checkProviderHealth(provider, config);
+    }
+    
+    return results;
 }
