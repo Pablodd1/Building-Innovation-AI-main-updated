@@ -86252,7 +86252,7 @@ var safeJSON2 = (text) => {
 var sleep2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // node_modules/openai/version.mjs
-var VERSION2 = "6.39.0";
+var VERSION2 = "6.44.0";
 
 // node_modules/openai/internal/detect-platform.mjs
 var isRunningInBrowser = () => {
@@ -88407,7 +88407,12 @@ _AbstractChatCompletionRunner_instances = /* @__PURE__ */ new WeakSet(), _Abstra
   for (let i2 = this.messages.length - 1; i2 >= 0; i2--) {
     const message = this.messages[i2];
     if (isAssistantMessage(message) && message?.tool_calls?.length) {
-      return message.tool_calls.filter((x2) => x2.type === "function").at(-1)?.function;
+      for (let j = message.tool_calls.length - 1; j >= 0; j--) {
+        const toolCall = message.tool_calls[j];
+        if (toolCall?.type === "function") {
+          return toolCall.function;
+        }
+      }
     }
   }
   return;
@@ -89754,6 +89759,23 @@ var SpendAlerts = class extends APIResource2 {
     });
   }
   /**
+   * Retrieves an organization spend alert.
+   *
+   * @example
+   * ```ts
+   * const organizationSpendAlert =
+   *   await client.admin.organization.spendAlerts.retrieve(
+   *     'alert_id',
+   *   );
+   * ```
+   */
+  retrieve(alertID, options) {
+    return this._client.get(path2`/organization/spend_alerts/${alertID}`, {
+      ...options,
+      __security: { adminAPIKeyAuth: true }
+    });
+  }
+  /**
    * Updates an organization spend alert.
    *
    * @example
@@ -90780,6 +90802,25 @@ var SpendAlerts2 = class extends APIResource2 {
   create(projectID, body, options) {
     return this._client.post(path2`/organization/projects/${projectID}/spend_alerts`, {
       body,
+      ...options,
+      __security: { adminAPIKeyAuth: true }
+    });
+  }
+  /**
+   * Retrieves a project spend alert.
+   *
+   * @example
+   * ```ts
+   * const projectSpendAlert =
+   *   await client.admin.organization.projects.spendAlerts.retrieve(
+   *     'alert_id',
+   *     { project_id: 'project_id' },
+   *   );
+   * ```
+   */
+  retrieve(alertID, params, options) {
+    const { project_id } = params;
+    return this._client.get(path2`/organization/projects/${project_id}/spend_alerts/${alertID}`, {
       ...options,
       __security: { adminAPIKeyAuth: true }
     });
@@ -95423,7 +95464,10 @@ var OpenAI = class {
       if (isTimeout) {
         throw new APIConnectionTimeoutError2();
       }
-      throw new APIConnectionError2({ cause: response });
+      throw new APIConnectionError2({
+        message: getConnectionErrorMessage(response),
+        cause: response
+      });
     }
     const specialHeaders = [...response.headers.entries()].filter(([name]) => name === "x-request-id").map(([name, value]) => ", " + name + ": " + JSON.stringify(value)).join("");
     const responseInfo = `[${requestLogID}${retryLogStr}${specialHeaders}] ${req.method} ${url} ${response.ok ? "succeeded" : "failed"} with status ${response.status} in ${headersTime - startTime}ms`;
@@ -95704,6 +95748,23 @@ OpenAI.Evals = Evals;
 OpenAI.Containers = Containers;
 OpenAI.Skills = Skills;
 OpenAI.Videos = Videos;
+function getConnectionErrorMessage(error) {
+  if (isUndiciDispatcherVersionMismatchError(error)) {
+    return `Connection error. This may be caused by passing an undici dispatcher, such as ProxyAgent, that is incompatible with the fetch implementation. If you are using undici's ProxyAgent, pass the fetch implementation from the same undici package: import { fetch, ProxyAgent } from 'undici'; new OpenAI({ fetch, fetchOptions: { dispatcher: new ProxyAgent(...) } });`;
+  }
+  return void 0;
+}
+function isUndiciDispatcherVersionMismatchError(error) {
+  let current = error;
+  for (let i2 = 0; i2 < 8 && current && typeof current === "object"; i2++) {
+    const err = current;
+    if (err.code === "UND_ERR_INVALID_ARG" && typeof err.message === "string" && err.message.includes("invalid onRequestStart method")) {
+      return true;
+    }
+    current = err.cause;
+  }
+  return false;
+}
 
 // server/services/aiProviders.ts
 var import_fs2 = __toESM(require("fs"), 1);
@@ -95887,9 +95948,9 @@ STRICT RENDERING RULES:
   }
   contents.parts.push({ text: finalPrompt });
   const IMAGE_MODELS = [
-    { name: "gemini-2.5-flash-image", supportsImageOutput: true },
-    { name: "gemini-2.0-flash-exp", supportsImageOutput: true },
-    { name: "gemini-1.5-pro", supportsImageOutput: false }
+    { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: true },
+    { name: "gemini-2.5-flash", supportsImageOutput: true },
+    { name: "gemini-2.0-flash-exp", supportsImageOutput: false }
     // Text-only fallback
   ];
   let response;

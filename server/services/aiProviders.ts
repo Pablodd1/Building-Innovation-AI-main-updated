@@ -290,9 +290,9 @@ STRICT RENDERING RULES:
 
     // Model fallback chain: try best image model, fall back to stable alternatives
     const IMAGE_MODELS = [
-        { name: "gemini-2.5-flash-image", supportsImageOutput: true },
-        { name: "gemini-2.0-flash-exp", supportsImageOutput: true },
-        { name: "gemini-1.5-pro", supportsImageOutput: false }, // Text-only fallback
+        { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: true },
+        { name: "gemini-2.5-flash", supportsImageOutput: true },
+        { name: "gemini-2.0-flash-exp", supportsImageOutput: false }, // Text-only fallback
     ];
 
     let response;
