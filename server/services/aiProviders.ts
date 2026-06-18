@@ -438,19 +438,19 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     contents.parts.push({ text: finalPrompt });
 
     // ═══════════════════════════════════════════════════════════
-    // GEMINI IMAGE MODEL FALLBACK CHAIN
-    // Ordered by capability (best first), with comments for history
+    // GEMINI IMAGE MODEL FALLBACK CHAIN — Updated June 2026
+    // Ordered by capability (best first)
     // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        // CURRENT (2026-06): Native image generation, experimental but working
-        { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: true, note: "Primary — native image output" },
-        // Stable fallback — may or may not support images depending on Google updates
-        { name: "gemini-2.5-flash", supportsImageOutput: true, note: "Fallback — stable, fast" },
-        // Legacy experimental — text-only fallback if all else fails
-        { name: "gemini-2.0-flash-exp", supportsImageOutput: false, note: "Last resort — text only" },
+        // CORRECT (2026-06): The model with image generation is just "gemini-2.0-flash-exp"
+        // The "-image-generation" suffix was NEVER a real model name — it was a hallucination.
+        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output" },
+        // Stable fallback — text-only if image generation fails
+        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — text only, no image gen" },
         // DEPRECATED MODELS (kept as comments for reference, DO NOT USE):
+        // { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: false, note: "NEVER EXISTED — hallucination" },
         // { name: "gemini-1.5-pro", supportsImageOutput: false, note: "DEPRECATED 2025 — returns 404" },
-        // { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "NEVER EXISTED — was a hallucination" },
+        // { name: "gemini-2.5-flash-image", supportsImageOutput: false, note: "NEVER EXISTED — hallucination" },
     ];
 
     let response;

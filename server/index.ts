@@ -10,6 +10,7 @@ import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
 import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllProviderHealth, type AIConfig, type AIProvider } from "./services/aiProviders.js";
+import { compositeProductOntoPhoto } from "./services/imageCompositor.js";
 import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
@@ -1938,7 +1939,43 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             });
         }
 
-        // Generate via provider abstraction
+        // Generate via server-side compositing for 100% fidelity
+        const compositeResult = await compositeProductOntoPhoto({
+            originalImage,
+            material,
+            userInstruction: userInstruction || "",
+            renderOptions,
+        });
+
+        if (compositeResult.method === "composited") {
+            // Log successful generation
+            pushGenerationLog({
+                timestamp: new Date().toISOString(),
+                userId,
+                materialId: material?.id || material?.refCode,
+                materialName: material?.name,
+                category: material?.category,
+                success: true,
+                durationMs: compositeResult.durationMs,
+                model: "sharp/compositor",
+            });
+            logUserActivity({
+                userId,
+                action: 'RENDER',
+                details: {
+                    materialId: material?.id || material?.refCode,
+                    materialName: material?.name,
+                    category: material?.category,
+                    provider: "compositor",
+                    model: "sharp",
+                    durationMs: compositeResult.durationMs,
+                    success: true,
+                },
+            });
+            return res.json({ success: true, image: compositeResult.image, provider: "compositor", model: "sharp" });
+        }
+
+        // Fallback to AI generation if compositing fails
         const result = await generateOverlay({
             originalImage,
             material,
