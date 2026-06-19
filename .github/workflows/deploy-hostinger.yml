@@ -28,8 +28,8 @@ jobs:
       - name: Deploy dist/ to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          server: ftp.buildingapp.us
+          username: u496083892.buildingapp.us
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist/
           server-dir: /public_html/dist/
@@ -38,8 +38,8 @@ jobs:
       - name: Deploy dist-server/ to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          server: ftp.buildingapp.us
+          username: u496083892.buildingapp.us
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./dist-server/
           server-dir: /public_html/dist-server/
