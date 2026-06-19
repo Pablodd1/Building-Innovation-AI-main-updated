@@ -28,8 +28,8 @@ jobs:
       - name: Deploy dist/ to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
+          server: 157.173.208.16
+          username: u496083892.buildingapp.us
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           port: 21
@@ -37,12 +37,13 @@ jobs:
           server-dir: /public_html/dist/
           dangerous-clean-slate: true
           timeout: 120000
+          log-level: verbose
 
       - name: Deploy dist-server/ to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
+          server: 157.173.208.16
+          username: u496083892.buildingapp.us
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           port: 21
@@ -50,6 +51,7 @@ jobs:
           server-dir: /public_html/dist-server/
           dangerous-clean-slate: true
           timeout: 120000
+          log-level: verbose
 
       - name: Trigger Hostinger restart
         run: |
