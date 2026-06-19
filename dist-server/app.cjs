@@ -102261,7 +102261,7 @@ var import_fs2 = __toESM(require("fs"), 1);
 var import_path61 = __toESM(require("path"), 1);
 var circuitBreakers = /* @__PURE__ */ new Map();
 var CIRCUIT_THRESHOLD = 3;
-var CIRCUIT_RESET_MS = 3e5;
+var CIRCUIT_RESET_MS = 6e4;
 function getCircuit(provider) {
   if (!circuitBreakers.has(provider)) {
     circuitBreakers.set(provider, { failures: 0, lastFailure: 0, isOpen: false });

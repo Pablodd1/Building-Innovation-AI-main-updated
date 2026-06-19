@@ -91,7 +91,7 @@ interface CircuitState {
 
 const circuitBreakers = new Map<string, CircuitState>();
 const CIRCUIT_THRESHOLD = 3;      // Open after 3 failures
-const CIRCUIT_RESET_MS = 300000;  // Reset after 5 minutes
+const CIRCUIT_RESET_MS = 60000;  // Reset after 1 minute (was 5 min)
 
 function getCircuit(provider: string): CircuitState {
     if (!circuitBreakers.has(provider)) {
