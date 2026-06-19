@@ -90,8 +90,8 @@ interface CircuitState {
 }
 
 const circuitBreakers = new Map<string, CircuitState>();
-const CIRCUIT_THRESHOLD = 3;      // Open after 3 failures
-const CIRCUIT_RESET_MS = 60000;  // Reset after 1 minute (was 5 min)
+const CIRCUIT_THRESHOLD = 5;      // Open after 5 HARD failures (raised from 3 to stop flapping)
+const CIRCUIT_RESET_MS = 30000;  // Reset/half-open probe after 30s (was 60s)
 
 function getCircuit(provider: string): CircuitState {
     if (!circuitBreakers.has(provider)) {
@@ -100,13 +100,50 @@ function getCircuit(provider: string): CircuitState {
     return circuitBreakers.get(provider)!;
 }
 
-function recordFailure(provider: string) {
+/**
+ * Classify an error as transient (rate limit / temporary server unavailability)
+ * vs hard (auth, invalid key, malformed request). Transient errors should NOT
+ * trip the circuit breaker — they're recoverable on the next request and
+ * counting them causes the "carousel" flapping where Gemini briefly blacks out.
+ */
+function isTransientError(error: any): boolean {
+    const msg = (error?.message || String(error || "")).toLowerCase();
+    const status = error?.status || error?.code;
+    return (
+        status === 429 ||
+        status === 503 ||
+        status === 500 ||
+        msg.includes("rate limit") ||
+        msg.includes("resource_exhausted") ||
+        msg.includes("quota") ||
+        msg.includes("unavailable") ||
+        msg.includes("overloaded") ||
+        msg.includes("timeout") ||
+        msg.includes("deadline")
+    );
+}
+
+/**
+ * @param provider provider name
+ * @param error    the error that occurred — used to classify severity.
+ *                 Transient errors (429/503/timeout) are NOT counted toward
+ *                 opening the circuit, preventing flapping. Pass nothing to
+ *                 force a hard count (back-compat).
+ */
+function recordFailure(provider: string, error?: any) {
     const circuit = getCircuit(provider);
-    circuit.failures++;
     circuit.lastFailure = Date.now();
+
+    // Transient errors don't trip the breaker — log and move on.
+    if (error !== undefined && isTransientError(error)) {
+        console.warn(`[CircuitBreaker] ${provider} transient error (not counted): ${error?.message || error}`);
+        return;
+    }
+
+    circuit.failures++;
     if (circuit.failures >= CIRCUIT_THRESHOLD) {
         circuit.isOpen = true;
-        console.warn(`[CircuitBreaker] ${provider} circuit OPENED after ${circuit.failures} failures`);
+        console.warn(`[CircuitBreaker] ${provider} circuit OPENED after ${circuit.failures} hard failures`);
     }
 }
 
@@ -506,14 +543,14 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
                 }
             }
 
-            // Record failure for circuit breaker
-            recordFailure("gemini");
+            // Record failure for circuit breaker (transient 429/503 won't trip it)
+            recordFailure("gemini", error);
             throw error;
         }
     }
 
     if (!response) {
-        recordFailure("gemini");
+        recordFailure("gemini", lastError);
         throw new Error(`All Gemini image models failed. Last error: ${lastError?.message || 'Unknown'}`);
     }
 
@@ -564,7 +601,7 @@ async function analyzeRoomGemini(req: AnalysisRequest, config: AIConfig): Promis
                 continue;
             }
             
-            recordFailure("gemini");
+            recordFailure("gemini", error);
             if (isLast) throw error;
         }
     }
@@ -644,7 +681,7 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
         }
     }
 
-    recordFailure("openrouter");
+    recordFailure("openrouter", lastError);
     throw lastError || new Error("All OpenRouter models failed");
 }
 
@@ -694,7 +731,7 @@ async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Pr
         }
     }
 
-    recordFailure("openrouter");
+    recordFailure("openrouter", lastError);
     throw lastError || new Error("All OpenRouter analysis models failed");
 }
 
@@ -739,7 +776,7 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
         recordSuccess("openai");
         return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
     } catch (error: any) {
-        recordFailure("openai");
+        recordFailure("openai", error);
         throw error;
     }
 }

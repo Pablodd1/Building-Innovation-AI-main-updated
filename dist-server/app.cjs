@@ -102260,21 +102260,30 @@ OpenAI.Videos = Videos;
 var import_fs2 = __toESM(require("fs"), 1);
 var import_path61 = __toESM(require("path"), 1);
 var circuitBreakers = /* @__PURE__ */ new Map();
-var CIRCUIT_THRESHOLD = 3;
-var CIRCUIT_RESET_MS = 6e4;
+var CIRCUIT_THRESHOLD = 5;
+var CIRCUIT_RESET_MS = 3e4;
 function getCircuit(provider) {
   if (!circuitBreakers.has(provider)) {
     circuitBreakers.set(provider, { failures: 0, lastFailure: 0, isOpen: false });
   }
   return circuitBreakers.get(provider);
 }
-function recordFailure(provider) {
+function isTransientError(error) {
+  const msg = (error?.message || String(error || "")).toLowerCase();
+  const status = error?.status || error?.code;
+  return status === 429 || status === 503 || status === 500 || msg.includes("rate limit") || msg.includes("resource_exhausted") || msg.includes("quota") || msg.includes("unavailable") || msg.includes("overloaded") || msg.includes("timeout") || msg.includes("deadline");
+}
+function recordFailure(provider, error) {
   const circuit = getCircuit(provider);
-  circuit.failures++;
   circuit.lastFailure = Date.now();
+  if (error !== void 0 && isTransientError(error)) {
+    console.warn(`[CircuitBreaker] ${provider} transient error (not counted): ${error?.message || error}`);
+    return;
+  }
+  circuit.failures++;
   if (circuit.failures >= CIRCUIT_THRESHOLD) {
     circuit.isOpen = true;
-    console.warn(`[CircuitBreaker] ${provider} circuit OPENED after ${circuit.failures} failures`);
+    console.warn(`[CircuitBreaker] ${provider} circuit OPENED after ${circuit.failures} hard failures`);
   }
 }
 function recordSuccess(provider) {
@@ -102580,12 +102589,12 @@ async function generateOverlayGemini(req, config, startTime) {
           lastError = retryError;
         }
       }
-      recordFailure("gemini");
+      recordFailure("gemini", error);
       throw error;
     }
   }
   if (!response) {
-    recordFailure("gemini");
+    recordFailure("gemini", lastError);
     throw new Error(`All Gemini image models failed. Last error: ${lastError?.message || "Unknown"}`);
   }
   const image = extractGeminiImage(response);
@@ -102626,7 +102635,7 @@ async function analyzeRoomGemini(req, config) {
         console.warn(`[AI] \u26A0\uFE0F Analysis model ${modelInfo.name} failed, trying next...`);
         continue;
       }
-      recordFailure("gemini");
+      recordFailure("gemini", error);
       if (isLast) throw error;
     }
   }
@@ -102688,7 +102697,7 @@ async function generateOverlayOpenRouter(req, config, startTime) {
       console.warn(`[AI] \u26A0\uFE0F OpenRouter model ${modelName} failed: ${error.message}`);
     }
   }
-  recordFailure("openrouter");
+  recordFailure("openrouter", lastError);
   throw lastError || new Error("All OpenRouter models failed");
 }
 async function analyzeRoomOpenRouter(req, config) {
@@ -102731,7 +102740,7 @@ async function analyzeRoomOpenRouter(req, config) {
       console.warn(`[AI] \u26A0\uFE0F OpenRouter analysis model ${modelName} failed: ${error.message}`);
     }
   }
-  recordFailure("openrouter");
+  recordFailure("openrouter", lastError);
   throw lastError || new Error("All OpenRouter analysis models failed");
 }
 async function analyzeRoomOpenAI(req, config) {
@@ -102767,7 +102776,7 @@ async function analyzeRoomOpenAI(req, config) {
     recordSuccess("openai");
     return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
   } catch (error) {
-    recordFailure("openai");
+    recordFailure("openai", error);
     throw error;
   }
 }
