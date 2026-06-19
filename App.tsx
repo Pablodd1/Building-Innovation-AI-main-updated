@@ -30,7 +30,7 @@ import {
     generateMaterialProbe,
 } from "./services/geminiService";
 import { formatMetersUSA } from "./services/unitUtils";
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { HashRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 
 interface HistoryItem {
     resultImage: string | null;
@@ -96,13 +96,13 @@ const App: React.FC = () => {
     const location = useLocation();
     const view = useMemo(() => {
         const path = location.pathname;
-        if (path === '/landing') return AppView.LANDING;
-        if (path === '/admin') return AppView.ADMIN;
-        if (path === '/gallery') return AppView.GALLERY;
-        if (path === '/camera') return AppView.CAMERA;
-        if (path === '/editor') return AppView.EDITOR;
-        if (path === '/estimation') return AppView.ESTIMATION;
-        if (path === '/cart') return AppView.CART;
+        if (path === '/landing' || path === '/#/landing') return AppView.LANDING;
+        if (path === '/admin' || path === '/#/admin') return AppView.ADMIN;
+        if (path === '/gallery' || path === '/#/gallery') return AppView.GALLERY;
+        if (path === '/camera' || path === '/#/camera') return AppView.CAMERA;
+        if (path === '/editor' || path === '/#/editor') return AppView.EDITOR;
+        if (path === '/estimation' || path === '/#/estimation') return AppView.ESTIMATION;
+        if (path === '/cart' || path === '/#/cart') return AppView.CART;
         return AppView.LOGIN;
     }, [location]);
     const setView = (v: AppView) => {
@@ -5319,9 +5319,9 @@ const App: React.FC = () => {
 };
 
 const AppWrapper: React.FC = () => (
-    <BrowserRouter>
+    <HashRouter>
         <App />
-    </BrowserRouter>
+    </HashRouter>
 );
 
 export default AppWrapper;
