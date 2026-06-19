@@ -34,7 +34,7 @@ jobs:
           protocol: ftps
           port: 21
           local-dir: ./dist/
-          server-dir: /public_html/dist/
+          server-dir: ./public_html/dist/
           dangerous-clean-slate: true
           timeout: 120000
           log-level: verbose
@@ -48,7 +48,7 @@ jobs:
           protocol: ftps
           port: 21
           local-dir: ./dist-server/
-          server-dir: /public_html/dist-server/
+          server-dir: ./public_html/dist-server/
           dangerous-clean-slate: true
           timeout: 120000
           log-level: verbose
