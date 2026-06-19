@@ -103043,11 +103043,24 @@ async function compositeProductOntoPhoto(req) {
     );
     const opacity = req.renderOptions?.opacity ?? 1;
     const blendMode = opacity < 1 ? "over" : "over";
+    const productMeta = await (0, import_sharp.default)(transformedProduct).metadata();
+    const prodW = productMeta.width || target.width;
+    const prodH = productMeta.height || target.height;
+    const maxW = Math.min(prodW, imgWidth);
+    const maxH = Math.min(prodH, imgHeight);
+    let compositeLeft = Math.round(target.x + (target.width - prodW) / 2);
+    let compositeTop = Math.round(target.y + (target.height - prodH) / 2);
+    compositeLeft = Math.max(0, Math.min(compositeLeft, imgWidth - maxW));
+    compositeTop = Math.max(0, Math.min(compositeTop, imgHeight - maxH));
+    let finalProduct = transformedProduct;
+    if (prodW > imgWidth || prodH > imgHeight) {
+      finalProduct = await (0, import_sharp.default)(transformedProduct).resize(imgWidth, imgHeight, { fit: "inside", withoutEnlargement: true }).toBuffer();
+    }
     const compositeImage = await userPhoto.composite([
       {
-        input: transformedProduct,
-        left: Math.round(target.x + (target.width - (await (0, import_sharp.default)(transformedProduct).metadata()).width) / 2),
-        top: Math.round(target.y + (target.height - (await (0, import_sharp.default)(transformedProduct).metadata()).height) / 2),
+        input: finalProduct,
+        left: compositeLeft,
+        top: compositeTop,
         blend: blendMode
       }
     ]).jpeg({ quality: 95 }).toBuffer();

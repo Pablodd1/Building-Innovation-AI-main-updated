@@ -289,13 +289,36 @@ export async function compositeProductOntoPhoto(
         const opacity = req.renderOptions?.opacity ?? 1.0;
         const blendMode = opacity < 1.0 ? "over" : "over";
 
+        // Ensure transformed product fits within user photo bounds
+        const productMeta = await sharp(transformedProduct).metadata();
+        const prodW = productMeta.width || target.width;
+        const prodH = productMeta.height || target.height;
+
+        // Clamp composite to photo bounds (sharp requires input <= canvas)
+        const maxW = Math.min(prodW, imgWidth);
+        const maxH = Math.min(prodH, imgHeight);
+        let compositeLeft = Math.round(target.x + (target.width - prodW) / 2);
+        let compositeTop = Math.round(target.y + (target.height - prodH) / 2);
+
+        // Clamp position so composite stays within photo
+        compositeLeft = Math.max(0, Math.min(compositeLeft, imgWidth - maxW));
+        compositeTop = Math.max(0, Math.min(compositeTop, imgHeight - maxH));
+
+        // Resize product if it still exceeds photo dimensions
+        let finalProduct = transformedProduct;
+        if (prodW > imgWidth || prodH > imgHeight) {
+            finalProduct = await sharp(transformedProduct)
+                .resize(imgWidth, imgHeight, { fit: "inside", withoutEnlargement: true })
+                .toBuffer();
+        }
+
         // Create the composite
         const compositeImage = await userPhoto
             .composite([
                 {
-                    input: transformedProduct,
-                    left: Math.round(target.x + (target.width - (await sharp(transformedProduct).metadata()).width!) / 2),
-                    top: Math.round(target.y + (target.height - (await sharp(transformedProduct).metadata()).height!) / 2),
+                    input: finalProduct,
+                    left: compositeLeft,
+                    top: compositeTop,
                     blend: blendMode,
                 },
             ])
