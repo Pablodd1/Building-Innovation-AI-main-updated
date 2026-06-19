@@ -1975,6 +1975,21 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             return res.json({ success: true, image: compositeResult.image, provider: "compositor", model: "sharp" });
         }
 
+        // If compositing returned fallback image, use it instead of failing
+        if (compositeResult.method === "fallback" && compositeResult.image) {
+            pushGenerationLog({
+                timestamp: new Date().toISOString(),
+                userId,
+                materialId: material?.id || material?.refCode,
+                materialName: material?.name,
+                category: material?.category,
+                success: true,
+                durationMs: compositeResult.durationMs,
+                model: "sharp/compositor-fallback",
+            });
+            return res.json({ success: true, image: compositeResult.image, provider: "compositor", model: "sharp-fallback" });
+        }
+
         // Fallback to AI generation if compositing fails
         const result = await generateOverlay({
             originalImage,
