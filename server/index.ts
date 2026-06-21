@@ -3225,6 +3225,45 @@ app.get('/api/admin/users/:id/detail', requireAdmin, async (req: Request, res: R
     }
 });
 
+// Admin: Reset user password
+app.post('/api/admin/users/:id/reset-password', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { newPassword } = req.body;
+        
+        if (!newPassword || newPassword.length < 4) {
+            return res.status(400).json({ error: 'New password must be at least 4 characters' });
+        }
+        
+        const bcrypt = require('bcryptjs');
+        const hash = await bcrypt.hash(newPassword, 10);
+        
+        const userId = parseInt(id as string);
+        await query('UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, userId]);
+        
+        await logAdminAction(req, (req as any).user, 'RESET_PASSWORD', `Admin reset password for user ID ${userId}`);
+        
+        res.json({ success: true, message: 'Password reset successfully' });
+    } catch (e: any) {
+        console.error('Reset password error:', e);
+        // Fallback: update in JSON
+        try {
+            const users = await getUsers();
+            const idx = users.findIndex((u: any) => String(u.id) === String(req.params.id));
+            if (idx >= 0) {
+                const bcrypt = require('bcryptjs');
+                users[idx].password_hash = await bcrypt.hash(req.body.newPassword, 10);
+                fs.writeFileSync(JSON_USERS_TRACKED, JSON.stringify(users, null, 2));
+                res.json({ success: true, message: 'Password reset successfully (fallback)' });
+            } else {
+                res.status(404).json({ error: 'User not found' });
+            }
+        } catch (fallbackErr: any) {
+            res.status(500).json({ error: 'Failed to reset password' });
+        }
+    }
+});
+
 // Account Deletion Endpoint (App Store & Play Store compliance)
 app.delete('/api/users/:id/delete-account', requireAuth, async (req: Request, res: Response) => {
     try {

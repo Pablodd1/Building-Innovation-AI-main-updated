@@ -580,7 +580,10 @@ const App: React.FC = () => {
 
             const res = await fetch("/api/admin/config", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
                 body: JSON.stringify(body),
             });
             if (res.ok) {
@@ -608,7 +611,10 @@ const App: React.FC = () => {
         try {
             const res = await fetch("/api/admin/users/create-admin", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
                 body: JSON.stringify(newAdminForm),
             });
             if (res.ok) {
@@ -630,7 +636,10 @@ const App: React.FC = () => {
         try {
             const res = await fetch(`/api/admin/users/${userId}/tier`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
                 body: JSON.stringify({ tier }),
             });
             if (res.ok) {
@@ -646,7 +655,10 @@ const App: React.FC = () => {
         try {
             const res = await fetch(`/api/admin/users/${userId}/generations`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
                 body: JSON.stringify({ generations_used }),
             });
             if (res.ok) {
@@ -1976,25 +1988,34 @@ const App: React.FC = () => {
                     {/* Skip Login - Demo Mode */}
                     <button
                         type="button"
-                        onClick={() => {
-                            const demoUser = {
-                                id: 0,
-                                name: 'Demo User',
-                                email: 'demo@constructviz.ai',
-                                role: 'admin',
-                                tier: 'Enterprise',
-                                generations_used: 0,
-                                session_token: 'test_admin_token_12345',
-                                photoURL: 'https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/APP_Horizontal_-07_ydmd3m.jpg',
-                                created_at: new Date().toISOString()
-                            };
-                            setCurrentUser(demoUser);
-                            localStorage.setItem('constructviz_user', JSON.stringify(demoUser));
-                            setView(AppView.LANDING);
+                        onClick={async () => {
+                            setAuthLoading(true);
+                            try {
+                                const res = await fetch("/api/auth/login", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        email: "admin@buildingapp.us",
+                                        password: "BuildingAdmin2026!"
+                                    }),
+                                });
+                                const data = await res.json();
+                                if (data.user) {
+                                    setCurrentUser(data.user);
+                                    localStorage.setItem('constructviz_user', JSON.stringify(data.user));
+                                    setView(AppView.LANDING);
+                                } else {
+                                    setAuthError(data.error || "Demo login failed");
+                                }
+                            } catch (e) {
+                                setAuthError("Connection error");
+                            } finally {
+                                setAuthLoading(false);
+                            }
                         }}
-                        className="w-full text-sm text-gray-500 hover:text-blue-500 underline transition-colors py-2"
+                        className="w-full text-sm text-blue-600 hover:text-blue-800 underline transition-colors py-2 font-bold"
                     >
-                        {t.login.skip || "Skip for now (Demo)"}
+                        {t.login.skip || "Quick Admin Access (Demo)"}
                     </button>
 
                     <div className="text-center text-sm text-gray-600">
@@ -5063,10 +5084,43 @@ const App: React.FC = () => {
                                         </div>
                                     ))}
                                 </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                                )}
+                                </div>
+                                </div>
+
+                                {/* Admin Actions — Reset Password */}
+                                <div className="bg-red-50 p-4 rounded-2xl border border-red-200">
+                                <h3 className="font-bold text-red-700 uppercase text-[10px] tracking-widest mb-3">Reset Password</h3>
+                                <div className="flex gap-2">
+                                <input
+                                type="text"
+                                placeholder="New password (min 4 chars)"
+                                className="flex-1 bg-white border border-red-200 rounded-lg p-2 text-xs text-gray-700"
+                                id={`reset-pwd-${u.id}`}
+                                />
+                                <button
+                                onClick={async () => {
+                                    const inp = document.getElementById(`reset-pwd-${u.id}`) as HTMLInputElement;
+                                    const pwd = inp?.value?.trim();
+                                    if (!pwd || pwd.length < 4) return alert('Password must be at least 4 characters');
+                                    try {
+                                        const res = await fetch(`/api/admin/users/${u.id}/reset-password`, {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({newPassword: pwd})
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) { inp.value = ''; alert('Password reset successfully'); }
+                                        else alert('Failed: ' + (data.error || 'Unknown error'));
+                                    } catch (e) { alert('Error resetting password'); }
+                                }}
+                                className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors"
+                                >
+                                Reset
+                                </button>
+                                </div>
+                                </div>
+                                </div>
             </div>
         );
     };
