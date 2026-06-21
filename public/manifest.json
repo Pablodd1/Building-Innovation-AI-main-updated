@@ -1,33 +1,15 @@
 {
-  "name": "Building Innovation AI",
-  "short_name": "BuildInnovation",
-  "description": "AI-powered construction material marketplace - visualize materials in your space",
+  "name": "Building Innovation",
+  "short_name": "BuildInnov",
+  "description": "AI-powered material visualization for construction",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#0a1628",
-  "theme_color": "#0a1628",
-  "categories": [
-    "business",
-    "shopping",
-    "lifestyle"
-  ],
+  "orientation": "portrait",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "/icon-192-v2.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512-v2.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ]
 }

@@ -3629,9 +3629,21 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
 });
 
 // Serve static files from the frontend build
-const distPath = fs.existsSync(path.join(path.resolve(), 'dist'))
-    ? path.join(path.resolve(), 'dist')
-    : path.resolve();
+// Priority: nodejs/dist (Hostinger Passenger) → dist (local dev) → CWD
+const distPath = (() => {
+    const cwd = path.resolve();
+    const candidates = [
+        path.join(cwd, 'nodejs', 'dist'),   // Hostinger: /home/user/nodejs/dist
+        path.join(cwd, 'dist'),              // Local dev
+        '/nodejs/dist',                       // Hostinger: absolute fallback
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
+            return p;
+        }
+    }
+    return cwd;
+})();
 
 console.log(`📂 Serving static files from: ${distPath}`);
 

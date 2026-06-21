@@ -1,79 +1,47 @@
-// Building Innovation AI - Service Worker
-// Enables offline functionality for PWA
+// Service Worker — Building Innovation
+// Cache-first strategy for static assets
 
-const CACHE_NAME = 'building-innovation-v1';
-const STATIC_ASSETS = [
+const CACHE_NAME = 'building-innovation-v2';
+const ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-512-maskable.png'
+  '/icon-192-v2.png',
+  '/icon-512-v2.png',
+  '/icon.svg',
 ];
 
-// Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    }).catch((err) => {
-      console.warn('SW cache install failed:', err);
-    })
+      return Promise.allSettled(
+        ASSETS.map(url => cache.add(url).catch(e => console.warn('SW cache skip:', url, e.message)))
+      );
+    }).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      );
-    })
+    caches.keys().then(keys => {
+      const old = keys.filter(k => k !== CACHE_NAME);
+      return Promise.all(old.map(k => caches.delete(k)));
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Fetch event - network first, fallback to cache
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
+  if (event.request.method !== 'GET') return;
+  if (event.request.url.startsWith('chrome-extension://')) return;
+  if (event.request.url.includes('/api/')) return; // Always network for APIs
   
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
-  
-  // Skip API calls - always go to network
-  if (request.url.includes('/api/')) {
-    return;
-  }
-  
-  // For navigation requests (HTML pages), serve index.html for SPA routing
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match('/index.html');
-      })
-    );
-    return;
-  }
-  
-  // For static assets, try network first, then cache
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        // Cache successful responses
-        if (response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        return caches.match(request);
-      })
+    fetch(event.request).then(response => {
+      if (response.status === 200) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+      }
+      return response;
+    }).catch(() => caches.match(event.request))
   );
 });

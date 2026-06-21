@@ -55,14 +55,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://res.cloudinary.com" />
-    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
+    <link rel="dns-prefetch" href="https://res.cloudinary.com" />
     
     <!-- App Icons -->
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192-v2.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512-v2.png" />
+    <link rel="apple-touch-icon" href="/icon-192-v2.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512-v2.png" />
+    <script>
+      // Suppress CDN Tailwind warning in production
+      const origWarn = console.warn;
+      console.warn = function(...args) {
+        if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+        origWarn.apply(console, args);
+      };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
@@ -121,7 +129,7 @@
         .print\:bg-white { background-color: #fff !important; }
       }
     </style>
-  <script type="module" crossorigin src="/assets/index-C1X93T9o.js"></script>
+  <script type="module" crossorigin src="/assets/index-LD5DEe_U.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/react-vendor-DijcRoi0.js">
   <link rel="stylesheet" crossorigin href="/assets/index-D-RbwkIq.css">
 </head>
@@ -132,7 +140,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
+          navigator.serviceWorker.register('/sw-v2.js')
             .then((registration) => {
               console.log('SW registered:', registration.scope);
             })

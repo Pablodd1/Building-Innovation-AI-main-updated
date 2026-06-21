@@ -1534,14 +1534,52 @@ const App: React.FC = () => {
         logUserBehavior("SELECT_MATERIAL", { id: material.id, name: material.name });
     }, [setSelectedMaterial, setShowProbeModal]);
 
+    // Downscale + recompress an uploaded photo so it stays well under the
+    // server's 5MB limit. Phone camera photos are 3-12MB raw and ~33% larger
+    // as base64, which causes the server to reject them with HTTP 413. Cap the
+    // longest edge to 1600px and re-encode as JPEG 0.85.
+    const downscaleImage = (dataUrl: string, maxEdge = 1600, quality = 0.85): Promise<string> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const { width, height } = img;
+                const longest = Math.max(width, height);
+                if (longest <= maxEdge) {
+                    // Still recompress to JPEG to strip bloat from large PNGs.
+                    if (dataUrl.startsWith("data:image/jpeg") && dataUrl.length < 4_000_000) {
+                        resolve(dataUrl);
+                        return;
+                    }
+                }
+                const scale = longest > maxEdge ? maxEdge / longest : 1;
+                const w = Math.round(width * scale);
+                const h = Math.round(height * scale);
+                const canvas = document.createElement("canvas");
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                    resolve(dataUrl);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/jpeg", quality));
+            };
+            img.onerror = () => resolve(dataUrl);
+            img.src = dataUrl;
+        });
+    };
+
     const handleImageCapture = useCallback((file: File) => {
         const reader = new FileReader();
-        reader.onloadend = () => {
-            setOriginalImage(reader.result as string);
+        reader.onloadend = async () => {
+            const raw = reader.result as string;
+            const optimized = await downscaleImage(raw);
+            setOriginalImage(optimized);
             setView(AppView.EDITOR);
             setHistory([]);
             setHistoryIndex(-1);
-            logUserBehavior("UPLOAD_IMAGE", { fileName: file.name, fileSize: file.size });
+            logUserBehavior("UPLOAD_IMAGE", { fileName: file.name, fileSize: file.size, optimizedBytes: optimized.length });
             setGenerationState((prev) => ({
                 ...prev,
                 resultImage: null,

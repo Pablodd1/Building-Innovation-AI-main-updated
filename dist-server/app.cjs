@@ -123358,7 +123358,23 @@ Context: ${context || "N/A"}`
       res.status(500).json({ error: e2.message });
     }
   });
-  const distPath = import_fs3.default.existsSync(import_path62.default.join(import_path62.default.resolve(), "dist")) ? import_path62.default.join(import_path62.default.resolve(), "dist") : import_path62.default.resolve();
+  const distPath = (() => {
+    const cwd = import_path62.default.resolve();
+    const candidates = [
+      import_path62.default.join(cwd, "nodejs", "dist"),
+      // Hostinger: /home/user/nodejs/dist
+      import_path62.default.join(cwd, "dist"),
+      // Local dev
+      "/nodejs/dist"
+      // Hostinger: absolute fallback
+    ];
+    for (const p of candidates) {
+      if (import_fs3.default.existsSync(p) && import_fs3.default.existsSync(import_path62.default.join(p, "index.html"))) {
+        return p;
+      }
+    }
+    return cwd;
+  })();
   console.log(`\u{1F4C2} Serving static files from: ${distPath}`);
   app.use(import_express.default.static(distPath));
   const productsPath = import_path62.default.join(import_path62.default.resolve(), "products");
