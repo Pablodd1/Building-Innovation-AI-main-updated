@@ -25,6 +25,11 @@ jobs:
       - name: Build server
         run: npm run build:server
 
+      - name: Ensure remote directories exist
+        run: |
+          curl -s -k --ftp-create-dirs --user "u496083892.buildingapp.us:${{ secrets.FTP_PASSWORD }}" \
+            ftps://157.173.208.16:21/public_html/ -Q "MKD dist" -Q "MKD dist-server" || true
+
       - name: Deploy dist/ to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -35,7 +40,7 @@ jobs:
           port: 21
           local-dir: ./dist/
           server-dir: ./public_html/dist/
-          dangerous-clean-slate: true
+          dangerous-clean-slate: false
           timeout: 120000
           log-level: verbose
 
@@ -49,7 +54,7 @@ jobs:
           port: 21
           local-dir: ./dist-server/
           server-dir: ./public_html/dist-server/
-          dangerous-clean-slate: true
+          dangerous-clean-slate: false
           timeout: 120000
           log-level: verbose
 
