@@ -100,12 +100,26 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
     // Fetch from URL
     if (imageUrl.startsWith("http")) {
         try {
-            const response = await fetch(imageUrl);
+            const response = await fetch(imageUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://drive.google.com'
+                }
+            });
             if (!response.ok) return null;
+            
+            // Check if we got HTML instead of an image (e.g. Google Drive virus warning)
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/html')) {
+                console.error('[imageCompositor] Received HTML instead of image from:', imageUrl);
+                return null;
+            }
+            
             const buffer = Buffer.from(await response.arrayBuffer());
             const metadata = await sharp(buffer).metadata();
             return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
-        } catch {
+        } catch (e: any) {
+            console.error('[imageCompositor] Fetch error:', e.message);
             return null;
         }
     }
