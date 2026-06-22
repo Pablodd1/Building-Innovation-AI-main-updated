@@ -1854,8 +1854,12 @@ app.post('/api/admin/run-tier-cleanup', requireAdmin, async (req: Request, res: 
 
 // ===== AI GENERATION ENDPOINTS (Server-side API key — clients don't need their own) =====
 
-const cleanBase64 = (dataURI: string) =>
-    dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+const cleanBase64 = (dataURI: string) => {
+    let cleaned = dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+    cleaned = cleaned.replace(/[\r\n]/g, "");
+    cleaned = cleaned.replace(/ /g, "+");
+    return cleaned;
+};
 
 const getMimeType = (dataURI: string) => {
     const match = dataURI.match(/^data:(image\/\w+);base64,/);

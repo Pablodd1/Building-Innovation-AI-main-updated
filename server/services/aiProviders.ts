@@ -170,8 +170,12 @@ function isCircuitOpen(provider: string): boolean {
 
 const SERVER_DIR = typeof __dirname !== "undefined" ? __dirname : path.resolve();
 
-const cleanBase64 = (dataURI: string) =>
-    dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+const cleanBase64 = (dataURI: string) => {
+    let cleaned = dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+    cleaned = cleaned.replace(/[\r\n]/g, "");
+    cleaned = cleaned.replace(/ /g, "+");
+    return cleaned;
+};
 
 const getMimeType = (dataURI: string) => {
     const match = dataURI.match(/^data:(image\/\w+);base64,/);
