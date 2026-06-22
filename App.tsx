@@ -860,6 +860,10 @@ const App: React.FC = () => {
     // Verified: /api/proxy-image returns real PNG images (352KB+)
     const proxyImageUrl = useCallback((url: string): string => {
         if (!url) return '';
+        // If it's already a proxy URL, return as-is
+        if (url.startsWith('/api/proxy-image') || url.includes('/api/proxy-image')) {
+            return url;
+        }
         if (url.includes('drive.google.com') || url.includes('lh3.googleusercontent.com')) {
             return `/api/proxy-image?url=${encodeURIComponent(url)}`;
         }
