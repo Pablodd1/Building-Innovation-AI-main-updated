@@ -25,37 +25,7 @@ jobs:
       - name: Build server
         run: npm run build:server
 
-      - name: Deploy dist/ to Hostinger
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: 157.173.208.16
-          username: u496083892.buildingapp.us
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./dist/
-          server-dir: ../nodejs/dist/
-          dangerous-clean-slate: false
-          timeout: 120000
-          log-level: verbose
-
-      - name: Deploy dist-server/ to Hostinger
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: 157.173.208.16
-          username: u496083892.buildingapp.us
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./dist-server/
-          server-dir: ../nodejs/dist-server/
-          dangerous-clean-slate: false
-          timeout: 120000
-          log-level: verbose
-
-      - name: Trigger Hostinger Passenger restart
-        run: |
-          echo "$(date) deploy" > restart.txt
-          curl -s -k --ftp-create-dirs --user "u496083892.buildingapp.us:${{ secrets.FTP_PASSWORD }}" \
-            -T restart.txt ftps://157.173.208.16:21/../nodejs/tmp/restart.txt || true
-          echo "Passenger restart triggered"
+      - name: Deploy to Hostinger via deploy.cjs
+        env:
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: node deploy.cjs
