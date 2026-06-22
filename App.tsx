@@ -927,15 +927,13 @@ const App: React.FC = () => {
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
                         const refCode = m.ref_code || m.refCode || "";
                         
-                        // Image resolution: ALWAYS prefer local product file if refCode exists.
-                        // Local `/products/{refCode}.webp` is the single source of truth.
+                        // Image resolution: If Google Drive link, proxy it. Otherwise fallback to local /products/.
                         const dbImageUrl = m.image_url || m.imageUrl || "";
                         let imageUrl = dbImageUrl;
-                        // If refCode exists, force local path regardless of what DB says
-                        if (refCode) {
-                            imageUrl = `/products/${refCode}.webp?v=4`;
-                        } else if (imageUrl.includes('drive.google.com') || imageUrl.includes('lh3.googleusercontent.com')) {
+                        if (imageUrl.includes('drive.google.com') || imageUrl.includes('lh3.googleusercontent.com')) {
                             imageUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+                        } else if (refCode) {
+                            imageUrl = `/products/${refCode}.webp?v=4`;
                         } else {
                             // Rewrite any CDN URLs to local path
                             const cdnMatch = imageUrl.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);

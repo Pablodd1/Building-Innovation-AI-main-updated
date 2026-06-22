@@ -1,0 +1,15 @@
+{
+  "name": "Building Innovation",
+  "short_name": "BuildInnov",
+  "description": "AI-powered material visualization for construction",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "icons": [
+    { "src": "/icon-192.png?v=3", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png?v=3", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
