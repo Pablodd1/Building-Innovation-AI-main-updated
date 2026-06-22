@@ -95,14 +95,14 @@ const App: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const view = useMemo(() => {
-        const path = location.pathname;
-        if (path === '/landing' || path === '/#/landing') return AppView.LANDING;
-        if (path === '/admin' || path === '/#/admin') return AppView.ADMIN;
-        if (path === '/gallery' || path === '/#/gallery') return AppView.GALLERY;
-        if (path === '/camera' || path === '/#/camera') return AppView.CAMERA;
-        if (path === '/editor' || path === '/#/editor') return AppView.EDITOR;
-        if (path === '/estimation' || path === '/#/estimation') return AppView.ESTIMATION;
-        if (path === '/cart' || path === '/#/cart') return AppView.CART;
+        const path = location.pathname.replace(/^\//, '');
+        if (path === 'landing') return AppView.LANDING;
+        if (path === 'admin') return AppView.ADMIN;
+        if (path === 'gallery') return AppView.GALLERY;
+        if (path === 'camera') return AppView.CAMERA;
+        if (path === 'editor') return AppView.EDITOR;
+        if (path === 'estimation') return AppView.ESTIMATION;
+        if (path === 'cart') return AppView.CART;
         return AppView.LOGIN;
     }, [location]);
     const setView = (v: AppView) => {
@@ -2268,6 +2268,7 @@ const App: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-4 w-full">
                     <button
+                        type="button"
                         onClick={() => { handleStart("Interior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Interior" }); }}
                         className="group flex flex-col items-center"
                     >
@@ -2284,6 +2285,7 @@ const App: React.FC = () => {
                         </span>
                     </button>
                     <button
+                        type="button"
                         onClick={() => { handleStart("Exterior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Exterior" }); }}
                         className="group flex flex-col items-center"
                     >
