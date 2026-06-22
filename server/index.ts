@@ -658,6 +658,27 @@ function saveToJSON(filePath: string, data: any) {
     }
 }
 
+// Helper to get mapped image
+function getMappedImageUrl(row: any): string {
+    const refCode = String(row.ref_code || row.refCode || '').trim();
+    const id = String(row.id).trim();
+    
+    try {
+        const skuMap = require('../sku_image_map.json');
+        if (skuMap[refCode]) return skuMap[refCode];
+        if (skuMap[id]) return skuMap[id];
+    } catch (e) {
+        // sku_image_map.json might be unavailable in some environments
+    }
+    
+    // Original fallback
+    const imgUrl = row.image_url || row.imageUrl || '';
+    if (imgUrl.startsWith('/products/')) {
+        return 'https://buildingapp.us' + imgUrl;
+    }
+    return imgUrl;
+}
+
 // Helper to map DB row to Material interface
 function mapDBToMaterial(row: any) {
     if (!row) return null;
@@ -666,7 +687,7 @@ function mapDBToMaterial(row: any) {
         refCode: row.ref_code || row.refCode || '',
         name: row.name || '',
         description: row.description || '',
-        imageUrl: (row.image_url || row.imageUrl || '').startsWith('/products/') ? 'https://buildingapp.us' + (row.image_url || row.imageUrl) : (row.image_url || row.imageUrl || ''),
+        imageUrl: getMappedImageUrl(row),
         category: row.category || '',
         subcategory: row.subcategory || '',
         usage: row.usage || 'Interior',
