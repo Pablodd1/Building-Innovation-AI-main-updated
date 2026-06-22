@@ -715,8 +715,19 @@ async function getMaterials() {
     } catch (e) {
         console.warn('Database unavailable, reading from local JSON manifest...');
         if (fs.existsSync(JSON_DB_PATH)) {
-            const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
-            return JSON.parse(data);
+            try {
+                const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
+                const list = JSON.parse(data);
+                if (Array.isArray(list)) {
+                    return list.map((item: any) => ({
+                        ...item,
+                        imageUrl: getMappedImageUrl(item)
+                    }));
+                }
+                return list;
+            } catch (err) {
+                console.error('Error reading/parsing products.persistent.json:', err);
+            }
         }
         return [];
     }

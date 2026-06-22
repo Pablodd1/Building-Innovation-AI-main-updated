@@ -123142,8 +123142,19 @@ try {
     } catch (e2) {
       console.warn("Database unavailable, reading from local JSON manifest...");
       if (import_fs3.default.existsSync(JSON_DB_PATH)) {
-        const data = import_fs3.default.readFileSync(JSON_DB_PATH, "utf8");
-        return JSON.parse(data);
+        try {
+          const data = import_fs3.default.readFileSync(JSON_DB_PATH, "utf8");
+          const list = JSON.parse(data);
+          if (Array.isArray(list)) {
+            return list.map((item) => ({
+              ...item,
+              imageUrl: getMappedImageUrl(item)
+            }));
+          }
+          return list;
+        } catch (err) {
+          console.error("Error reading/parsing products.persistent.json:", err);
+        }
       }
       return [];
     }
