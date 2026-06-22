@@ -34,7 +34,7 @@ jobs:
           protocol: ftps
           port: 21
           local-dir: ./dist/
-          server-dir: /nodejs/dist/
+          server-dir: ../nodejs/dist/
           dangerous-clean-slate: false
           timeout: 120000
           log-level: verbose
@@ -48,7 +48,7 @@ jobs:
           protocol: ftps
           port: 21
           local-dir: ./dist-server/
-          server-dir: /nodejs/dist-server/
+          server-dir: ../nodejs/dist-server/
           dangerous-clean-slate: false
           timeout: 120000
           log-level: verbose
@@ -57,5 +57,5 @@ jobs:
         run: |
           echo "$(date) deploy" > restart.txt
           curl -s -k --ftp-create-dirs --user "u496083892.buildingapp.us:${{ secrets.FTP_PASSWORD }}" \
-            -T restart.txt ftps://157.173.208.16:21/nodejs/tmp/restart.txt || true
+            -T restart.txt ftps://157.173.208.16:21/../nodejs/tmp/restart.txt || true
           echo "Passenger restart triggered"
