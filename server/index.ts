@@ -1323,7 +1323,7 @@ app.use((req: Request, res: Response, next) => {
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
     next();
 });
 
@@ -2096,16 +2096,24 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
 
         // Input validation: image must be a valid data URL and under 5MB
         if (!image || typeof image !== 'string') {
+            console.log('[AI Debug] Invalid image body: not a string or empty');
             return res.status(400).json({ error: 'image is required and must be a string' });
         }
 
+        console.log('[AI Debug] Received image. Length:', image.length);
+        console.log('[AI Debug] Image prefix:', image.substring(0, 100));
+        console.log('[AI Debug] Image suffix:', image.substring(image.length - 100));
+
         const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
         if (!match) {
+            console.log('[AI Debug] Image regex match failed!');
             return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
         }
         const base64Data = match[3];
         const approxBytes = (base64Data.length * 3) / 4;
+        console.log('[AI Debug] Extracted base64 length:', base64Data.length, 'Approx bytes:', approxBytes);
         if (approxBytes > 5 * 1024 * 1024) {
+            console.log('[AI Debug] Image too large:', approxBytes);
             return res.status(413).json({ error: 'Image too large. Max 5MB.' });
         }
         

@@ -150,7 +150,6 @@ const App: React.FC = () => {
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
     const [estimationSource, setEstimationSource] = useState<AppView>(AppView.GALLERY);
     const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">("USD");
-    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
 
     // Search State
     const [searchQuery, setSearchQuery] = useState("");
@@ -358,16 +357,6 @@ const App: React.FC = () => {
             localStorage.removeItem('constructviz_user');
         }
     }, [currentUser]);
-
-    // Detect location on mount
-    useEffect(() => {
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-                (err) => console.warn("Location access denied:", err.message)
-            );
-        }
-    }, []);
 
     // Currency conversion rate (1 USD = ~4100 COP approximately)
     const USD_TO_COP_RATE = 4100;
