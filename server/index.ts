@@ -13,6 +13,7 @@ import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllPr
 import { compositeProductOntoPhoto } from "./services/imageCompositor.js";
 import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
+import crypto from 'crypto';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 import { telegramAlerts } from './telegramAlerts';
 import mysql from 'mysql2/promise';
@@ -3661,6 +3662,58 @@ app.post('/api/admin/tiers', requireAdmin, express.json(), async (req: Request, 
         res.status(500).json({ error: e.message });
     }
 });
+
+// Authentication Endpoints
+// NOTE: The canonical login/signup routes are /api/auth/login and /api/auth/signup (lines ~2806-2895)
+// This is a convenience alias that proxies to the real handler
+app.post('/api/login', async (req: Request, res: Response) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password required' });
+    }
+    try {
+        const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
+
+        // 1. Try DB
+        try {
+            const result = await query(
+                'SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, password_hash FROM users WHERE email = $1',
+                [email]
+            );
+            if (result.rows.length > 0) {
+                const user = result.rows[0];
+                const isMatch = await bcrypt.compare(password, user.password_hash);
+                if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+                try { await query('UPDATE users SET session_token = $1 WHERE id = $2', [sessionToken, user.id]); } catch {}
+                await checkAndDowngradeExpiredTier(user);
+                const { password_hash, ...userResponse } = user;
+                return res.json({ user: { ...userResponse, session_token: sessionToken }, token: sessionToken });
+            }
+            throw new Error('Not found in DB');
+        } catch (dbError) {
+            // 2. JSON fallback
+            const users = await getUsers();
+            const index = users.findIndex((u: any) => u.email === email);
+            if (index === -1) return res.status(401).json({ error: 'Invalid credentials' });
+            const user = users[index];
+            const isMatch = await bcrypt.compare(password, user.password_hash);
+            if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+            user.session_token = sessionToken;
+            saveToJSON(JSON_USERS_PATH, users);
+            await checkAndDowngradeExpiredTier(user);
+            const { password_hash, ...userResponse } = user;
+            return res.json({ user: { ...userResponse, session_token: sessionToken }, token: sessionToken });
+        }
+    } catch (e: any) {
+        console.error('Login error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/protected-test', requireAuth, (req: Request, res: Response) => {
+    res.json({ ok: true, user: (req as any).user?.email });
+});
+
 
 // ===== IMAGE PROXY (solves Google Drive 403 in browser) =====
 // The browser can't directly fetch lh3.googleusercontent.com with CORS/auth.
