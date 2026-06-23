@@ -30,36 +30,3 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
         run: node deploy.cjs
 
-      - name: Upload server config (API keys) to Hostinger
-        env:
-          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-        run: |
-          node -e "
-          const { Client } = require('basic-ftp');
-          const fs = require('fs');
-          const os = require('os');
-          const path = require('path');
-          const config = {
-            AI_PROVIDER: 'gemini',
-            GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-            OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
-            STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
-            STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
-          };
-          const tmpPath = path.join(os.tmpdir(), 'config.json');
-          fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2));
-          (async () => {
-            const c = new Client();
-            c.ftp.verbose = false;
-            await c.access({ host:'157.173.208.16', user:'u496083892.buildingapp.us', password: process.env.FTP_PASSWORD, secure:true, secureOptions:{rejectUnauthorized:false} });
-            await c.ensureDir('/nodejs/data');
-            await c.uploadFrom(tmpPath, '/nodejs/data/config.json');
-            console.log('config.json uploaded to /nodejs/data/');
-            c.close();
-          })().catch(e => { console.error(e.message); process.exit(1); });
-          "
