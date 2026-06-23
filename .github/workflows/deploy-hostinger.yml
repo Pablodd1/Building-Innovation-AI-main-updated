@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -25,7 +25,7 @@ jobs:
       - name: Build server
         run: npm run build:server
 
-      - name: Deploy to Hostinger via deploy.cjs
+      - name: Deploy to Hostinger via FTP
         env:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
         run: node deploy.cjs

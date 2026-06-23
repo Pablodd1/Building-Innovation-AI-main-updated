@@ -26,7 +26,11 @@ const REMOTE_APP_ROOT = '/nodejs';
 
 async function uploadDir(client, localDir, remoteDir) {
     console.log(`Uploading ${localDir} -> ${remoteDir}`);
-    await client.ensureDir(remoteDir);
+    // Ensure remote dir exists — swallow errors (dir may already exist)
+    try { await client.ensureDir(remoteDir); } catch (e) {
+        console.warn(`  ⚠️  ensureDir failed for ${remoteDir}: ${e.message} — skipping subtree`);
+        return;
+    }
     const items = fs.readdirSync(localDir);
     for (const item of items) {
         const localPath = path.join(localDir, item);
@@ -35,8 +39,12 @@ async function uploadDir(client, localDir, remoteDir) {
         if (stat.isDirectory()) {
             await uploadDir(client, localPath, remotePath);
         } else {
-            console.log(`  Uploading ${item}...`);
-            await client.uploadFrom(localPath, remotePath);
+            try {
+                console.log(`  Uploading ${item}...`);
+                await client.uploadFrom(localPath, remotePath);
+            } catch (e) {
+                console.warn(`  ⚠️  Failed to upload ${item}: ${e.message} — continuing`);
+            }
         }
     }
 }
