@@ -5,13 +5,13 @@
 //
 // MODEL HISTORY (for reference when updating):
 // ═══════════════════════════════════════════════════════════
-// 2024-Q4: gemini-1.5-pro (deprecated 2025, returns 404)
-// 2025-Q1: gemini-2.0-flash-exp (experimental, limited image support)
-// 2025-Q2: gemini-2.0-flash-exp-image-generation (native image output)
-// 2025-Q3: gemini-2.5-flash (stable, fast, good for analysis)
-// 2025-Q4: gemini-2.5-flash-image (NEVER EXISTED — was a hallucination in old code)
-// 2026-Q2: gemini-2.0-flash-exp-image-generation (CURRENT — primary image gen)
-//          gemini-2.5-flash (CURRENT — primary analysis)
+// 2024-Q4: gemini-1.5-pro          — DISCONTINUED (returns 404)
+// 2025-Q1: gemini-2.0-flash-exp    — Experimental, limited image support
+// 2025-Q3: gemini-2.5-flash        — Stable, fast analysis
+// 2025-Q4: gemini-2.5-flash-image  — NEVER EXISTED (hallucination, don't use)
+// 2026-Q2: gemini-3.5-flash        — CURRENT PRIMARY (GA May 2026, fast + smart)
+//          gemini-2.5-flash        — RETIRING Oct 16 2026 (used as fallback)
+//          gemini-2.0-flash-exp    — Still alive, only model with native image output
 //
 // BACKUP CHAIN (executed left-to-right on failure):
 //   Gemini (primary) → OpenRouter (unified) → OpenAI (fallback) → Generic Response
@@ -169,6 +169,20 @@ function isCircuitOpen(provider: string): boolean {
 // ---- Helpers ----
 
 const SERVER_DIR = typeof __dirname !== "undefined" ? __dirname : path.resolve();
+
+// Simple file logger – writes timestamped entries to logs/ai.log
+const LOG_DIR = path.join(SERVER_DIR, "logs");
+if (!fs.existsSync(LOG_DIR)) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+function logToFile(level: string, msg: string) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] [${level}] ${msg}\n`;
+  const logPath = path.join(LOG_DIR, "ai.log");
+  fs.appendFileSync(logPath, line, { encoding: "utf8" });
+}
+function logInfo(msg: string) { logToFile("INFO", msg); }
+function logError(msg: string) { logToFile("ERROR", msg); }
 
 const cleanBase64 = (dataURI: string) => {
     let cleaned = dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
@@ -434,23 +448,7 @@ function parseAnalysisResponse(rawText: string, model: string, provider: AIProvi
 
 async function generateGenericOverlay(req: OverlayRequest): Promise<GenerationResult> {
     console.warn("[AI] All providers failed. Using generic fallback response.");
-    
-    // Return a simple "placeholder" image with text explaining the issue
-    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
-        <rect fill="#1a1a2e" width="800" height="600"/>
-        <text fill="#e94560" x="400" y="250" text-anchor="middle" font-family="Arial" font-size="24" font-weight="bold">AI Generation Temporarily Unavailable</text>
-        <text fill="#eee" x="400" y="300" text-anchor="middle" font-family="Arial" font-size="16">We're experiencing high demand. Please try again in a moment.</text>
-        <text fill="#888" x="400" y="350" text-anchor="middle" font-family="Arial" font-size="14">Material: ${req.material?.name || 'Unknown'}</text>
-    </svg>`;
-    
-    const base64Svg = Buffer.from(svgContent).toString('base64');
-    
-    return {
-        image: `data:image/svg+xml;base64,${base64Svg}`,
-        model: "generic-fallback",
-        durationMs: 0,
-        provider: "generic"
-    };
+    throw new Error("AI Generation Temporarily Unavailable: All providers failed or were unavailable.");
 }
 
 // =============================================================
@@ -463,8 +461,9 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     }
 
     const ai = getGeminiSDK(config.GEMINI_API_KEY);
-    const base64Data = cleanBase64(req.originalImage);
-    const mimeType = getMimeType(req.originalImage);
+    // Accept either `originalImage` (preferred) or `image` as fallback.
+    const base64Data = cleanBase64(req.originalImage ?? (req as any).image);
+    const mimeType = getMimeType(req.originalImage ?? (req as any).image);
     const { prompt: finalPrompt } = buildOverlayPrompt(req);
     const productRef = await getImageBase64(req.material?.imageUrl);
     const hasProductImage = !!productRef;
@@ -480,18 +479,19 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
 
     // ═══════════════════════════════════════════════════════════
     // GEMINI IMAGE MODEL FALLBACK CHAIN — Updated June 2026
-    // Ordered by capability (best first)
+    // Ordered by capability (best first).
+    // NOTE: Only gemini-2.0-flash-exp supports native image OUTPUT.
+    //       Newer models (3.5-flash) are vision-IN only — not used here.
     // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        // CORRECT (2026-06): The model with image generation is just "gemini-2.0-flash-exp"
-        // The "-image-generation" suffix was NEVER a real model name — it was a hallucination.
-        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output" },
-        // Stable fallback — text-only if image generation fails
-        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — text only, no image gen" },
-        // DEPRECATED MODELS (kept as comments for reference, DO NOT USE):
-        // { name: "gemini-2.0-flash-exp-image-generation", supportsImageOutput: false, note: "NEVER EXISTED — hallucination" },
-        // { name: "gemini-1.5-pro", supportsImageOutput: false, note: "DEPRECATED 2025 — returns 404" },
-        // { name: "gemini-2.5-flash-image", supportsImageOutput: false, note: "NEVER EXISTED — hallucination" },
+        // Primary — only model confirmed to support responseModalities: ["IMAGE"]
+        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output (2026 confirmed)" },
+        // Fallback — text-only description if image gen fails
+        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — retiring Oct 2026, text only" },
+        // DEPRECATED MODELS (DO NOT USE):
+        // { name: "gemini-2.0-flash-exp-image-generation", note: "NEVER EXISTED — hallucination" },
+        // { name: "gemini-1.5-pro",                        note: "DISCONTINUED 2025 — returns 404" },
+        // { name: "gemini-2.5-flash-image",                note: "NEVER EXISTED — hallucination" },
     ];
 
     let response;
@@ -500,14 +500,19 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
 
     for (const modelInfo of IMAGE_MODELS) {
         try {
-            console.log(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
+            logInfo(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
+            // Determine modalities: image output only for models that support it
+            const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
+            // Log request payload (truncated for brevity)
+            logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities })}`);
             response = await ai.models.generateContent({
                 model: modelInfo.name,
                 contents,
-                config: { responseModalities: ["TEXT", "IMAGE"] },
+                config: { responseModalities: modalities },
             });
             usedModel = modelInfo.name;
-            console.log(`[AI] ✅ Gemini success with model: ${modelInfo.name}`);
+            logInfo(`[AI] ✅ Gemini success with model: ${modelInfo.name}`);
+            logInfo(`[AI] Gemini raw response from ${modelInfo.name}: ${JSON.stringify(response)}`);
             recordSuccess("gemini");
             break;
         } catch (error: any) {
@@ -572,10 +577,11 @@ async function analyzeRoomGemini(req: AnalysisRequest, config: AIConfig): Promis
     const base64Data = cleanBase64(req.image);
     const mimeType = getMimeType(req.image);
 
-    // Analysis model fallback chain
+    // Analysis model fallback chain — updated June 2026
     const ANALYSIS_MODELS = [
-        { name: "gemini-2.5-flash", note: "Primary — stable and fast" },
-        { name: "gemini-2.0-flash-exp", note: "Fallback — experimental" },
+        { name: "gemini-3.5-flash", note: "Primary — GA May 2026, fastest + smartest" },
+        { name: "gemini-2.5-flash", note: "Fallback — retiring Oct 2026, still active" },
+        { name: "gemini-2.0-flash-exp", note: "Last resort — experimental but alive" },
     ];
 
     let lastError: any = null;
@@ -630,11 +636,14 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
     const base64Data = cleanBase64(req.originalImage);
     const { prompt: finalPrompt } = buildOverlayPrompt(req);
 
-    // OpenRouter model fallback chain for image generation
+    // OpenRouter model fallback chain for image generation — updated June 2026
+    // Note: Most OR models return text descriptions, not actual images.
+    // Real image rendering is handled by the sharp compositor (primary path).
     const OR_IMAGE_MODELS = [
-        "google/gemini-2.0-flash-exp:free",     // Free tier available
-        "google/gemini-2.5-flash",              // Standard tier
-        "anthropic/claude-3.5-sonnet",          // No image output, text fallback
+        "google/gemini-2.0-flash-exp:free",              // Free tier — supports vision
+        "google/gemini-2.5-flash-preview-05-20",         // Latest 2.5 Flash on OR
+        "openai/gpt-4o-mini",                            // Strong vision, text output
+        "anthropic/claude-3.5-sonnet",                   // Last resort text fallback
     ];
 
     let lastError: any = null;
@@ -661,24 +670,7 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
 
             const text = response.choices[0]?.message?.content || "Image generation unavailable";
             
-            // Create a placeholder with the description
-            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
-                <rect fill="#f0f0f0" width="800" height="600"/>
-                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
-                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, '&quot;')}...</text>
-                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
-            </svg>`;
-            
-            const base64Svg = Buffer.from(svgContent).toString('base64');
-            
-            console.log(`[AI] ✅ OpenRouter success with model: ${modelName}`);
-            recordSuccess("openrouter");
-            return {
-                image: `data:image/svg+xml;base64,${base64Svg}`,
-                model: modelName,
-                durationMs: Date.now() - startTime,
-                provider: "openrouter"
-            };
+            throw new Error(`OpenRouter image generation not supported. Text response: ${text.substring(0, 50)}...`);
         } catch (error: any) {
             lastError = error;
             console.warn(`[AI] ⚠️ OpenRouter model ${modelName} failed: ${error.message}`);
@@ -699,13 +691,16 @@ async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Pr
 
     const start = Date.now();
     const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
-    const base64Data = cleanBase64(req.image);
-    const mimeType = getMimeType(req.image);
+        // Use originalImage if provided; otherwise fall back to `image`.
+    const base64Data = cleanBase64(req.originalImage ?? (req as any).image);
+    const mimeType = getMimeType(req.originalImage ?? (req as any).image);
 
+    // OpenRouter analysis model fallback chain — updated June 2026
     const OR_ANALYSIS_MODELS = [
-        "google/gemini-2.5-flash",
-        "openai/gpt-4o-mini",
-        "anthropic/claude-3.5-sonnet",
+        "google/gemini-2.5-flash-preview-05-20", // Latest Gemini 2.5 Flash on OpenRouter
+        "google/gemini-2.5-flash",               // Older alias, keep as backup
+        "openai/gpt-4o-mini",                    // Strong vision analysis fallback
+        "anthropic/claude-3.5-sonnet",           // Claude last resort
     ];
 
     let lastError: any = null;

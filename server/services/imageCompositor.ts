@@ -352,96 +352,18 @@ export async function compositeProductOntoPhoto(
             },
         };
     } catch (error: any) {
-        console.error("[Compositor] Error:", error);
-
-        // Return a descriptive fallback image
-        const durationMs = Date.now() - startTime;
-        const { data: userPhotoData } = cleanBase64(req.originalImage);
-        const userPhoto = sharp(userPhotoData);
-        const userMeta = await userPhoto.metadata();
-        const imgW = userMeta.width || 800;
-        const imgH = userMeta.height || 600;
-
-        // For very small images, just return the original with a small overlay
-        if (imgW < 100 || imgH < 100) {
-            const smallOverlay = Buffer.from(`<svg width="${imgW}" height="${imgH}" xmlns="http://www.w3.org/2000/svg">
-                <rect width="${imgW}" height="${imgH}" fill="rgba(0,0,0,0.5)"/>
-            </svg>`);
-            try {
-                const fallbackImage = await userPhoto
-                    .composite([{ input: smallOverlay, left: 0, top: 0 }])
-                    .jpeg({ quality: 90 })
-                    .toBuffer();
-                return {
-                    image: `data:image/jpeg;base64,${fallbackImage.toString("base64")}`,
-                    method: "fallback",
-                    durationMs,
-                    details: {
-                        productImageUsed: req.material.imageUrl || "unknown",
-                        transform: "error-fallback-small",
-                        surfaceDetected: false,
-                    },
-                };
-            } catch {
-                // If even that fails, return original image
-                return {
-                    image: req.originalImage,
-                    method: "fallback",
-                    durationMs,
-                    details: {
-                        productImageUsed: req.material.imageUrl || "unknown",
-                        transform: "original-fallback",
-                        surfaceDetected: false,
-                    },
-                };
-            }
-        }
-
-        // Add text overlay explaining the issue (for larger images)
-        const svgOverlay = Buffer.from(`<svg width="800" height="200" xmlns="http://www.w3.org/2000/svg">
-            <rect width="800" height="200" fill="rgba(0,0,0,0.7)"/>
-            <text x="400" y="80" text-anchor="middle" fill="#e94560" font-family="Arial" font-size="24" font-weight="bold">⚠️ Product Rendering Issue</text>
-            <text x="400" y="120" text-anchor="middle" fill="#fff" font-family="Arial" font-size="14">${(error.message || "Unknown error").substring(0, 80)}</text>
-            <text x="400" y="150" text-anchor="middle" fill="#888" font-family="Arial" font-size="12">Product: ${(req.material.name || "Unknown").substring(0, 40)}</text>
-        </svg>`);
-
-        const overlayTop = Math.max(0, Math.round(imgH / 2 - 100));
-        const overlayLeft = Math.max(0, Math.round(imgW / 2 - 400));
-
-        try {
-            const fallbackImage = await userPhoto
-                .composite([
-                    {
-                        input: svgOverlay,
-                        top: overlayTop,
-                        left: overlayLeft,
-                    },
-                ])
-                .jpeg({ quality: 90 })
-                .toBuffer();
-
-            return {
-                image: `data:image/jpeg;base64,${fallbackImage.toString("base64")}`,
-                method: "fallback",
-                durationMs,
-                details: {
-                    productImageUsed: req.material.imageUrl || "unknown",
-                    transform: "error-fallback",
-                    surfaceDetected: false,
-                },
-            };
-        } catch (fallbackError) {
-            // Last resort: return original image
-            return {
-                image: req.originalImage,
-                method: "fallback",
-                durationMs,
-                details: {
-                    productImageUsed: req.material.imageUrl || "unknown",
-                    transform: "original-fallback",
-                    surfaceDetected: false,
-                },
-            };
-        }
+        console.error("[Compositor] Error:", error.message);
+        
+        // Cleanly return fallback so that server/index.ts can use AI generation
+        return {
+            image: req.originalImage,
+            method: "fallback",
+            durationMs: Date.now() - startTime,
+            details: {
+                productImageUsed: req.material.imageUrl || "unknown",
+                transform: "error-fallback",
+                surfaceDetected: false,
+            },
+        };
     }
 }
