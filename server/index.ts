@@ -9,7 +9,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
-import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllProviderHealth, type AIConfig, type AIProvider } from "./services/aiProviders.js";
+import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllProviderHealth, testAIConnection, type AIConfig, type AIProvider } from "./services/aiProviders.js";
 import { compositeProductOntoPhoto } from "./services/imageCompositor.js";
 import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
@@ -1405,6 +1405,17 @@ app.get('/api/build', (req: Request, res: Response) => {
         nodeEnv: process.env.NODE_ENV || 'development',
         port: PORT,
     });
+});
+
+// Diagnostic API connection test — pings Google and OpenRouter live from the server
+app.get('/api/test-ai', async (req: Request, res: Response) => {
+    try {
+        const config = loadConfig();
+        const results = await testAIConnection(config);
+        res.json(results);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || String(e) });
+    }
 });
 
 // ===== ADMIN HEALTH & DASHBOARD ENDPOINTS =====
@@ -3558,6 +3569,7 @@ app.get('/api/admin/config', requireAdmin, async (req: Request, res: Response) =
         aiProvider: config.AI_PROVIDER || 'gemini',
         hasKey: !!config.GEMINI_API_KEY,
         hasOpenAIKey: !!config.OPENAI_API_KEY,
+        hasOpenRouterKey: !!config.OPENROUTER_API_KEY,
         hasStripeSecretKey: !!config.STRIPE_SECRET_KEY,
         hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET
     });
@@ -3607,11 +3619,12 @@ app.get('/api/debug/config-path', requireAdmin, async (req: Request, res: Respon
 
 app.post('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { apiKey, openaiApiKey, aiProvider, stripeSecretKey, stripeWebhookSecret } = req.body;
+        const { apiKey, openaiApiKey, openrouterApiKey, aiProvider, stripeSecretKey, stripeWebhookSecret } = req.body;
         
         const config = await getConfig();
         if (apiKey !== undefined) config.GEMINI_API_KEY = apiKey;
         if (openaiApiKey !== undefined) config.OPENAI_API_KEY = openaiApiKey;
+        if (openrouterApiKey !== undefined) config.OPENROUTER_API_KEY = openrouterApiKey;
         if (aiProvider !== undefined) config.AI_PROVIDER = aiProvider;
         if (stripeSecretKey !== undefined) config.STRIPE_SECRET_KEY = stripeSecretKey;
         if (stripeWebhookSecret !== undefined) config.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;

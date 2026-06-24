@@ -484,14 +484,14 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     //       Newer models (3.5-flash) are vision-IN only — not used here.
     // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        // Primary — only model confirmed to support responseModalities: ["IMAGE"]
-        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output (2026 confirmed)" },
+        // Primary — latest Gemini 3.1 Flash Image model ("Nano Banana 2")
+        { name: "gemini-3.1-flash-image", supportsImageOutput: true, note: "Primary — native image output (Nano Banana 2)" },
+        // Secondary — Gemini 3 Pro Image model ("Nano Banana Pro")
+        { name: "gemini-3-pro-image", supportsImageOutput: true, note: "Secondary — native image output (Nano Banana Pro)" },
+        // Tertiary — Gemini 2.5 Flash Image model
+        { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "Tertiary — native image output" },
         // Fallback — text-only description if image gen fails
         { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — retiring Oct 2026, text only" },
-        // DEPRECATED MODELS (DO NOT USE):
-        // { name: "gemini-2.0-flash-exp-image-generation", note: "NEVER EXISTED — hallucination" },
-        // { name: "gemini-1.5-pro",                        note: "DISCONTINUED 2025 — returns 404" },
-        // { name: "gemini-2.5-flash-image",                note: "NEVER EXISTED — hallucination" },
     ];
 
     let response;
@@ -640,10 +640,9 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
     // Note: Most OR models return text descriptions, not actual images.
     // Real image rendering is handled by the sharp compositor (primary path).
     const OR_IMAGE_MODELS = [
-        "google/gemini-2.0-flash-exp:free",              // Free tier — supports vision
-        "google/gemini-2.5-flash-preview-05-20",         // Latest 2.5 Flash on OR
-        "openai/gpt-4o-mini",                            // Strong vision, text output
-        "anthropic/claude-3.5-sonnet",                   // Last resort text fallback
+        "google/gemini-flash-1.5",                       // Supports vision, fast
+        "openai/gpt-4o",                                 // Strong vision
+        "anthropic/claude-3-5-sonnet-20240620",          // Claude 3.5 Sonnet
     ];
 
     let lastError: any = null;
@@ -697,10 +696,9 @@ async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Pr
 
     // OpenRouter analysis model fallback chain — updated June 2026
     const OR_ANALYSIS_MODELS = [
-        "google/gemini-2.5-flash-preview-05-20", // Latest Gemini 2.5 Flash on OpenRouter
-        "google/gemini-2.5-flash",               // Older alias, keep as backup
-        "openai/gpt-4o-mini",                    // Strong vision analysis fallback
-        "anthropic/claude-3.5-sonnet",           // Claude last resort
+        "google/gemini-flash-1.5",
+        "openai/gpt-4o",
+        "anthropic/claude-3-5-sonnet-20240620",
     ];
 
     let lastError: any = null;
@@ -950,5 +948,97 @@ export async function getAllProviderHealth(config: AIConfig): Promise<Record<str
         results[provider] = await checkProviderHealth(provider, config);
     }
     
+    return results;
+}
+
+export async function testAIConnection(config: AIConfig): Promise<any> {
+    const results: any = {
+        geminiText: {},
+        geminiImageModels: {},
+        openrouter: {},
+        env: {
+            GEMINI_API_KEY_len: config.GEMINI_API_KEY ? config.GEMINI_API_KEY.length : 0,
+            OPENROUTER_API_KEY_len: config.OPENROUTER_API_KEY ? config.OPENROUTER_API_KEY.length : 0,
+            GEMINI_API_KEY_masked: config.GEMINI_API_KEY ? `${config.GEMINI_API_KEY.slice(0, 5)}...${config.GEMINI_API_KEY.slice(-4)}` : "missing",
+            OPENROUTER_API_KEY_masked: config.OPENROUTER_API_KEY ? `${config.OPENROUTER_API_KEY.slice(0, 5)}...${config.OPENROUTER_API_KEY.slice(-4)}` : "missing",
+        }
+    };
+
+    const ai = config.GEMINI_API_KEY ? getGeminiSDK(config.GEMINI_API_KEY) : null;
+
+    // 1. Test Gemini Text
+    if (ai) {
+        try {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: "Hello, reply with only the word 'OK'.",
+            });
+            results.geminiText = {
+                success: true,
+                response: response.text ? response.text.trim() : "(empty response)",
+            };
+        } catch (e: any) {
+            results.geminiText = {
+                success: false,
+                error: e.message || String(e),
+                status: e.status || e.code,
+            };
+        }
+
+        // Test each Gemini image model candidates
+        const candidateImageModels = [
+            "gemini-3.1-flash-image",
+            "gemini-3-pro-image",
+            "gemini-2.5-flash-image",
+            "gemini-2.0-flash-exp"
+        ];
+
+        for (const model of candidateImageModels) {
+            try {
+                // We ask for text response only to make it fast, but using IMAGE modality setting to check if supported
+                const response = await ai.models.generateContent({
+                    model: model,
+                    contents: "Hi, verify model connectivity.",
+                    config: { responseModalities: ["TEXT", "IMAGE"] }
+                });
+                results.geminiImageModels[model] = {
+                    success: true,
+                    response: response.text ? response.text.trim() : "OK (response success)"
+                };
+            } catch (e: any) {
+                results.geminiImageModels[model] = {
+                    success: false,
+                    error: e.message || String(e),
+                    status: e.status || e.code
+                };
+            }
+        }
+    } else {
+        results.geminiText = { success: false, error: "No Gemini API key configured" };
+    }
+
+    // 2. Test OpenRouter
+    try {
+        if (!config.OPENROUTER_API_KEY) {
+            throw new Error("No OpenRouter API key configured");
+        }
+        const orAi = getOpenRouterSDK(config.OPENROUTER_API_KEY);
+        const response = await orAi.chat.completions.create({
+            model: "google/gemini-2.5-flash",
+            messages: [{ role: "user", content: "Hello, reply with only the word 'OK'." }],
+            max_tokens: 10,
+        });
+        results.openrouter = {
+            success: true,
+            response: response.choices[0]?.message?.content ? response.choices[0].message.content.trim() : "(empty response)",
+        };
+    } catch (e: any) {
+        results.openrouter = {
+            success: false,
+            error: e.message || String(e),
+            status: e.status || e.code,
+        };
+    }
+
     return results;
 }

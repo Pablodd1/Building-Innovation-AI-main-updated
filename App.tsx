@@ -160,9 +160,9 @@ const App: React.FC = () => {
     const [tiersConfig, setTiersConfig] = useState<any>(null);
     const [editableTiers, setEditableTiers] = useState<any>(null);
     const [isSavingTiers, setIsSavingTiers] = useState(false);
-    const [secureConfig, setSecureConfig] = useState<{ hasKey: boolean; hasStripeSecretKey: boolean; hasStripeWebhookSecret: boolean } | null>(null);
+    const [secureConfig, setSecureConfig] = useState<{ hasKey: boolean; hasOpenAIKey?: boolean; hasOpenRouterKey?: boolean; aiProvider?: string; hasStripeSecretKey: boolean; hasStripeWebhookSecret: boolean } | null>(null);
     const [isSavingConfig, setIsSavingConfig] = useState(false);
-    const [configForm, setConfigForm] = useState({ apiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
+    const [configForm, setConfigForm] = useState({ aiProvider: "", apiKey: "", openaiApiKey: "", openrouterApiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
 
     const fetchTiers = async () => {
         try {
@@ -556,7 +556,7 @@ const App: React.FC = () => {
     };
 
     const handleSaveSecureConfig = async () => {
-        if (!configForm.apiKey && !configForm.stripeSecretKey && !configForm.stripeWebhookSecret) {
+        if (!configForm.apiKey && !configForm.openaiApiKey && !configForm.openrouterApiKey && !configForm.aiProvider && !configForm.stripeSecretKey && !configForm.stripeWebhookSecret) {
             alert(lang === 'es' ? "Por favor ingresa al menos un valor para actualizar." : "Please enter at least one value to update.");
             return;
         }
@@ -564,6 +564,9 @@ const App: React.FC = () => {
         try {
             const body: any = {};
             if (configForm.apiKey) body.apiKey = configForm.apiKey;
+            if (configForm.openaiApiKey) body.openaiApiKey = configForm.openaiApiKey;
+            if (configForm.openrouterApiKey) body.openrouterApiKey = configForm.openrouterApiKey;
+            if (configForm.aiProvider) body.aiProvider = configForm.aiProvider;
             if (configForm.stripeSecretKey) body.stripeSecretKey = configForm.stripeSecretKey;
             if (configForm.stripeWebhookSecret) body.stripeWebhookSecret = configForm.stripeWebhookSecret;
 
@@ -577,7 +580,7 @@ const App: React.FC = () => {
             });
             if (res.ok) {
                 alert(lang === 'es' ? "¡Configuración guardada exitosamente!" : "Configuration saved successfully!");
-                setConfigForm({ apiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
+                setConfigForm({ aiProvider: "", apiKey: "", openaiApiKey: "", openrouterApiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
                 fetchSecureConfig();
             } else {
                 const data = await res.json();
@@ -3876,16 +3879,49 @@ const App: React.FC = () => {
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {/* Provider status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Primary Provider</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.aiProvider ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.aiProvider ? secureConfig.aiProvider.toUpperCase() : 'Not Set'}
+                                        </span>
+                                    </div>
+                                </div>
+
                                 {/* Gemini status */}
                                 <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gemini API Key</span>
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gemini Key</span>
                                     <div className="flex items-center gap-2">
                                         <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
                                         <span className="text-xs font-bold text-gray-600">
                                             {secureConfig?.hasKey 
-                                                ? (lang === 'es' ? "Configurado (Activo)" : "Configured (Active)") 
-                                                : (lang === 'es' ? "No Configurado" : "Not Configured")}
+                                                ? (lang === 'es' ? "Configurado" : "Configured") 
+                                                : (lang === 'es' ? "Falta" : "Missing")}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* OpenAI status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">OpenAI Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasOpenAIKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasOpenAIKey ? "Configured" : "Missing"}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* OpenRouter status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">OpenRouter Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasOpenRouterKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasOpenRouterKey ? "Configured" : "Missing"}
                                         </span>
                                     </div>
                                 </div>
@@ -3921,6 +3957,22 @@ const App: React.FC = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
                                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Proveedor Principal de IA" : "Primary AI Provider"}
+                                        </label>
+                                        <select
+                                            value={configForm.aiProvider}
+                                            onChange={(e) => setConfigForm({ ...configForm, aiProvider: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        >
+                                            <option value="">(No Change)</option>
+                                            <option value="gemini">Google Gemini</option>
+                                            <option value="openrouter">OpenRouter</option>
+                                            <option value="openai">OpenAI</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
                                             {lang === 'es' ? "Nueva Clave de API Gemini" : "New Gemini API Key"}
                                         </label>
                                         <input
@@ -3928,6 +3980,32 @@ const App: React.FC = () => {
                                             placeholder="AIzaSy..."
                                             value={configForm.apiKey}
                                             onChange={(e) => setConfigForm({ ...configForm, apiKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave de OpenRouter" : "New OpenRouter API Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk-or-v1-..."
+                                            value={configForm.openrouterApiKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, openrouterApiKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave de OpenAI" : "New OpenAI API Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk-..."
+                                            value={configForm.openaiApiKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, openaiApiKey: e.target.value })}
                                             className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
                                         />
                                     </div>
