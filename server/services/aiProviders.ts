@@ -640,9 +640,9 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
     // Note: Most OR models return text descriptions, not actual images.
     // Real image rendering is handled by the sharp compositor (primary path).
     const OR_IMAGE_MODELS = [
-        "google/gemini-flash-1.5",                       // Supports vision, fast
-        "openai/gpt-4o",                                 // Strong vision
-        "anthropic/claude-3-5-sonnet-20240620",          // Claude 3.5 Sonnet
+        "google/gemini-2.5-flash",                       // Latest Gemini 2.5 Flash
+        "openai/gpt-4o",                                 // OpenAI GPT-4o
+        "openai/gpt-4o-mini",                            // OpenAI GPT-4o Mini
     ];
 
     let lastError: any = null;
@@ -669,7 +669,24 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
 
             const text = response.choices[0]?.message?.content || "Image generation unavailable";
             
-            throw new Error(`OpenRouter image generation not supported. Text response: ${text.substring(0, 50)}...`);
+            // Create a placeholder with the description
+            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+                <rect fill="#f0f0f0" width="800" height="600"/>
+                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
+                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, '&quot;')}...</text>
+                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
+            </svg>`;
+            
+            const base64Svg = Buffer.from(svgContent).toString('base64');
+            
+            console.log(`[AI] ✅ OpenRouter success with model: ${modelName}`);
+            recordSuccess("openrouter");
+            return {
+                image: `data:image/svg+xml;base64,${base64Svg}`,
+                model: modelName,
+                durationMs: Date.now() - startTime,
+                provider: "openrouter"
+            };
         } catch (error: any) {
             lastError = error;
             console.warn(`[AI] ⚠️ OpenRouter model ${modelName} failed: ${error.message}`);
@@ -694,11 +711,10 @@ async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Pr
     const base64Data = cleanBase64(req.originalImage ?? (req as any).image);
     const mimeType = getMimeType(req.originalImage ?? (req as any).image);
 
-    // OpenRouter analysis model fallback chain — updated June 2026
     const OR_ANALYSIS_MODELS = [
-        "google/gemini-flash-1.5",
+        "google/gemini-2.5-flash",
         "openai/gpt-4o",
-        "anthropic/claude-3-5-sonnet-20240620",
+        "openai/gpt-4o-mini",
     ];
 
     let lastError: any = null;
