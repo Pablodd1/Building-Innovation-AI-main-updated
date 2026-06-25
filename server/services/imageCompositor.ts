@@ -8,6 +8,9 @@ import sharp from "sharp";
 import * as fs from "fs";
 import * as path from "path";
 
+// Disable Sharp cache to prevent memory leaks and reduce RAM usage on shared hosting
+sharp.cache(false);
+
 export interface CompositingRequest {
     originalImage: string;       // base64 data URL of user's photo
     material: {
