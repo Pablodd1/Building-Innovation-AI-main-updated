@@ -106,11 +106,14 @@ const App: React.FC = () => {
             const saved = localStorage.getItem('constructviz_user');
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (parsed && parsed.id) {
+                if (parsed && parsed.id && parsed.id !== 0) {
                     setCurrentUser(parsed);
                     setView(AppView.LANDING);
                     // Load memory
                     loadUserMemory(parsed.id);
+                } else if (parsed && parsed.id === 0) {
+                    // Clear legacy demo session
+                    localStorage.removeItem('constructviz_user');
                 }
             }
         } catch (e) {
@@ -302,41 +305,6 @@ const App: React.FC = () => {
             console.warn('Failed to load user memory:', e);
         }
     };
-
-    // Helper to save current workspace state
-    const saveWorkspaceState = async (updates: any = {}) => {
-        if (!currentUser) return;
-        try {
-            const stateToSave = {
-                view,
-                displayCurrency,
-                renderOptions,
-                customPrompt,
-                lang,
-                originalImage,
-                selectedMaterial,
-                ...updates
-            };
-            
-            await fetch(`/api/users/${currentUser.id}/memory`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lastState: stateToSave })
-            });
-        } catch (e) {
-            console.warn('Workspace sync failed:', e);
-        }
-    };
-
-    // Auto-save changes dynamically with a debounced sync
-    useEffect(() => {
-        if (currentUser) {
-            const timer = setTimeout(() => {
-                saveWorkspaceState();
-            }, 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [view, displayCurrency, renderOptions, customPrompt, lang, originalImage, selectedMaterial, currentUser]);
 
     const fetchAnalytics = async () => {
         setIsLoadingAnalytics(true);
@@ -548,6 +516,42 @@ const App: React.FC = () => {
     const [historyIndex, setHistoryIndex] = useState(-1);
 
     const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+
+    // Helper to save current workspace state
+    const saveWorkspaceState = async (updates: any = {}) => {
+        if (!currentUser) return;
+        try {
+            const stateToSave = {
+                view,
+                displayCurrency,
+                renderOptions,
+                customPrompt,
+                lang,
+                originalImage,
+                selectedMaterial,
+                ...updates
+            };
+            
+            await fetch(`/api/users/${currentUser.id}/memory`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lastState: stateToSave })
+            });
+        } catch (e) {
+            console.warn('Workspace sync failed:', e);
+        }
+    };
+
+    // Auto-save changes dynamically with a debounced sync
+    useEffect(() => {
+        if (currentUser) {
+            const timer = setTimeout(() => {
+                saveWorkspaceState();
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [view, displayCurrency, renderOptions, customPrompt, lang, originalImage, selectedMaterial, currentUser]);
+
     const [checkoutBody, setCheckoutBody] = useState("");
 
     // Admin pagination and multi-select state
@@ -1179,6 +1183,10 @@ const App: React.FC = () => {
     };
 
     const handleImageCapture = (file: File) => {
+        if (!file.type.startsWith("image/")) {
+            alert(lang === 'es' ? "Por favor suba un archivo de imagen válido." : "Please upload a valid image file.");
+            return;
+        }
         const reader = new FileReader();
         reader.onloadend = () => {
             setOriginalImage(reader.result as string);
@@ -1302,10 +1310,14 @@ const App: React.FC = () => {
                 })
             }).catch(() => {});
 
+            const userFriendlyError = errorMsg.includes("Server error") 
+                ? (lang === 'es' ? "El servicio de renderizado no está disponible temporalmente." : "Rendering service is temporarily unavailable.")
+                : errorMsg;
+
             setGenerationState((prev) => ({
                 ...prev,
                 isGenerating: false,
-                error: (lang === 'es' ? 'Error al generar: ' : 'Generation error: ') + errorMsg
+                error: (lang === 'es' ? 'Error al generar: ' : 'Generation error: ') + userFriendlyError
             }));
             
             const isQuotaError = errorMsg.includes('403') || errorMsg.includes('Quota exceeded');
@@ -1345,7 +1357,7 @@ const App: React.FC = () => {
             setGenerationState((prev) => ({
                 ...prev,
                 isAnalyzing: false,
-                error: "Analysis failed.",
+                error: lang === "es" ? "El servicio de análisis no está disponible temporalmente." : "Analysis service is temporarily unavailable.",
             }));
         }
     };
@@ -1579,28 +1591,6 @@ const App: React.FC = () => {
                                 : "Sign Up"}
                     </button>
 
-                    {/* Skip Login - Demo Mode */}
-                    <button
-                        type="button"
-                        onClick={() => {
-                            const demoUser = {
-                                id: 0,
-                                name: 'Demo User',
-                                email: 'demo@constructviz.ai',
-                                role: 'customer',
-                                tier: 'Free',
-                                generations_used: 0,
-                                created_at: new Date().toISOString()
-                            };
-                            setCurrentUser(demoUser);
-                            localStorage.setItem('constructviz_user', JSON.stringify(demoUser));
-                            setView(AppView.LANDING);
-                        }}
-                        className="w-full text-sm text-gray-500 hover:text-blue-500 underline transition-colors py-2"
-                    >
-                        {t.login.skip || "Skip for now (Demo)"}
-                    </button>
-
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>
@@ -1641,11 +1631,11 @@ const App: React.FC = () => {
                     
                     {/* App Store Compliance: Legal Links */}
                     <div className="mt-6 flex justify-center space-x-4 text-xs text-gray-500">
-                        <a href="https://buildinginnovation.com/privacy" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                        <a href="https://buildingapp.us/privacy.html" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Política de Privacidad" : "Privacy Policy"}
                         </a>
                         <span>|</span>
-                        <a href="https://buildinginnovation.com/terms" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                        <a href="https://buildingapp.us/terms.html" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Términos de Servicio" : "Terms of Service"}
                         </a>
                     </div>
