@@ -9,11 +9,13 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
+import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllProviderHealth, testAIConnection, type AIConfig, type AIProvider } from "./services/aiProviders.js";
+import { compositeProductOntoPhoto } from "./services/imageCompositor.js";
 import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
+import crypto from 'crypto';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
-import { TelegramAlerts, telegramAlerts } from './telegramAlerts';
-import { productionAlerts } from './productionAlerts';
+import { telegramAlerts } from './telegramAlerts';
 import mysql from 'mysql2/promise';
 
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
@@ -68,6 +70,18 @@ function logCrash(error: any) {
         fs.appendFileSync(path.join(process.cwd(), 'crash.log'), msg);
     } catch (e) {}
     console.error('CRITICAL STARTUP ERROR:', error);
+
+    // Send Telegram alert
+    try {
+        telegramAlerts.sendMessage({
+            text: `<b>🚨 CRITICAL STARTUP ERROR</b>\n\n` +
+                  `<b>Error:</b> <code>${(error.message || String(error)).substring(0, 200)}</code>\n` +
+                  `<b>Stack:</b> <pre>${(error.stack || 'No stack').substring(0, 500)}</pre>`,
+            parse_mode: 'HTML'
+        });
+    } catch (tgErr) {
+        console.error('Failed to send crash to Telegram:', tgErr);
+    }
 }
 
 try {
@@ -90,7 +104,7 @@ const pool = isPostgres
     ? new Pool({ ...dbConfig, ssl: { rejectUnauthorized: false } })
     : null;
 
-const mysqlPool = !isPostgres 
+const mysqlPool = (!isPostgres && process.env.DB_HOST) 
     ? mysql.createPool({
         host: process.env.DB_HOST,
         user: process.env.DB_USER,
@@ -119,11 +133,95 @@ async function query(text: string, params: any[] = []) {
 // In-memory error log for debugging
 const errorLog: any[] = [];
 
-const TIERS = {
-    FREE: { name: 'Tier 1 (Free)', limit: 5 },
-    PRO: { name: 'Tier 2 (Pro)', limit: 50 },
-    ENTERPRISE: { name: 'Tier 3 (Enterprise)', limit: 9999 }
+interface TierInfo {
+    name: string;
+    limit: number;
+    price: number;
+    stripePriceId: string;
+}
+
+interface TiersConfig {
+    FREE: TierInfo;
+    STANDARD: TierInfo;
+    PREMIUM: TierInfo;
+    LUXURY: TierInfo;
+}
+
+const DEFAULT_TIERS: TiersConfig = {
+    FREE: { name: 'FREE', limit: 10, price: 0, stripePriceId: '' },
+    STANDARD: { name: 'STANDARD', limit: 500, price: 4.99, stripePriceId: 'price_standard_placeholder' },
+    PREMIUM: { name: 'PREMIUM', limit: 1000, price: 24.99, stripePriceId: 'price_premium_placeholder' },
+    LUXURY: { name: 'LUXURY', limit: 999999, price: 49.99, stripePriceId: 'price_luxury_placeholder' }
 };
+
+const JSON_TIERS_PATH = path.join(process.cwd(), 'data', 'tiers.persistent.json');
+
+async function getTiers(): Promise<TiersConfig> {
+    try {
+        const result = await query('SELECT id, name, "limit", price, stripe_price_id FROM tiers_config');
+        if (result && result.rows && result.rows.length > 0) {
+            const config: any = {};
+            result.rows.forEach((row: any) => {
+                config[row.id.toUpperCase()] = {
+                    name: row.name,
+                    limit: parseInt(row.limit, 10),
+                    price: parseFloat(row.price),
+                    stripePriceId: row.stripe_price_id || ''
+                };
+            });
+            // Ensure all default keys exist
+            for (const key of ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY']) {
+                if (!config[key]) {
+                    config[key] = { ...DEFAULT_TIERS[key as keyof TiersConfig] };
+                }
+            }
+            return config;
+        }
+    } catch (e: any) {
+        console.warn('⚠️ SQL query for tiers_config failed, falling back to JSON:', e.message);
+    }
+
+    // JSON fallback
+    try {
+        if (fs.existsSync(JSON_TIERS_PATH)) {
+            const content = fs.readFileSync(JSON_TIERS_PATH, 'utf8');
+            const parsed = JSON.parse(content);
+            if (parsed.FREE) {
+                return parsed as TiersConfig;
+            }
+        }
+    } catch (jsonErr: any) {
+        console.error('Failed to read tiers.persistent.json:', jsonErr.message);
+    }
+
+    return { ...DEFAULT_TIERS };
+}
+
+async function saveTiers(config: TiersConfig): Promise<void> {
+    // 1. Save to JSON fallback
+    try {
+        fs.writeFileSync(JSON_TIERS_PATH, JSON.stringify(config, null, 2), 'utf8');
+        console.log('✅ Saved tiers to tiers.persistent.json');
+    } catch (jsonErr: any) {
+        console.error('Failed to write to tiers.persistent.json:', jsonErr.message);
+    }
+
+    // 2. Save to database
+    try {
+        for (const [id, info] of Object.entries(config)) {
+            await query(
+                `INSERT INTO tiers_config (id, name, "limit", price, stripe_price_id) 
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (id) DO UPDATE 
+                 SET name = EXCLUDED.name, "limit" = EXCLUDED.limit, price = EXCLUDED.price, stripe_price_id = EXCLUDED.stripe_price_id`,
+                [id.toUpperCase(), info.name, info.limit, info.price, info.stripePriceId]
+            );
+        }
+        console.log('✅ Saved tiers to database');
+    } catch (e: any) {
+        console.warn('⚠️ Failed to save tiers to database, relying on JSON fallback:', e.message);
+    }
+}
 
 // HA VERSINE FORMULA: Calculate distance between two coordinates in km
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -144,6 +242,7 @@ async function runMigrations() {
         await query(`
             ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(20) DEFAULT 'Free';
             ALTER TABLE users ADD COLUMN IF NOT EXISTS generations_used INTEGER DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS session_token VARCHAR(255);
             ALTER TABLE materials ADD COLUMN IF NOT EXISTS price_contractor DECIMAL(10, 2);
             CREATE TABLE IF NOT EXISTS user_memories (
                 user_id INTEGER PRIMARY KEY,
@@ -152,10 +251,36 @@ async function runMigrations() {
                 behaviors JSON DEFAULT ('{}'),
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS tiers_config (
+                id VARCHAR(50) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                "limit" INTEGER NOT NULL,
+                price DECIMAL(10, 2) NOT NULL,
+                stripe_price_id VARCHAR(255) DEFAULT ''
+            );
         `);
         console.log('✅ Database migrations applied');
+        
+        // Seed initial tiers config
+        const current = await getTiers();
+        await saveTiers(current);
+        console.log('✅ Pricing tiers initialized');
     } catch (e: any) {
         console.warn('⚠️ Migration failed (likely no DB connection):', e.message);
+        
+        // Ensure local folder and fallback file are initialized anyway
+        try {
+            const dataDir = path.join(process.cwd(), 'data');
+            if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+            }
+            if (!fs.existsSync(JSON_TIERS_PATH)) {
+                fs.writeFileSync(JSON_TIERS_PATH, JSON.stringify(DEFAULT_TIERS, null, 2), 'utf8');
+                console.log('✅ Persistent JSON tiers created as fallback');
+            }
+        } catch (dirErr) {
+            console.error('Failed to create local tiers backup:', dirErr);
+        }
     }
 }
 runMigrations();
@@ -173,6 +298,10 @@ const JSON_USERS_TRACKED = fs.existsSync(path.join(process.cwd(), 'public', 'dat
 const JSON_DB_PATH = path.join(process.cwd(), 'data', 'products.persistent.json');
 const JSON_USERS_PATH = path.join(process.cwd(), 'data', 'users.persistent.json');
 const JSON_MEMORIES_PATH = path.join(process.cwd(), 'data', 'memories.persistent.json');
+const JSON_AUDIT_LOGS_PATH = path.join(process.cwd(), 'data', 'audit_logs.persistent.json');
+const JSON_GENERATION_LOG_PATH = path.join(process.cwd(), 'data', 'generation_log.persistent.json');
+const JSON_USER_ACTIVITY_PATH = path.join(process.cwd(), 'data', 'user_activity.persistent.json');
+const JSON_DAILY_STATS_PATH = path.join(process.cwd(), 'data', 'daily_stats.persistent.json');
 const JSON_PRODUCTS_PATH = JSON_DB_PATH;
 
 // Initialize persistent files on startup if they don't exist
@@ -191,7 +320,15 @@ try {
     }
     if (!fs.existsSync(JSON_MEMORIES_PATH)) {
         fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify({}, null, 2), 'utf8');
-        console.log('✅ Initialized memories.persistent.json');
+    }
+    if (!fs.existsSync(JSON_GENERATION_LOG_PATH)) {
+        fs.writeFileSync(JSON_GENERATION_LOG_PATH, JSON.stringify([], null, 2), 'utf8');
+    }
+    if (!fs.existsSync(JSON_USER_ACTIVITY_PATH)) {
+        fs.writeFileSync(JSON_USER_ACTIVITY_PATH, JSON.stringify([], null, 2), 'utf8');
+    }
+    if (!fs.existsSync(JSON_DAILY_STATS_PATH)) {
+        fs.writeFileSync(JSON_DAILY_STATS_PATH, JSON.stringify({ counters: { totalRequests: 0, apiCalls: 0, aiGenerations: 0, materialViews: 0, errors: 0 }, history: [] }, null, 2), 'utf8');
     }
 } catch (initErr) {
     console.error('Failed to initialize persistent JSON fallbacks:', initErr);
@@ -234,6 +371,7 @@ interface HealthStatus {
     materialViews: number;
     errors: number;
     startTime: string;
+    totalUsers: number;
   };
 }
 
@@ -248,18 +386,71 @@ class SystemMonitor {
   };
   private dailyLog: any[] = [];
   private alertCooldown = new Map<string, number>();
+  private currentDay: string = '';
+
+  constructor() {
+    this.loadCounters();
+    this.currentDay = new Date().toISOString().split('T')[0];
+  }
+
+  private loadCounters() {
+    try {
+      if (fs.existsSync(JSON_DAILY_STATS_PATH)) {
+        const data = JSON.parse(fs.readFileSync(JSON_DAILY_STATS_PATH, 'utf8'));
+        if (data.counters) {
+          this.counters = { ...this.counters, ...data.counters };
+        }
+        if (Array.isArray(data.history)) {
+          this.dailyLog = data.history;
+        }
+      }
+    } catch (e) {
+      console.warn('[Monitor] Failed to load daily stats:', e);
+    }
+  }
+
+  private saveCounters() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      // Roll over to new day if needed
+      if (today !== this.currentDay) {
+        this.dailyLog.push({
+          date: this.currentDay,
+          ...this.counters,
+        });
+        // Keep only last 90 days
+        if (this.dailyLog.length > 90) {
+          this.dailyLog = this.dailyLog.slice(-90);
+        }
+        this.currentDay = today;
+      }
+      fs.writeFileSync(JSON_DAILY_STATS_PATH, JSON.stringify({
+        counters: this.counters,
+        history: this.dailyLog,
+        lastUpdated: new Date().toISOString(),
+      }, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[Monitor] Failed to save daily stats:', e);
+    }
+  }
 
   trackRequest(req: Request) {
     this.counters.totalRequests++;
     if (req.path.startsWith('/api')) this.counters.apiCalls++;
     if (req.path.includes('generate')) this.counters.aiGenerations++;
     if (req.path.includes('material') || req.path.includes('products')) this.counters.materialViews++;
+    this.saveCounters();
   }
 
   trackError(error: any) {
     this.counters.errors++;
+    this.saveCounters();
     // Send Telegram alert for errors
     telegramAlerts.sendErrorAlert(error instanceof Error ? error : new Error(String(error)));
+  }
+
+  getDailyStats(days: number = 30) {
+    return this.dailyLog.slice(-days);
   }
 
   async getHealth(): Promise<HealthStatus> {
@@ -276,7 +467,7 @@ class SystemMonitor {
       checks: {
         apiKey: config,
         database: db,
-        configFile: { ok: !!findConfigPath(), path: findConfigPath() },
+        configFile: { ok: !!findConfigPath() || config.ok, path: findConfigPath() },
         staticFiles,
         serverBundle: bundle,
       },
@@ -319,7 +510,7 @@ class SystemMonitor {
       
       if (currentStatus !== this.lastStatus) {
         if (!currentStatus) {
-           await telegramAlerts.sendErrorAlert(new Error("AI Key Failure"), `The Gemini API Key is missing or invalid: ${health.checks.apiKey.message}`);
+           await telegramAlerts.sendErrorAlert(new Error("AI Key Failure"), `The AI API Key is missing or invalid (active provider: ${health.checks.apiKey.message})`);
         }
         this.lastStatus = currentStatus;
       }
@@ -329,21 +520,26 @@ class SystemMonitor {
   private async checkConfig() {
     try {
       const configPath = findConfigPath();
-      let key = null;
-      
+      let config: any = {};
+
       if (configPath) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        key = config.GEMINI_API_KEY;
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       }
-      
-      // Fallback to env var
-      if (!key) {
-        key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+
+      const provider = config.AI_PROVIDER || 'gemini';
+      const geminiKey = config.GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      const openaiKey = config.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+
+      if (provider === 'openai') {
+        if (!openaiKey) return { ok: false, message: 'AI_PROVIDER is openai but OPENAI_API_KEY not found in config or env' };
+        if (!openaiKey.startsWith('sk-')) return { ok: false, message: 'OpenAI API key format invalid (should start with sk-)' };
+        return { ok: true, message: `OpenAI key valid (active provider: ${provider})` };
       }
-      
-      if (!key) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
-      if (!key.startsWith('AIza')) return { ok: false, message: 'API key format invalid (should start with AIza)' };
-      return { ok: true, message: `Key valid (${key.length} chars)` };
+
+      // Default: Gemini
+      if (!geminiKey) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
+      if (!geminiKey.startsWith('AIza') && !geminiKey.startsWith('AQ.')) return { ok: false, message: 'Gemini API key format invalid (should start with AIza or AQ.)' };
+      return { ok: true, message: `Gemini key valid (active provider: ${provider})` };
     } catch (e: any) {
       return { ok: false, message: `Config error: ${e.message}` };
     }
@@ -360,6 +556,9 @@ class SystemMonitor {
         await testPool.end();
         return { ok: true, message: 'PostgreSQL connected' };
       } else {
+        if (!process.env.DB_HOST) {
+          return { ok: false, message: 'MySQL host not configured (running in high-fidelity local JSON mode)' };
+        }
         const connection = await mysql.createConnection({
           host: process.env.DB_HOST,
           user: process.env.DB_USER,
@@ -431,13 +630,7 @@ setInterval(() => monitor.checkAndReport(), 300000); // Check every 5 mins for A
 
 // Helper to get config (API Keys, etc.)
 async function getConfig() {
-    const configPath = findConfigPath();
-    try {
-        if (configPath) {
-            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        }
-    } catch (e) {}
-    return { GEMINI_API_KEY: process.env.VITE_GEMINI_API_KEY || "" };
+    return loadConfig();
 }
 
 // Helper to load from JSON (fallback persistence)
@@ -466,6 +659,27 @@ function saveToJSON(filePath: string, data: any) {
     }
 }
 
+// Helper to get mapped image
+function getMappedImageUrl(row: any): string {
+    const refCode = String(row.ref_code || row.refCode || '').trim();
+    const id = String(row.id).trim();
+    
+    try {
+        const skuMap = require('../sku_image_map.json');
+        if (skuMap[refCode]) return skuMap[refCode];
+        if (skuMap[id]) return skuMap[id];
+    } catch (e) {
+        // sku_image_map.json might be unavailable in some environments
+    }
+    
+    // Original fallback
+    const imgUrl = row.image_url || row.imageUrl || '';
+    if (imgUrl.startsWith('/products/')) {
+        return 'https://buildingapp.us' + imgUrl;
+    }
+    return imgUrl;
+}
+
 // Helper to map DB row to Material interface
 function mapDBToMaterial(row: any) {
     if (!row) return null;
@@ -474,7 +688,7 @@ function mapDBToMaterial(row: any) {
         refCode: row.ref_code || row.refCode || '',
         name: row.name || '',
         description: row.description || '',
-        imageUrl: row.image_url || row.imageUrl || '',
+        imageUrl: getMappedImageUrl(row),
         category: row.category || '',
         subcategory: row.subcategory || '',
         usage: row.usage || 'Interior',
@@ -502,8 +716,19 @@ async function getMaterials() {
     } catch (e) {
         console.warn('Database unavailable, reading from local JSON manifest...');
         if (fs.existsSync(JSON_DB_PATH)) {
-            const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
-            return JSON.parse(data);
+            try {
+                const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
+                const list = JSON.parse(data);
+                if (Array.isArray(list)) {
+                    return list.map((item: any) => ({
+                        ...item,
+                        imageUrl: getMappedImageUrl(item)
+                    }));
+                }
+                return list;
+            } catch (err) {
+                console.error('Error reading/parsing products.persistent.json:', err);
+            }
         }
         return [];
     }
@@ -524,18 +749,277 @@ async function getUsers() {
     }
 }
 
+// ===== TIER EXPIRATION SYSTEM =====
+
+function normalizeTier(tier: string | null | undefined): string {
+    if (!tier) return 'FREE';
+    const upper = tier.toUpperCase();
+    if (upper === 'FREE' || upper.includes('TIER 1') || upper.includes('GRATIS')) return 'FREE';
+    if (upper === 'STANDARD' || upper === 'PRO' || upper.includes('TIER 2') || upper.includes('TIER 3')) return 'STANDARD';
+    if (upper === 'PREMIUM' || upper.includes('TIER 4')) return 'PREMIUM';
+    if (upper === 'LUXURY' || upper === 'ENTERPRISE' || upper.includes('TIER 5')) return 'LUXURY';
+    return upper;
+}
+
+// Check if a user's tier has expired and downgrade to Free if so.
+// Returns true if the user was downgraded.
+async function checkAndDowngradeExpiredTier(user: any): Promise<boolean> {
+    if (!user) return false;
+    const normalized = normalizeTier(user.tier);
+    // Free tier never expires
+    if (normalized === 'FREE') return false;
+    // No expiration set — permanent tier (legacy), don't downgrade
+    if (!user.tier_expires_at) return false;
+
+    const expiresAt = new Date(user.tier_expires_at);
+    if (isNaN(expiresAt.getTime())) return false; // Invalid date
+
+    if (new Date() > expiresAt) {
+        const expiredAt = user.tier_expires_at;
+        const oldTier = user.tier;
+        console.log(`[TierExpiration] User ${user.id} (${user.email}) tier ${oldTier} expired at ${expiredAt}. Downgrading to Free.`);
+        user.tier = 'Free';
+        user.tier_expires_at = null;
+
+        // 1. Update DB
+        try {
+            await query('UPDATE users SET tier = $1, tier_expires_at = NULL WHERE id = $2', ['Free', user.id]);
+        } catch (dbErr: any) {
+            console.warn(`[TierExpiration] DB update failed for user ${user.id}:`, dbErr.message);
+        }
+
+        // 2. Update JSON fallback
+        try {
+            const users = await getUsers();
+            const idx = users.findIndex((u: any) => String(u.id) === String(user.id));
+            if (idx !== -1) {
+                users[idx].tier = 'Free';
+                users[idx].tier_expires_at = null;
+                saveToJSON(JSON_USERS_PATH, users);
+            }
+        } catch (jsonErr: any) {
+            console.warn(`[TierExpiration] JSON update failed for user ${user.id}:`, jsonErr.message);
+        }
+
+        // 3. Log the event
+        logUserActivity({
+            userId: user.id,
+            action: 'TIER_EXPIRED',
+            details: { oldTier, newTier: 'Free', expiredAt },
+        });
+
+        // 4. Notify admin
+        telegramAlerts.sendMessage({
+            text: `<b>📋 Tier Expired</b>\nUser: ${user.email}\nOld tier: ${oldTier}\nExpired: ${expiredAt}\nAuto-downgraded to Free.`,
+        }).catch(() => {});
+
+        return true;
+    }
+    return false;
+}
+
+// Run expiration check on all users (for scheduled cleanup)
+async function runTierExpirationCleanup(): Promise<{ checked: number; downgraded: number }> {
+    let downgraded = 0;
+    const users = await getUsers();
+    for (const user of users) {
+        const wasDowngraded = await checkAndDowngradeExpiredTier(user);
+        if (wasDowngraded) downgraded++;
+    }
+    console.log(`[TierExpiration] Cleanup complete: ${users.length} checked, ${downgraded} downgraded.`);
+    return { checked: users.length, downgraded };
+}
+
+// ===== SECURITY AUDIT LOGGING & AUTHORIZATION MIDDLEWARE =====
+
+try {
+    if (!fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+        fs.writeFileSync(JSON_AUDIT_LOGS_PATH, JSON.stringify([], null, 2), 'utf8');
+        console.log('✅ Initialized audit_logs.persistent.json');
+    }
+} catch (e: any) {
+    console.error('Failed to initialize audit_logs.persistent.json:', e.message);
+}
+
+// Log admin action to JSON file and send Telegram alert
+async function logAdminAction(req: Request, user: any, action: string, details: string) {
+    try {
+        const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+        const logEntry = {
+            id: `audit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            timestamp: new Date().toISOString(),
+            adminEmail: user?.email || 'system@buildingapp.us',
+            adminName: user?.name || 'System',
+            action,
+            details,
+            ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : String(ipAddress)
+        };
+
+        // 1. Append to JSON
+        let logs: any[] = [];
+        if (fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+            try {
+                const content = fs.readFileSync(JSON_AUDIT_LOGS_PATH, 'utf8');
+                logs = JSON.parse(content || '[]');
+            } catch (err) {
+                logs = [];
+            }
+        }
+        logs.unshift(logEntry);
+        if (logs.length > 1000) logs = logs.slice(0, 1000);
+        fs.writeFileSync(JSON_AUDIT_LOGS_PATH, JSON.stringify(logs, null, 2), 'utf8');
+
+        // 2. Send Telegram notification
+        try {
+            await telegramAlerts.sendMessage({
+                text: `<b>⚠️ [Admin Security Audit]</b>\n\n` +
+                      `<b>Admin:</b> ${logEntry.adminName} (${logEntry.adminEmail})\n` +
+                      `<b>Action:</b> <code>${logEntry.action}</code>\n` +
+                      `<b>Details:</b> ${logEntry.details}\n` +
+                      `<b>IP Address:</b> <code>${logEntry.ipAddress}</code>\n` +
+                      `<b>Time:</b> ${new Date(logEntry.timestamp).toLocaleString()}\n\n` +
+                      `<a href="https://buildingapp.us/api/admin/dashboard?token=${user?.session_token || 'session_admin_fallback'}">Go to Admin Dashboard</a>`,
+                parse_mode: 'HTML'
+            });
+        } catch (tgErr) {
+            console.error('Failed to send audit log Telegram alert:', tgErr);
+        }
+    } catch (e: any) {
+        console.error('Failed to log admin action:', e);
+    }
+}
+
+// Security Middleware: Require standard authorization (matching user OR admin)
+const requireAuth = async (req: Request, res: Response, next: any) => {
+    try {
+        let token = '';
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            token = req.headers.authorization.substring(7);
+        } else if (req.query.token) {
+            token = req.query.token as string;
+        }
+
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized. No session token provided.' });
+        }
+
+        let user: any = null;
+        try {
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, session_token FROM users WHERE session_token = $1', [token]);
+            if (result.rows.length > 0) {
+                user = result.rows[0];
+            }
+        } catch (dbErr) {}
+
+        if (!user) {
+            const users = await getUsers();
+            user = users.find((u: any) => u.session_token === token);
+        }
+
+        if (!user) {
+            return res.status(401).json({ error: 'Unauthorized. Invalid session token.' });
+        }
+
+        (req as any).user = user;
+        next();
+    } catch (error: any) {
+        console.error('requireAuth middleware error:', error);
+        res.status(500).json({ error: 'Internal server error during authorization' });
+    }
+};
+
+// Security Middleware: Require admin role
+const requireAdmin = async (req: Request, res: Response, next: any) => {
+    try {
+        let token = '';
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            token = req.headers.authorization.substring(7);
+        } else if (req.query.token) {
+            token = req.query.token as string;
+        }
+
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized. No session token provided.' });
+        }
+
+        let user: any = null;
+        try {
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, session_token FROM users WHERE session_token = $1', [token]);
+            if (result.rows.length > 0) {
+                user = result.rows[0];
+            }
+        } catch (dbErr) {}
+
+        if (!user) {
+            const users = await getUsers();
+            user = users.find((u: any) => u.session_token === token);
+        }
+
+        if (!user) {
+            return res.status(401).json({ error: 'Unauthorized. Invalid session token.' });
+        }
+
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Forbidden. Admin privileges required.' });
+        }
+
+        (req as any).user = user;
+        next();
+    } catch (error: any) {
+        console.error('requireAdmin middleware error:', error);
+        res.status(500).json({ error: 'Internal server error during authorization' });
+    }
+};
+
 // Middleware + Monitoring + Security
-app.use(cors());
+const allowedOrigins = ['https://buildingapp.us', 'https://www.buildingapp.us', 'http://localhost:5173', 'http://localhost:3000'];
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
+
+// Global request timeout — 60s for API routes, 5min for AI/image routes
+app.use((req: Request, res: Response, next: any) => {
+    const isLongRunning = req.path.includes('/ai/') || req.path.includes('/proxy-image');
+    req.setTimeout(isLongRunning ? 300000 : 60000, () => {
+        res.status(408).json({ error: 'Request timeout' });
+    });
+    next();
+});
 // Stripe Webhook Endpoint (Must use raw body for signature verification)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_123', { apiVersion: '2025-02-24.acacia' });
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
+let stripeInstance: Stripe | null = null;
+let lastStripeKey: string | null = null;
+
+async function getStripe() {
+    const config = await getConfig();
+    const key = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || 'sk_test_123';
+    
+    if (!stripeInstance || lastStripeKey !== key) {
+        stripeInstance = new Stripe(key, { apiVersion: '2025-02-24.acacia' as any });
+        lastStripeKey = key;
+    }
+    return stripeInstance;
+}
+
+async function getStripeWebhookSecret() {
+    const config = await getConfig();
+    return config.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
+}
 
 app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req: Request, res: Response) => {
     const sig = req.headers['stripe-signature'] as string;
     let event;
 
     try {
-        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+        const stripeObj = await getStripe();
+        const webhookSecret = await getStripeWebhookSecret();
+        event = stripeObj.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err: any) {
         console.error(`Webhook Error: ${err.message}`);
         return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -545,54 +1029,156 @@ app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async 
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object as any;
         const userId = session.client_reference_id;
-        
+
         if (userId) {
-            console.log(`Payment successful for user ${userId}. Upgrading tier...`);
+            console.log(`[Stripe Webhook] checkout.session.completed for user ${userId}`);
             try {
-                const tier = session.metadata?.tier || (session.amount_total > 4000 ? 'Enterprise' : 'Pro'); // Fallback to amount if metadata missing
-                
-                // 1. Try DB first
-                try {
-                    await query('UPDATE users SET tier = $1 WHERE id = $2', [tier, userId]);
-                    console.log(`Successfully upgraded tier in DB for user ${userId}`);
-                } catch (dbErr: any) {
-                    console.warn(`Failed to upgrade tier in DB for user ${userId}, continuing to JSON:`, dbErr.message);
+                const tier = session.metadata?.tier || (session.amount_total > 4000 ? 'LUXURY' : 'PREMIUM');
+
+                // Fetch subscription to get current_period_end
+                let expiresAt: string | null = null;
+                if (session.subscription) {
+                    try {
+                        const stripeObj = await getStripe();
+                        const subscription = await stripeObj.subscriptions.retrieve(session.subscription) as any;
+                        if (subscription.current_period_end) {
+                            expiresAt = new Date(subscription.current_period_end * 1000).toISOString();
+                            console.log(`[Stripe Webhook] Subscription period ends: ${expiresAt}`);
+                        }
+                    } catch (subErr: any) {
+                        console.warn(`[Stripe Webhook] Could not fetch subscription expiry:`, subErr.message);
+                    }
+                }
+                // Fallback: 30 days from now if we couldn't get the period end
+                if (!expiresAt) {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 30);
+                    expiresAt = d.toISOString();
+                    console.log(`[Stripe Webhook] Using fallback expiry: ${expiresAt}`);
                 }
 
-                // 2. Always update JSON as fallback (critical on Hostinger where DB fails)
+                // 1. Try DB first
+                try {
+                    await query('UPDATE users SET tier = $1, tier_expires_at = $2 WHERE id = $3', [tier, expiresAt, userId]);
+                    console.log(`[Stripe Webhook] Upgraded DB user ${userId} to ${tier}, expires ${expiresAt}`);
+                } catch (dbErr: any) {
+                    console.warn(`[Stripe Webhook] DB update failed for user ${userId}:`, dbErr.message);
+                }
+
+                // 2. Always update JSON as fallback
                 try {
                     const users = await getUsers();
                     const index = users.findIndex((u: any) => String(u.id) === String(userId));
                     if (index !== -1) {
                         users[index].tier = tier;
+                        users[index].tier_expires_at = expiresAt;
                         saveToJSON(JSON_USERS_PATH, users);
-                        console.log(`Successfully upgraded tier in JSON for user ${userId}`);
+                        console.log(`[Stripe Webhook] Upgraded JSON user ${userId} to ${tier}, expires ${expiresAt}`);
                     } else {
-                        console.warn(`User ${userId} not found in JSON fallback`);
+                        console.warn(`[Stripe Webhook] User ${userId} not found in JSON fallback`);
                     }
                 } catch (jsonErr: any) {
-                    console.error(`Failed to upgrade tier in JSON for user ${userId}:`, jsonErr);
+                    console.error(`[Stripe Webhook] JSON update failed for user ${userId}:`, jsonErr);
+                }
+
+                logUserActivity({
+                    userId: parseInt(userId),
+                    action: 'PURCHASE_COMPLETE',
+                    details: { tier, expiresAt, method: 'stripe_webhook' },
+                });
+            } catch (e: any) {
+                console.error(`[Stripe Webhook] Error processing tier upgrade for user ${userId}:`, e);
+            }
+        }
+    }
+
+    // Handle subscription renewal — extend expiration
+    if (event.type === 'invoice.payment_succeeded') {
+        const invoice = event.data.object as any;
+        const subscriptionId = invoice.subscription;
+        const customerId = invoice.customer;
+
+        if (subscriptionId) {
+            try {
+                const stripeObj = await getStripe();
+                const subscription = await stripeObj.subscriptions.retrieve(subscriptionId) as any;
+                const newPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+                // Find user by customer ID (stored in metadata or lookup)
+                // For now, scan users to find one with matching stripe_customer_id or matching subscription
+                const users = await getUsers();
+                const user = users.find((u: any) => u.stripe_customer_id === customerId || u.stripe_subscription_id === subscriptionId);
+
+                if (user) {
+                    await query('UPDATE users SET tier_expires_at = $1 WHERE id = $2', [newPeriodEnd, user.id]).catch(() => {});
+                    const idx = users.findIndex((u: any) => String(u.id) === String(user.id));
+                    if (idx !== -1) {
+                        users[idx].tier_expires_at = newPeriodEnd;
+                        saveToJSON(JSON_USERS_PATH, users);
+                    }
+                    console.log(`[Stripe Webhook] Renewed user ${user.id}, new expiry: ${newPeriodEnd}`);
+                    logUserActivity({
+                        userId: user.id,
+                        action: 'SUBSCRIPTION_RENEWED',
+                        details: { newExpiresAt: newPeriodEnd },
+                    });
                 }
             } catch (e: any) {
-                console.error(`Error processing tier upgrade for user ${userId}:`, e);
+                console.error(`[Stripe Webhook] Error handling renewal:`, e);
             }
+        }
+    }
+
+    // Handle subscription cancellation — downgrade immediately
+    if (event.type === 'customer.subscription.deleted') {
+        const subscription = event.data.object as any;
+        const customerId = subscription.customer;
+
+        try {
+            const users = await getUsers();
+            const user = users.find((u: any) => u.stripe_customer_id === customerId || u.stripe_subscription_id === subscription.id);
+
+            if (user) {
+                await query('UPDATE users SET tier = $1, tier_expires_at = NULL WHERE id = $2', ['Free', user.id]).catch(() => {});
+                const idx = users.findIndex((u: any) => String(u.id) === String(user.id));
+                if (idx !== -1) {
+                    users[idx].tier = 'Free';
+                    users[idx].tier_expires_at = null;
+                    saveToJSON(JSON_USERS_PATH, users);
+                }
+                console.log(`[Stripe Webhook] Cancelled subscription for user ${user.id}, downgraded to Free`);
+                logUserActivity({
+                    userId: user.id,
+                    action: 'SUBSCRIPTION_CANCELLED',
+                    details: { reason: 'stripe_webhook_cancelled' },
+                });
+            }
+        } catch (e: any) {
+            console.error(`[Stripe Webhook] Error handling cancellation:`, e);
         }
     }
 
     res.json({received: true});
 });
 
-app.post('/api/checkout/create-session', express.json(), async (req: Request, res: Response) => {
+app.post('/api/checkout/create-session', requireAuth, express.json(), async (req: Request, res: Response) => {
     try {
-        const { userId, tier } = req.body;
+        const userId = (req as any).user?.id;
+        const { tier } = req.body;
         if (!userId || !tier) {
             return res.status(400).json({ error: 'Missing userId or tier' });
         }
 
-        const secretKey = process.env.STRIPE_SECRET_KEY;
+        const config = await getConfig();
+        const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
 
-        // If key is missing or is the default placeholder, use mock mode
+        // If no Stripe key configured, fall back to mock mode
         if (!secretKey || secretKey === 'sk_test_123') {
+            logUserActivity({
+                userId: parseInt(userId),
+                action: 'PURCHASE_INIT',
+                details: { tier, mode: 'subscription', method: 'mock_checkout' },
+            });
             return res.json({
                 isMock: true,
                 sessionId: `mock_${Date.now()}`,
@@ -600,18 +1186,35 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
             });
         }
 
-        // Real Stripe Session creation
-        const priceMap: Record<string, string> = {
-            'Pro': process.env.STRIPE_PRICE_PRO || 'price_123_pro',
-            'Enterprise': process.env.STRIPE_PRICE_ENTERPRISE || 'price_123_enterprise'
-        };
+        // Resolve tier price from config
+        const tiers = await getTiers();
+        const matchedTier = Object.values(tiers).find(
+            (t: any) => t.name.toLowerCase() === tier.toLowerCase() || 
+                       t.name.split(' ')[0].toLowerCase() === tier.toLowerCase() ||
+                       t.name.includes(`(${tier})`) ||
+                       (tier.toLowerCase() === 'pro' && t.name.toLowerCase().includes('pro')) ||
+                       (tier.toLowerCase() === 'enterprise' && t.name.toLowerCase().includes('enterprise'))
+        ) || (tiers as any)[tier.toUpperCase()] || tiers.FREE;
+
+        const tierName = matchedTier.name || tier;
+        const tierPrice = matchedTier.price || 0;
+        const unitAmount = Math.round(tierPrice * 100); // Stripe uses cents
 
         const baseUrl = req.headers.origin || req.headers.referer || 'http://localhost:3000';
-        const session = await stripe.checkout.sessions.create({
+        const stripeObj = await getStripe();
+        const session = await stripeObj.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: [
                 {
-                    price: priceMap[tier],
+                    price_data: {
+                        currency: 'usd',
+                        product_data: {
+                            name: `Building Innovation — ${tierName}`,
+                            description: `${tierName} subscription plan — ${matchedTier.limit >= 9999 ? 'Unlimited' : matchedTier.limit} AI generations/month`,
+                        },
+                        unit_amount: unitAmount || 1,
+                        recurring: { interval: 'month' as const },
+                    },
                     quantity: 1,
                 },
             ],
@@ -625,8 +1228,89 @@ app.post('/api/checkout/create-session', express.json(), async (req: Request, re
         });
 
         res.json({ id: session.id, url: session.url });
+        logUserActivity({
+            userId: parseInt(userId),
+            action: 'PURCHASE_INIT',
+            details: { tier, tierPrice, mode: 'subscription', method: 'stripe' },
+        });
     } catch (e: any) {
         console.error('Checkout Session error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/checkout/create-product-session', express.json(), async (req: Request, res: Response) => {
+    try {
+        const { items, userId, email, name } = req.body;
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'Missing or empty items' });
+        }
+
+        const config = await getConfig();
+        const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
+
+        // Check if Stripe is properly configured (not placeholder key)
+        if (!secretKey || secretKey === 'sk_test_123') {
+            return res.json({
+                isMock: true,
+                sessionId: `mock_product_${Date.now()}`,
+                items: items.map((item: any) => ({
+                    name: item.material?.name || 'Unknown',
+                    quantity: item.quantity,
+                    totalCost: item.totalCost
+                }))
+            });
+        }
+
+        const baseUrl = req.headers.origin || `https://${req.headers.host}` || 'https://buildingapp.us';
+
+        // Build line items from cart — each cart item becomes a Stripe line item
+        const lineItems = items.map((item: any) => {
+            const unitPrice = Number(item.material?.pricing?.pricePerUnit) || 0;
+            const qty = Number(item.quantity) || 1;
+            const totalCost = Number(item.totalCost) || 0;
+            const currency = (item.material?.pricing?.currency || 'usd').toLowerCase();
+            const unitAmount = totalCost > 0 && qty > 0
+                ? Math.round((totalCost / qty) * 100)
+                : Math.round(unitPrice * 100);
+            // Convert relative image URLs to absolute
+            let imageUrl = item.material?.imageUrl || '';
+            if (imageUrl && imageUrl.startsWith('/')) {
+                imageUrl = baseUrl.replace(/\/$/, '') + imageUrl;
+            }
+            return {
+                price_data: {
+                    currency: currency,
+                    product_data: {
+                        name: `${item.material?.name || 'Material'} — ${item.dimensions ? `${item.dimensions.width}m × ${item.dimensions.height}m` : 'Custom'}`,
+                        description: `${qty} ${item.material?.pricing?.unitLabel || 'units'} @ $${unitPrice.toFixed(2)}/unit`,
+                        ...(imageUrl ? { images: [imageUrl] } : {})
+                    },
+                    unit_amount: unitAmount || 1, // Stripe requires at least 1 cent
+                },
+                quantity: qty,
+            };
+        }).filter((li: any) => li.price_data.unit_amount > 0);
+
+        const stripeObj = await getStripe();
+        const session = await stripeObj.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: lineItems,
+            mode: 'payment',
+            success_url: `${baseUrl}/?session_id={CHECKOUT_SESSION_ID}&status=success`,
+            cancel_url: `${baseUrl}/cart`,
+            customer_email: email,
+            client_reference_id: String(userId || 'guest'),
+            metadata: {
+                userId: String(userId || 'guest'),
+                customerName: name || '',
+                itemCount: String(items.length),
+            }
+        });
+
+        res.json({ id: session.id, url: session.url });
+    } catch (e: any) {
+        console.error('Product Checkout Session error:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -640,7 +1324,7 @@ app.use((req: Request, res: Response, next) => {
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
     next();
 });
 
@@ -688,13 +1372,29 @@ app.use((req: Request, res: Response, next) => {
     next();
 });
 
-// Health check
-app.get('/api/health', (req: Request, res: Response) => {
-    res.json({ 
-        status: 'ok', 
-        database: 'fallback_enabled',
-        timestamp: new Date().toISOString() 
-    });
+// Health check — shows all AI provider status
+app.get('/api/health', async (req: Request, res: Response) => {
+    try {
+        const config = loadConfig();
+        const providers = await getAllProviderHealth(config);
+        
+        // Determine overall status
+        const anyProviderOk = Object.values(providers).some(p => p.ok);
+        
+        res.json({ 
+            status: anyProviderOk ? 'ok' : 'degraded',
+            database: 'fallback_enabled',
+            providers,
+            timestamp: new Date().toISOString() 
+        });
+    } catch (e: any) {
+        res.json({ 
+            status: 'ok', 
+            database: 'fallback_enabled',
+            error: e.message,
+            timestamp: new Date().toISOString() 
+        });
+    }
 });
 
 // Build info — confirms which commit is running
@@ -707,10 +1407,21 @@ app.get('/api/build', (req: Request, res: Response) => {
     });
 });
 
+// Diagnostic API connection test — pings Google and OpenRouter live from the server
+app.get('/api/test-ai', async (req: Request, res: Response) => {
+    try {
+        const config = loadConfig();
+        const results = await testAIConnection(config);
+        res.json(results);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || String(e) });
+    }
+});
+
 // ===== ADMIN HEALTH & DASHBOARD ENDPOINTS =====
 
 // Full health status (JSON)
-app.get('/api/admin/health', async (req: Request, res: Response) => {
+app.get('/api/admin/health', requireAdmin, async (req: Request, res: Response) => {
     try {
         const health = await monitor.getHealth();
         res.json(health);
@@ -720,9 +1431,58 @@ app.get('/api/admin/health', async (req: Request, res: Response) => {
 });
 
 // Visual HTML dashboard
-app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
+app.get('/api/admin/dashboard', requireAdmin, async (req: Request, res: Response) => {
     try {
         const health = await monitor.getHealth();
+        
+        // Read recent 15 audit logs
+        let logs: any[] = [];
+        if (fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+            try {
+                const content = fs.readFileSync(JSON_AUDIT_LOGS_PATH, 'utf8');
+                logs = JSON.parse(content || '[]');
+            } catch (err) {}
+        }
+        const recentLogs = logs.slice(0, 15);
+
+        // Generate logs HTML
+        let logsHtml = '';
+        if (recentLogs.length === 0) {
+            logsHtml = '<div style="color: #666; font-style: italic; padding: 10px 0;">No audit logs recorded yet.</div>';
+        } else {
+            logsHtml = `
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #222; color: #888; font-weight: bold; text-transform: uppercase; font-size: 11px;">
+                        <th style="padding: 10px 5px;">Time</th>
+                        <th style="padding: 10px 5px;">Admin</th>
+                        <th style="padding: 10px 5px;">Action</th>
+                        <th style="padding: 10px 5px;">Details</th>
+                        <th style="padding: 10px 5px;">IP</th>
+                    </tr>
+                </thead>
+                <tbody style="color: #ccc;">
+                    ${recentLogs.map((l: any) => {
+                        let color = '#a8a29e';
+                        if (l.action.includes('DELETE')) color = '#ef4444';
+                        else if (l.action.includes('CREATE') || l.action.includes('ADD')) color = '#10b981';
+                        else if (l.action.includes('UPDATE')) color = '#f59e0b';
+                        else if (l.action.includes('CONFIG')) color = '#3b82f6';
+                        
+                        return `
+                        <tr style="border-bottom: 1px solid #1c1c1c;">
+                            <td style="padding: 10px 5px; font-family: monospace; font-size: 11px; color: #666; white-space: nowrap;">${new Date(l.timestamp).toLocaleString()}</td>
+                            <td style="padding: 10px 5px; font-weight: bold;">${l.adminName}<br><span style="font-size: 11px; color: #666; font-weight: normal;">${l.adminEmail}</span></td>
+                            <td style="padding: 10px 5px;"><span style="color: ${color}; font-family: monospace; font-weight: bold; font-size: 11px;">${l.action}</span></td>
+                            <td style="padding: 10px 5px; color: #aaa;">${l.details}</td>
+                            <td style="padding: 10px 5px; font-family: monospace; font-size: 11px; color: #666;">${l.ipAddress}</td>
+                        </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>`;
+        }
+
         const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -772,7 +1532,7 @@ app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
                 </div>
                 <div class="status">
                     <span class="status-dot ${health.checks.configFile.ok ? 'ok' : 'fail'}"></span>
-                    <span>Config File: ${health.checks.configFile.path ? 'Found' : 'Missing'}</span>
+                    <span>Config File: ${health.checks.configFile.path ? 'Found' : (health.checks.apiKey.ok ? 'Missing (Using environment variables)' : 'Missing')}</span>
                 </div>
                 <div class="status">
                     <span class="status-dot ${health.checks.staticFiles.ok ? 'ok' : 'fail'}"></span>
@@ -806,8 +1566,16 @@ app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
                 <div class="metric"><a href="/api/health" style="color:#2563eb">/api/health</a></div>
                 <div class="metric"><a href="/api/build" style="color:#2563eb">/api/build</a></div>
                 <div class="metric"><a href="/api/debug/config-path" style="color:#2563eb">/api/debug/config-path</a></div>
-                <div class="metric"><a href="/api/admin/health" style="color:#2563eb">/api/admin/health (JSON)</a></div>
+                <div class="metric"><a href="/api/admin/health?token=${req.query.token}" style="color:#2563eb">/api/admin/health (JSON)</a></div>
             </div>
+        </div>
+
+        <div class="card" style="margin-top: 30px; grid-column: span 1 / -1; width: 100%;">
+            <h3 style="color: #ef4444; border-bottom: 1px solid #222; padding-bottom: 10px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                <svg style="width: 18px; height: 18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                Security Audit Log (Last 15 Entries)
+            </h3>
+            ${logsHtml}
         </div>
         
         <p style="color:#555; text-align:center; margin-top:40px;">BuildingApp Admin Dashboard — Auto-refreshes on page reload</p>
@@ -822,13 +1590,13 @@ app.get('/api/admin/dashboard', async (req: Request, res: Response) => {
 });
 
 // Daily report endpoint (for cron jobs or scheduled emails)
-app.get('/api/admin/report', (req: Request, res: Response) => {
+app.get('/api/admin/report', requireAdmin, (req: Request, res: Response) => {
     const report = monitor.getDailyReport();
     res.json(report);
 });
 
 // Test Telegram configuration
-app.get('/api/admin/test-telegram', async (req: Request, res: Response) => {
+app.get('/api/admin/test-telegram', requireAdmin, async (req: Request, res: Response) => {
     try {
         const token = process.env.TELEGRAM_BOT_TOKEN;
         if (!token) {
@@ -855,7 +1623,7 @@ app.get('/api/admin/test-telegram', async (req: Request, res: Response) => {
 });
 
 // Production status endpoint
-app.get('/api/admin/status', (req: Request, res: Response) => {
+app.get('/api/admin/status', requireAdmin, (req: Request, res: Response) => {
     res.json({
         app: {
             name: 'BuildingApp',
@@ -883,8 +1651,8 @@ app.get('/api/admin/status', (req: Request, res: Response) => {
 
 // ===== ANALYTICS & GENERATION TRACKING =====
 
-// In-memory generation log (persists until server restart; could be extended to DB/JSON)
-const generationLog: Array<{
+// Load generation log from persistent JSON (survives restarts)
+let generationLog: Array<{
     timestamp: string;
     userId?: number;
     materialId?: string;
@@ -894,9 +1662,60 @@ const generationLog: Array<{
     durationMs: number;
     model: string;
     error?: string;
-}> = [];
+}> = loadFromJSON(JSON_GENERATION_LOG_PATH);
 
-app.get('/api/admin/analytics', async (req: Request, res: Response) => {
+function pushGenerationLog(entry: typeof generationLog[0]) {
+    generationLog.push(entry);
+    // Keep in-memory array bounded for performance, but persist everything
+    if (generationLog.length > 5000) generationLog = generationLog.slice(-2500);
+    // Async save to disk (non-blocking)
+    saveToJSON(JSON_GENERATION_LOG_PATH, generationLog);
+}
+
+// ===== USER ACTIVITY TRACKING =====
+
+interface UserActivityEntry {
+    timestamp: string;
+    userId?: number;
+    action: 'RENDER' | 'ANALYZE' | 'LOGIN' | 'SIGNUP' | 'PURCHASE_INIT' | 'PURCHASE_MOCK' | 'DOWNLOAD' | 'ADMIN_ACTION' | 'TIER_EXPIRED' | 'PURCHASE_COMPLETE' | 'SUBSCRIPTION_RENEWED' | 'SUBSCRIPTION_CANCELLED';
+    details?: Record<string, any>;
+    ip?: string;
+}
+
+function logUserActivity(entry: Omit<UserActivityEntry, 'timestamp'>) {
+    const fullEntry: UserActivityEntry = {
+        timestamp: new Date().toISOString(),
+        ...entry,
+    };
+    // Append to persistent file
+    try {
+        const existing: UserActivityEntry[] = loadFromJSON(JSON_USER_ACTIVITY_PATH);
+        existing.push(fullEntry);
+        // Keep last 10,000 entries to prevent unbounded growth
+        if (existing.length > 10000) {
+            const trimmed = existing.slice(-5000);
+            saveToJSON(JSON_USER_ACTIVITY_PATH, trimmed);
+        } else {
+            saveToJSON(JSON_USER_ACTIVITY_PATH, existing);
+        }
+    } catch (e) {
+        console.error('Failed to persist user activity:', e);
+    }
+}
+
+function getUserActivity(userId?: number, limit = 100): UserActivityEntry[] {
+    try {
+        const all: UserActivityEntry[] = loadFromJSON(JSON_USER_ACTIVITY_PATH);
+        if (userId) {
+            return all.filter(a => a.userId === userId).slice(-limit);
+        }
+        return all.slice(-limit);
+    } catch (e) {
+        return [];
+    }
+}
+
+app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response) => {
     try {
         const health = await monitor.getHealth();
         
@@ -993,6 +1812,7 @@ app.get('/api/admin/analytics', async (req: Request, res: Response) => {
             topMaterials,
             recentGenerations,
             hourlyGenerations,
+            dailyStats: monitor.getDailyStats(30),
             timestamp: new Date().toISOString(),
         });
     } catch (error: any) {
@@ -1000,10 +1820,58 @@ app.get('/api/admin/analytics', async (req: Request, res: Response) => {
     }
 });
 
+// Admin: Get user activity log
+app.get('/api/admin/user-activity', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+        const activity = getUserActivity(userId, limit);
+        res.json({ activity, count: activity.length });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// Admin: Get generation log
+app.get('/api/admin/generation-log', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : 200;
+        const logs = generationLog.slice(-limit).reverse();
+        res.json({ logs, count: logs.length, total: generationLog.length });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// Admin: Get daily stats history
+app.get('/api/admin/daily-stats', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const days = req.query.days ? parseInt(req.query.days as string) : 30;
+        const stats = monitor.getDailyStats(days);
+        res.json({ stats, count: stats.length, days });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
+// Admin: Run tier expiration cleanup manually
+app.post('/api/admin/run-tier-cleanup', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const result = await runTierExpirationCleanup();
+        res.json({ success: true, ...result });
+    } catch (error: any) {
+        res.status(500).json({ error: getErrorMessage(error) });
+    }
+});
+
 // ===== AI GENERATION ENDPOINTS (Server-side API key — clients don't need their own) =====
 
-const cleanBase64 = (dataURI: string) =>
-    dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+const cleanBase64 = (dataURI: string) => {
+    let cleaned = dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
+    cleaned = cleaned.replace(/[\r\n]/g, "");
+    cleaned = cleaned.replace(/ /g, "+");
+    return cleaned;
+};
 
 const getMimeType = (dataURI: string) => {
     const match = dataURI.match(/^data:(image\/\w+);base64,/);
@@ -1066,36 +1934,31 @@ const extractImage = (response: any): string => {
     throw new Error("No image generated in the response.");
 };
 
-// Get API key — server only, never exposed to client
+// Get API key for Gemini — delegates to unified config loader
 const getServerApiKey = (): string => {
-    // Priority: env var (Hostinger Node.js apps support this) > config file
-    const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
-    if (envKey.trim()) {
-        console.log("[API Key] Loaded from environment variable");
-        return envKey.trim();
-    }
-    
-    const configPath = findConfigPath();
-    if (configPath) {
-        try {
-            const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-            if (config.GEMINI_API_KEY?.trim()) {
-                console.log("[API Key] Loaded from config file:", configPath);
-                return config.GEMINI_API_KEY.trim();
-            }
-        } catch (e) {
-            console.error("[API Key] Error reading config file:", configPath, e);
-        }
-    }
-    
-    console.error("[API Key] No key found in env vars or config file. Checked paths:", JSON_CONFIG_PATHS);
-    return "";
+    const config = loadConfig();
+    return config.GEMINI_API_KEY;
 };
 
-// POST /api/ai/generate-overlay — Server-side AI image generation
+// POST /api/ai/generate-overlay — Multi-provider AI image generation
 app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
     try {
-        const { originalImage, material, userInstruction, renderOptions, lang, userId } = req.body;
+        const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider } = req.body;
+
+        // Input validation: image must be a valid data URL and under 5MB
+        if (!originalImage || typeof originalImage !== 'string') {
+            return res.status(400).json({ error: 'originalImage is required and must be a string' });
+        }
+
+        const match = originalImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        if (!match) {
+            return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
+        }
+        const base64Data = match[3];
+        const approxBytes = (base64Data.length * 3) / 4;
+        if (approxBytes > 5 * 1024 * 1024) {
+            return res.status(413).json({ error: 'Image too large. Max 5MB.' });
+        }
         
         // Check quota
         if (userId) {
@@ -1108,130 +1971,115 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             }
         }
 
-        // Get API key (server-side only)
-        const apiKey = getServerApiKey();
-        if (!apiKey) {
+        // Load config and determine provider
+        const config = loadConfig();
+        const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
+        
+        // Validate that the selected provider has an API key
+        if (provider === "openai" && !config.OPENAI_API_KEY) {
             return res.status(500).json({ 
-                error: "API Key not configured on server. Please contact administrator." 
+                error: "OpenAI API Key not configured. Please contact administrator or switch provider." 
+            });
+        }
+        if (provider === "gemini" && !config.GEMINI_API_KEY) {
+            return res.status(500).json({ 
+                error: "Gemini API Key not configured. Please contact administrator or switch provider." 
             });
         }
 
-        const ai = new GoogleGenAI({ apiKey });
-        const base64Data = cleanBase64(originalImage);
-        const mimeType = getMimeType(originalImage);
+        // Generate via server-side compositing for 100% fidelity
+        const compositeResult = await compositeProductOntoPhoto({
+            originalImage,
+            material,
+            userInstruction: userInstruction || "",
+            renderOptions,
+        });
 
-        const isFurniture = material?.category === "Muebles" || material?.usage === "Furniture";
-        
-        const lightingHint =
-            renderOptions?.lighting === "SUNSET"
-                ? "warm golden hour sunset lighting"
-                : renderOptions?.lighting === "NIGHT_LUXURY"
-                    ? "dramatic night luxury lighting with warm interior glow"
-                    : "natural ambient lighting";
-
-        // Load product image as reference if available
-        const productRef = await getImageBase64(material?.imageUrl);
-        const hasProductImage = !!productRef;
-
-        // Build prompt
-        const materialIdentity = `"${material?.name || "selected material"}" — Category: ${material?.category || "general"}${material?.subcategory ? `, Sub: ${material.subcategory}` : ""}`;
-        
-        let finalPrompt: string;
-        if (isFurniture) {
-            finalPrompt = `You are a professional virtual stager.
-Place the product shown in the "Product Reference" image into this room.
-Product Name: ${materialIdentity}
-Style: ${material?.promptModifier || "modern"}.
-${userInstruction ? `User request: "${userInstruction}"` : ""}
-Rules:
-- Match room perspective, scale to surrounding objects
-- Cast correct shadows from the room's light source (${lightingHint})
-- Use exact textures/colors from the Product Reference image
-- Do NOT alter existing furniture/objects unless user asks
-- Output ONLY the final image`;
-        } else {
-            finalPrompt = `You are an elite architectural visualization specialist.
-Your task is to photorealistically OVERLAY the material from the "Product Reference" image onto the appropriate surfaces in the user's original room photo.
-Material: ${materialIdentity}
-${userInstruction ? `User request: "${userInstruction}"` : ""}
-
-STRICT RENDERING RULES:
-1. 100% PHOTOREALISM: The output must look like a real photograph, equal in quality and resolution to the original picture.
-2. EXACT OVERLAY: Apply the EXACT texture, pattern, color, and scale from the Product Reference image onto the target surface.
-3. PRESERVE FOREGROUND: You MUST flawlessly preserve and cut around all objects IN FRONT of the surface (furniture, people, plants, windows). DO NOT paint over them.
-4. PERSPECTIVE & LIGHTING: Match the room's 3D perspective exactly. Re-apply the original room's shadows, reflections, and highlights over the new material so it blends perfectly.
-5. Lighting conditions: ${lightingHint}
-6. Output ONLY the final high-quality image.`;
-        }
-
-        const contents: any = {
-            parts: [
-                { inlineData: { data: base64Data, mimeType } }, // Part 1: Room Image
-            ],
-        };
-
-        if (hasProductImage) {
-            contents.parts.push({ text: "Product Reference Image:" });
-            contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
-        }
-
-        contents.parts.push({ text: finalPrompt });
-
-        // Generate with image-capable model (Nano Banana)
-        const genStartTime = Date.now();
-        let usedModel = "gemini-2.5-flash-image";
-        let response;
-        try {
-            response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-image",
-                contents,
-                config: {
-                    responseModalities: ["TEXT", "IMAGE"],
+        if (compositeResult.method === "composited") {
+            // Log successful generation
+            pushGenerationLog({
+                timestamp: new Date().toISOString(),
+                userId,
+                materialId: material?.id || material?.refCode,
+                materialName: material?.name,
+                category: material?.category,
+                success: true,
+                durationMs: compositeResult.durationMs,
+                model: "sharp/compositor",
+            });
+            logUserActivity({
+                userId,
+                action: 'RENDER',
+                details: {
+                    materialId: material?.id || material?.refCode,
+                    materialName: material?.name,
+                    category: material?.category,
+                    provider: "compositor",
+                    model: "sharp",
+                    durationMs: compositeResult.durationMs,
+                    success: true,
                 },
             });
-        } catch (primaryError: any) {
-            console.warn("gemini-2.5-flash-image failed, trying fallback (gemini-3.1-flash-image-preview):", getErrorMessage(primaryError));
-            usedModel = "gemini-3.1-flash-image-preview";
-            response = await ai.models.generateContent({
-                model: "gemini-3.1-flash-image-preview",
-                contents,
-                config: {
-                    responseModalities: ["TEXT", "IMAGE"],
-                },
-            });
+            return res.json({ success: true, image: compositeResult.image, provider: "compositor", model: "sharp" });
         }
 
-        const resultImage = extractImage(response);
-        const durationMs = Date.now() - genStartTime;
-        
+        // Fallback to true AI generation if deterministic compositing fails
+
+        const result = await generateOverlay({
+            originalImage,
+            material,
+            userInstruction: userInstruction || "",
+            renderOptions,
+        }, provider, config);
+
         // Log successful generation
-        generationLog.push({
+        pushGenerationLog({
             timestamp: new Date().toISOString(),
             userId,
             materialId: material?.id || material?.refCode,
             materialName: material?.name,
             category: material?.category,
             success: true,
-            durationMs,
-            model: usedModel,
+            durationMs: result.durationMs,
+            model: `${provider}/${result.model}`,
+        });
+        logUserActivity({
+            userId,
+            action: 'RENDER',
+            details: {
+                materialId: material?.id || material?.refCode,
+                materialName: material?.name,
+                category: material?.category,
+                provider,
+                model: result.model,
+                durationMs: result.durationMs,
+                success: true,
+            },
         });
         
-        res.json({ success: true, image: resultImage });
+        res.json({ success: true, image: result.image, provider, model: result.model });
         
     } catch (error: any) {
-        const durationMs = Date.now() - (genStartTime || Date.now());
-        
-        // Log failed generation
-        generationLog.push({
+        pushGenerationLog({
             timestamp: new Date().toISOString(),
             userId: req.body?.userId,
             materialId: req.body?.material?.id || req.body?.material?.refCode,
             materialName: req.body?.material?.name,
             category: req.body?.material?.category,
             success: false,
-            durationMs,
+            durationMs: 0,
             model: "error",
             error: getErrorMessage(error),
+        });
+        logUserActivity({
+            userId: req.body?.userId,
+            action: 'RENDER',
+            details: {
+                materialId: req.body?.material?.id || req.body?.material?.refCode,
+                materialName: req.body?.material?.name,
+                success: false,
+                error: getErrorMessage(error),
+            },
         });
 
         console.error("AI Generation failed:", error);
@@ -1239,10 +2087,33 @@ STRICT RENDERING RULES:
     }
 });
 
-// POST /api/ai/analyze-room — Server-side room analysis
+// POST /api/ai/analyze-room — Multi-provider room analysis
 app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
     try {
-        const { image, userId, lang } = req.body;
+        const { image, userId, lang, provider: userProvider } = req.body;
+
+        // Input validation: image must be a valid data URL and under 5MB
+        if (!image || typeof image !== 'string') {
+            console.log('[AI Debug] Invalid image body: not a string or empty');
+            return res.status(400).json({ error: 'image is required and must be a string' });
+        }
+
+        console.log('[AI Debug] Received image. Length:', image.length);
+        console.log('[AI Debug] Image prefix:', image.substring(0, 100));
+        console.log('[AI Debug] Image suffix:', image.substring(image.length - 100));
+
+        const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        if (!match) {
+            console.log('[AI Debug] Image regex match failed!');
+            return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
+        }
+        const base64Data = match[3];
+        const approxBytes = (base64Data.length * 3) / 4;
+        console.log('[AI Debug] Extracted base64 length:', base64Data.length, 'Approx bytes:', approxBytes);
+        if (approxBytes > 5 * 1024 * 1024) {
+            console.log('[AI Debug] Image too large:', approxBytes);
+            return res.status(413).json({ error: 'Image too large. Max 5MB.' });
+        }
         
         if (userId) {
             const quota = await checkAndIncrementQuota(userId);
@@ -1251,35 +2122,25 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
             }
         }
 
-        const apiKey = getServerApiKey();
-        if (!apiKey) {
-            return res.status(500).json({ error: "API Key not configured on server" });
+        const config = loadConfig();
+        const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
+
+        if (provider === "openai" && !config.OPENAI_API_KEY) {
+            return res.status(500).json({ error: "OpenAI API Key not configured" });
+        }
+        if (provider === "gemini" && !config.GEMINI_API_KEY) {
+            return res.status(500).json({ error: "Gemini API Key not configured" });
         }
 
-        const ai = new GoogleGenAI({ apiKey });
-        const base64Data = cleanBase64(image);
-        const mimeType = getMimeType(image);
+        const result = await analyzeRoom({ image, lang }, provider, config);
 
-        let response;
-        try {
-            response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: {
-                    parts: [
-                        { inlineData: { data: base64Data, mimeType } },
-                        {
-                            text: "Analyze this interior/exterior space as a Senior Architect. 1) Identify the Design Style. 2) Analyze lighting. 3) Suggest ideal materials. Keep it brief and professional (max 100 words).",
-                        },
-                    ],
-                },
-            });
-        } catch (primaryError: any) {
-            console.warn("gemini-2.5-flash failed for analysis:", getErrorMessage(primaryError));
-            // Re-throw — gemini-2.5-flash is the most reliable text model
-            throw primaryError;
-        }
-
-        res.json({ success: true, analysis: response.text || "Could not analyze the room." });
+        res.json({
+            success: true,
+            analysis: result.analysis,
+            dimensions: result.dimensions,
+            provider,
+            model: result.model
+        });
         
     } catch (error: any) {
         console.error("Room analysis error:", error);
@@ -1301,7 +2162,7 @@ app.get('/api/materials', async (req: Request, res: Response) => {
 });
 
 // Create material
-app.post('/api/materials', async (req: Request, res: Response) => {
+app.post('/api/materials', requireAdmin, async (req: Request, res: Response) => {
     try {
         const {
             ref_code, name, category, subcategory, price, price_contractor, currency, unit,
@@ -1321,6 +2182,8 @@ app.post('/api/materials', async (req: Request, res: Response) => {
                     items_per_box || 1, width_cm, length_cm, thickness_m,
                     description, image_url, usage, prompt_modifier]
             );
+            
+            await logAdminAction(req, (req as any).user, 'CREATE_MATERIAL', `Created material: ${name} (SKU: ${ref_code})`);
             return res.status(201).json(result.rows[0]);
         } catch (dbError) {
             console.warn('DB Insert failed, updating JSON fallback...');
@@ -1328,6 +2191,8 @@ app.post('/api/materials', async (req: Request, res: Response) => {
             const newItem = { id: `mat-${Date.now()}`, ...req.body, created_at: new Date().toISOString() };
             materials.unshift(newItem);
             saveToJSON(JSON_DB_PATH, materials);
+            
+            await logAdminAction(req, (req as any).user, 'CREATE_MATERIAL', `Created material (fallback): ${name} (SKU: ${ref_code})`);
             return res.status(201).json(newItem);
         }
     } catch (error: any) {
@@ -1337,7 +2202,7 @@ app.post('/api/materials', async (req: Request, res: Response) => {
 });
 
 // Update material
-app.put('/api/materials/:id', async (req: Request, res: Response) => {
+app.put('/api/materials/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const {
@@ -1363,6 +2228,8 @@ app.put('/api/materials/:id', async (req: Request, res: Response) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Material not found' });
         }
+        
+        await logAdminAction(req, (req as any).user, 'UPDATE_MATERIAL', `Updated material ID ${id} (${name}, SKU: ${ref_code})`);
         res.json(result.rows[0]);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -1409,22 +2276,48 @@ app.post('/api/marketplace/installers', async (req: Request, res: Response) => {
 
 
 // Delete material
-app.delete('/api/materials/:id', async (req: Request, res: Response) => {
+app.delete('/api/materials/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
+        let deletedLocally = false;
+        
+        // Helper to sync deletions to the persistent JSON (NOT the git-tracked seed)
+        const syncToPersistentJSON = (deletedId: string) => {
+            try {
+                if (fs.existsSync(JSON_DB_PATH)) {
+                    const persistentData = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
+                    const filtered = persistentData.filter((m: any) => 
+                        String(m.id) !== String(deletedId) && 
+                        String(m.refCode || m.ref_code || '') !== String(deletedId)
+                    );
+                    if (filtered.length < persistentData.length) {
+                        fs.writeFileSync(JSON_DB_PATH, JSON.stringify(filtered, null, 2), 'utf8');
+                        deletedLocally = true;
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to sync deletion to persistent JSON:', e);
+            }
+        };
+
         try {
             // Try deleting by numeric ID or by RefCode (SKU)
-            const result = await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2 RETURNING id', [id, id]);
+            const result = await query('DELETE FROM materials WHERE id = $1 OR ref_code = $2 RETURNING id', [id, (id as string)]);
             
             // Sync to JSON fallback if we have a DB connection
             const all = await query('SELECT * FROM materials ORDER BY category, name');
             const mapped = all.rows.map(mapDBToMaterial);
             saveToJSON(JSON_DB_PATH, mapped);
             
+            // Sync to original tracked file to ensure permanence across repo clones
+            syncToPersistentJSON(id);
+            
+            await logAdminAction(req, (req as any).user, 'DELETE_MATERIAL', `Deleted material ID/SKU ${id}`);
+            
             if (result.rows.length === 0) {
                 throw new Error('Not found in DB');
             }
-            res.json({ success: true, id: result.rows[0].id });
+            res.json({ success: true, id: result.rows[0].id, permanentlyDeleted: deletedLocally });
         } catch (dbError: any) {
             console.warn('DB delete failed or not found, checking JSON fallback:', dbError.message);
             const materials = await getMaterials();
@@ -1441,7 +2334,10 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
             }
             
             saveToJSON(JSON_DB_PATH, filtered);
-            res.json({ success: true, id, note: 'Deleted from JSON fallback' });
+            syncToPersistentJSON(id);
+            
+            await logAdminAction(req, (req as any).user, 'DELETE_MATERIAL', `Deleted material ID/SKU ${id} (fallback)`);
+            res.json({ success: true, id, note: 'Deleted from JSON fallback', permanentlyDeleted: deletedLocally });
         }
     } catch (error: any) {
         console.error('Delete material error:', error);
@@ -1450,7 +2346,7 @@ app.delete('/api/materials/:id', async (req: Request, res: Response) => {
 });
 
 // Bulk import materials
-app.post('/api/materials/bulk', async (req: Request, res: Response) => {
+app.post('/api/materials/bulk', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { materials } = req.body;
 
@@ -1477,6 +2373,7 @@ app.post('/api/materials/bulk', async (req: Request, res: Response) => {
             imported++;
         }
 
+        await logAdminAction(req, (req as any).user, 'BULK_CREATE_MATERIALS', `Imported ${materials.length} materials via bulk upload`);
         res.json({ success: true, imported });
     } catch (error: any) {
         console.error('Bulk import error:', error);
@@ -1485,9 +2382,11 @@ app.post('/api/materials/bulk', async (req: Request, res: Response) => {
 });
 
 // Delete all materials (factory reset)
-app.delete('/api/materials', async (req: Request, res: Response) => {
+app.delete('/api/materials', requireAdmin, async (req: Request, res: Response) => {
     try {
         await query('DELETE FROM materials');
+        
+        await logAdminAction(req, (req as any).user, 'RESET_ALL_DATA', 'Factory reset: Deleted all materials from the database');
         res.json({ success: true, message: 'All materials deleted' });
     } catch (error: any) {
         console.error('Delete all materials error:', error);
@@ -1498,7 +2397,7 @@ app.delete('/api/materials', async (req: Request, res: Response) => {
 // ===== PURCHASE REQUESTS API (new) =====
 
 // Create purchase request (from Cart)
-app.post('/api/purchase-requests', async (req: Request, res: Response) => {
+app.post('/api/purchase-requests', requireAuth, async (req: Request, res: Response) => {
     try {
         const {
             user_id,
@@ -1545,6 +2444,18 @@ app.post('/api/purchase-requests', async (req: Request, res: Response) => {
         );
 
         const purchaseRequest = result.rows[0];
+
+        logUserActivity({
+            userId: user_id || undefined,
+            action: 'PURCHASE_MOCK',
+            details: {
+                purchaseRequestId: purchaseRequest.id,
+                customer_email,
+                total_estimate,
+                currency: currency || 'USD',
+                itemCount: cart_items.length,
+            },
+        });
 
         // Send email notifications
         try {
@@ -1674,21 +2585,21 @@ app.post('/api/send-quote-email', async (req: Request, res: Response) => {
 });
 
 // Get all purchase requests (admin)
-app.get('/api/purchase-requests', async (req: Request, res: Response) => {
+app.get('/api/purchase-requests', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { status } = req.query;
 
-        let query = 'SELECT * FROM purchase_requests';
+        let sqlQuery = 'SELECT * FROM purchase_requests';
         const params: any[] = [];
 
         if (status) {
-            query += ' WHERE status = $1';
+            sqlQuery += ' WHERE status = $1';
             params.push(status);
         }
 
-        query += ' ORDER BY created_at DESC';
+        sqlQuery += ' ORDER BY created_at DESC';
 
-        const result = await query(query, params);
+        const result = await query(sqlQuery, params);
 
         // Parse cart_items JSON
         const requests = result.rows.map(row => ({
@@ -1704,10 +2615,10 @@ app.get('/api/purchase-requests', async (req: Request, res: Response) => {
 });
 
 // Get single purchase request
-app.get('/api/purchase-requests/:id', async (req: Request, res: Response) => {
+app.get('/api/purchase-requests/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const result = await query('SELECT * FROM purchase_requests WHERE id = $1', [id]);
+        const result = await query('SELECT * FROM purchase_requests WHERE id = $1', [(id as string)]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Purchase request not found' });
@@ -1726,7 +2637,7 @@ app.get('/api/purchase-requests/:id', async (req: Request, res: Response) => {
 });
 
 // Update purchase request status
-app.patch('/api/purchase-requests/:id', async (req: Request, res: Response) => {
+app.patch('/api/purchase-requests/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { status, contacted_by } = req.body;
@@ -1782,6 +2693,8 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Name, email, and password required' });
         }
 
+        const sessionToken = 'session_' + require('crypto').randomBytes(24).toString('hex');
+
         try {
             // Check if email already exists
             const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
@@ -1794,13 +2707,36 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             const hashedPassword = await bcrypt.hash(password, salt);
 
             const result = await query(
-                `INSERT INTO users (name, email, phone, address, password_hash, role, tier, generations_used)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           RETURNING id, name, email, phone, address, role, tier, generations_used, created_at`,
-                [name, email, phone || null, address || null, hashedPassword, 'customer', 'Free', 0]
+                `INSERT INTO users (name, email, phone, address, password_hash, role, tier, generations_used, session_token)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id, name, email, phone, address, role, tier, generations_used, session_token, created_at`,
+                [name, email, phone || null, address || null, hashedPassword, 'customer', 'Free', 0, sessionToken]
             );
 
+            // Send Telegram notification for new user signup
+            try {
+                await telegramAlerts.sendMessage({
+                    text: `<b>👤 New User Registered</b>\n\n` +
+                          `<b>Name:</b> ${name}\n` +
+                          `<b>Email:</b> ${email}\n` +
+                          `<b>Phone:</b> ${phone || 'N/A'}\n` +
+                          `<b>Address:</b> ${address || 'N/A'}\n` +
+                          `<b>Tier:</b> Free\n` +
+                          `<b>Database:</b> PostgreSQL\n` +
+                          `<b>Time:</b> ${new Date().toLocaleTimeString()}\n\n` +
+                          `<a href="https://buildingapp.us/api/admin/dashboard?token=session_admin_fallback">View Dashboard</a>`,
+                    parse_mode: 'HTML'
+                });
+            } catch (tgError) {
+                console.error('Failed to send signup Telegram alert:', tgError);
+            }
+
             res.status(201).json({ user: result.rows[0] });
+            logUserActivity({
+                userId: result.rows[0].id,
+                action: 'SIGNUP',
+                details: { email, name, tier: 'Free', method: 'db' },
+            });
         } catch (dbError) {
             console.warn('Signup DB unavailable, using JSON fallback...');
             
@@ -1823,15 +2759,39 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
                 role: 'customer',
                 tier: 'Free',
                 generations_used: 0,
+                session_token: sessionToken,
                 created_at: new Date().toISOString()
             };
 
             users.push(newUser);
             saveToJSON(JSON_USERS_PATH, users);
 
+            // Send Telegram notification for new user signup (JSON fallback)
+            try {
+                await telegramAlerts.sendMessage({
+                    text: `<b>👤 New User Registered</b>\n\n` +
+                          `<b>Name:</b> ${name}\n` +
+                          `<b>Email:</b> ${email}\n` +
+                          `<b>Phone:</b> ${phone || 'N/A'}\n` +
+                          `<b>Address:</b> ${address || 'N/A'}\n` +
+                          `<b>Tier:</b> Free\n` +
+                          `<b>Database:</b> High-Fidelity JSON Fallback\n` +
+                          `<b>Time:</b> ${new Date().toLocaleTimeString()}\n\n` +
+                          `<a href="https://buildingapp.us/api/admin/dashboard?token=session_admin_fallback">View Dashboard</a>`,
+                    parse_mode: 'HTML'
+                });
+            } catch (tgError) {
+                console.error('Failed to send signup Telegram alert (fallback):', tgError);
+            }
+
             // Don't return password hash
             const { password_hash, ...userResponse } = newUser;
             res.status(201).json({ user: userResponse });
+            logUserActivity({
+                userId: newUser.id,
+                action: 'SIGNUP',
+                details: { email, name, tier: 'Free', method: 'json_fallback' },
+            });
         }
     } catch (error: any) {
         console.error('Signup error:', error);
@@ -1848,23 +2808,11 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Email and password required' });
         }
 
-        // Hardcoded admin fallback
-        if (email === 'admin@gmail.com' && password === 'admin@@@1') {
-            return res.json({ 
-                user: { 
-                    id: 999, 
-                    name: 'Super Admin', 
-                    email: 'admin@gmail.com', 
-                    role: 'admin',
-                    tier: 'Enterprise',
-                    generations_used: 0
-                } 
-            });
-        }
+        const sessionToken = 'session_' + require('crypto').randomBytes(24).toString('hex');
 
         try {
             const result = await query(
-                'SELECT id, name, email, phone, address, role, tier, generations_used, password_hash FROM users WHERE email = $1',
+                'SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, password_hash FROM users WHERE email = $1',
                 [email]
             );
 
@@ -1874,8 +2822,29 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
                 if (!isMatch) {
                     return res.status(401).json({ error: 'Invalid credentials' });
                 }
+
+                // Save session token to DB
+                try {
+                    await query('UPDATE users SET session_token = $1 WHERE id = $2', [sessionToken, user.id]);
+                } catch (updateErr: any) {
+                    console.warn('Failed to save session token to DB:', updateErr.message);
+                }
+
+                // Check for tier expiration and auto-downgrade if needed
+                await checkAndDowngradeExpiredTier(user);
+
                 const { password_hash, ...userResponse } = user;
-                return res.json({ user: userResponse });
+                logUserActivity({
+                    userId: user.id,
+                    action: 'LOGIN',
+                    details: { email: user.email, tier: user.tier, method: 'db' },
+                });
+                return res.json({ 
+                    user: { 
+                        ...userResponse, 
+                        session_token: sessionToken 
+                    } 
+                });
             }
             
             // If not in DB, check JSON fallback anyway (might be newly signed up in fallback)
@@ -1884,19 +2853,37 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         } catch (dbError) {
             console.warn('Login DB unavailable or user not found, checking JSON fallback...');
             const users = await getUsers();
-            const user = users.find((u: any) => u.email === email);
+            const index = users.findIndex((u: any) => u.email === email);
 
-            if (!user) {
+            if (index === -1) {
                 return res.status(401).json({ error: 'Invalid credentials' });
             }
 
+            const user = users[index];
             const isMatch = await bcrypt.compare(password, user.password_hash);
             if (!isMatch) {
                 return res.status(401).json({ error: 'Invalid credentials' });
             }
 
+            // Save session token in JSON
+            user.session_token = sessionToken;
+            saveToJSON(JSON_USERS_PATH, users);
+
+            // Check for tier expiration and auto-downgrade if needed
+            await checkAndDowngradeExpiredTier(user);
+
             const { password_hash, ...userResponse } = user;
-            return res.json({ user: userResponse });
+            logUserActivity({
+                userId: user.id,
+                action: 'LOGIN',
+                details: { email: user.email, tier: user.tier, method: 'json_fallback' },
+            });
+            return res.json({ 
+                user: { 
+                    ...userResponse, 
+                    session_token: sessionToken 
+                } 
+            });
         }
     } catch (error: any) {
         console.error('Login error:', error);
@@ -1904,191 +2891,11 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     }
 });
 
-// ===== MATERIAL MANAGEMENT API (new) =====
-
-// Get all materials
-app.get('/api/materials', async (req: Request, res: Response) => {
-    try {
-        const result = await query('SELECT * FROM materials ORDER BY category, name');
-        if (result.rows.length === 0) {
-            // Fallback to JSON if DB is empty
-            if (fs.existsSync(JSON_DB_PATH)) {
-                const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
-                return res.json(JSON.parse(data));
-            }
-        }
-        res.json(result.rows);
-    } catch (error: any) {
-        // Fallback to JSON if DB is down
-        if (fs.existsSync(JSON_DB_PATH)) {
-            const data = fs.readFileSync(JSON_DB_PATH, 'utf8');
-            return res.json(JSON.parse(data));
-        }
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Create/Update material
-app.post('/api/materials', async (req: Request, res: Response) => {
-    try {
-        const m = req.body;
-        const result = await query(
-            `INSERT INTO materials (
-                ref_code, name, category, subcategory, price, price_contractor, currency, 
-                unit, items_per_box, width_cm, length_cm, thickness_m, 
-                description, image_url, usage, prompt_modifier
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-            ON CONFLICT (ref_code) DO UPDATE SET
-                name = EXCLUDED.name,
-                category = EXCLUDED.category,
-                subcategory = EXCLUDED.subcategory,
-                price = EXCLUDED.price,
-                price_contractor = EXCLUDED.price_contractor,
-                currency = EXCLUDED.currency,
-                unit = EXCLUDED.unit,
-                items_per_box = EXCLUDED.items_per_box,
-                width_cm = EXCLUDED.width_cm,
-                length_cm = EXCLUDED.length_cm,
-                thickness_m = EXCLUDED.thickness_m,
-                description = EXCLUDED.description,
-                image_url = EXCLUDED.image_url,
-                usage = EXCLUDED.usage,
-                prompt_modifier = EXCLUDED.prompt_modifier,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING *`,
-            [
-                m.ref_code, m.name, m.category, m.subcategory, m.price, m.price_contractor || m.price, m.currency,
-                m.unitLabel, m.items_per_box, m.width_cm, m.length_cm, m.thickness_m,
-                m.description, m.image_url, m.usage, m.prompt_modifier
-            ]
-        );
-
-        // Sync to JSON fallback
-        const all = await query('SELECT * FROM materials ORDER BY category, name');
-        fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
-
-        res.json(result.rows[0]);
-    } catch (error: any) {
-        console.warn('DB update failed, updating JSON directly:', error.message);
-        
-        // Direct JSON fallback update
-        try {
-            let data: any[] = [];
-            if (fs.existsSync(JSON_DB_PATH)) {
-                data = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
-            }
-            
-            const m = req.body;
-            const index = data.findIndex(item => (item.refCode || item.ref_code) === m.ref_code);
-            
-            const newMaterial = {
-                id: m.ref_code,
-                refCode: m.ref_code,
-                name: m.name,
-                category: m.category,
-                subcategory: m.subcategory,
-                usage: m.usage,
-                description: m.description,
-                imageUrl: m.image_url,
-                promptModifier: m.prompt_modifier,
-                pricing: {
-                    pricePerUnit: m.price,
-                    priceContractor: m.price_contractor,
-                    currency: m.currency,
-                    unitLabel: m.unitLabel || m.unit,
-                    itemsPerBox: m.items_per_box
-                },
-                dimensions: {
-                    width: m.width_cm,
-                    length: m.length_cm,
-                    thickness: m.thickness_m
-                }
-            };
-
-            if (index !== -1) {
-                data[index] = { ...data[index], ...newMaterial };
-            } else {
-                data.push(newMaterial);
-            }
-            
-            fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
-            return res.json(newMaterial);
-        } catch (jsonError: any) {
-            return res.status(500).json({ error: 'Failed to update both DB and JSON: ' + jsonError.message });
-        }
-    }
-});
- 
- // Update material by ID
- app.put('/api/materials/:id', async (req: Request, res: Response) => {
-     try {
-         const { id } = req.params;
-         const m = req.body;
-         const result = await query(
-             `UPDATE materials SET
-                 name = $1, category = $2, subcategory = $3, price = $4, price_contractor = $5,
-                 currency = $6, unit = $7, items_per_box = $8, width_cm = $9, length_cm = $10,
-                 thickness_m = $11, description = $12, image_url = $13, usage = $14,
-                 prompt_modifier = $15, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $16 RETURNING *`,
-             [
-                 m.name, m.category, m.subcategory, m.price, m.price_contractor,
-                 m.currency, m.unitLabel || m.unit, m.items_per_box, m.width_cm, m.length_cm,
-                 m.thickness_m, m.description, m.image_url, m.usage, m.prompt_modifier, id
-             ]
-         );
- 
-         // Sync to JSON
-         const all = await query('SELECT * FROM materials ORDER BY category, name');
-         fs.writeFileSync(JSON_DB_PATH, JSON.stringify(all.rows, null, 2));
- 
-         res.json(result.rows[0]);
-     } catch (error: any) {
-         console.warn('DB update failed, updating JSON directly:', error.message);
-         try {
-             let data: any[] = [];
-             if (fs.existsSync(JSON_DB_PATH)) {
-                 data = JSON.parse(fs.readFileSync(JSON_DB_PATH, 'utf8'));
-             }
-             const { id } = req.params;
-             const m = req.body;
-             const index = data.findIndex(item => String(item.id) === String(id) || String(item.refCode) === String(id));
-             
-             if (index !== -1) {
-                 data[index] = {
-                     ...data[index],
-                     name: m.name,
-                     category: m.category,
-                     subcategory: m.subcategory,
-                     usage: m.usage,
-                     description: m.description,
-                     imageUrl: m.image_url,
-                     promptModifier: m.prompt_modifier,
-                     pricing: {
-                         pricePerUnit: m.price,
-                         priceContractor: m.price_contractor,
-                         currency: m.currency,
-                         unitLabel: m.unitLabel || m.unit,
-                         itemsPerBox: m.items_per_box
-                     },
-                     dimensions: {
-                         width: m.width_cm,
-                         length: m.length_cm,
-                         thickness: m.thickness_m
-                     }
-                 };
-                 fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
-                 return res.json(data[index]);
-             }
-             res.status(404).json({ error: 'Material not found in JSON' });
-         } catch (jsonError: any) {
-             res.status(500).json({ error: jsonError.message });
-         }
-     }
- });
+// ===== MATERIAL MANAGEMENT API v2 (consolidated — uses getMaterials helper) =====
+// All duplicate handlers removed; single source of truth at lines 1667-1910
 
 
-app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response) => {
+app.patch('/api/admin/users/:id/generations', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { generations_used } = req.body;
@@ -2097,12 +2904,27 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
             return res.status(400).json({ error: 'Invalid generation count' });
         }
 
+        // Get user email for audit log
+        let userEmail = 'unknown';
+        try {
+            const uResult = await query('SELECT email FROM users WHERE id = $1', [id]);
+            if (uResult.rows.length > 0) userEmail = uResult.rows[0].email;
+        } catch (e) {}
+        if (userEmail === 'unknown') {
+            try {
+                const fallbackUsers = await getUsers();
+                const foundU = fallbackUsers.find((u: any) => String(u.id) === String(id));
+                if (foundU) userEmail = foundU.email;
+            } catch (e) {}
+        }
+
         try {
             const result = await query(
                 'UPDATE users SET generations_used = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
-                [generations_used, id]
+                [generations_used, (id as string)]
             );
             if (result.rows.length > 0) {
+                await logAdminAction(req, (req as any).user, 'UPDATE_USER_GENERATIONS', `Updated generations used for user ID ${id} (${userEmail}) to ${generations_used}`);
                 return res.json({ success: true });
             }
         } catch (dbErr: any) {
@@ -2115,6 +2937,7 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
         if (index !== -1) {
             users[index].generations_used = generations_used;
             saveToJSON(JSON_USERS_PATH, users);
+            await logAdminAction(req, (req as any).user, 'UPDATE_USER_GENERATIONS', `Updated generations used for user ID ${id} (${userEmail}) to ${generations_used} (fallback)`);
             return res.json({ success: true });
         }
 
@@ -2125,41 +2948,133 @@ app.patch('/api/admin/users/:id/generations', async (req: Request, res: Response
     }
 });
 
-app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
+// User-facing tier update — BLOCKED: tier changes must go through Stripe webhook
+app.patch('/api/users/:id/tier', requireAuth, async (req: Request, res: Response) => {
+    // Tier changes must be confirmed by Stripe webhook (checkout.session.completed).
+    // Self-service tier upgrades are not allowed — prevents free Premium/Luxury.
+    return res.status(403).json({ 
+        error: 'Tier changes require Stripe checkout. Visit /pricing to upgrade.',
+        redirect: '/pricing'
+    });
+});
+
+app.patch('/api/admin/users/:id/tier', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { tier } = req.body;
 
-        if (!['Free', 'Pro', 'Enterprise'].includes(tier)) {
+        const tiers = await getTiers();
+        const validTiers = Object.keys(tiers).map(k => k.toUpperCase());
+        const isTierValid = validTiers.includes(tier.toUpperCase()) || 
+                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier.toUpperCase()) ||
+                            ['FREE', 'STANDARD', 'PREMIUM', 'LUXURY', 'PRO', 'ENTERPRISE'].includes(tier);
+        if (!isTierValid) {
             return res.status(400).json({ error: 'Invalid tier' });
         }
 
-        const result = await query(
-            'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, email, tier',
-            [tier, id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+        // Get user email for audit log
+        let userEmail = 'unknown';
+        try {
+            const uResult = await query('SELECT email FROM users WHERE id = $1', [id]);
+            if (uResult.rows.length > 0) userEmail = uResult.rows[0].email;
+        } catch (e) {}
+        if (userEmail === 'unknown') {
+            try {
+                const fallbackUsers = await getUsers();
+                const foundU = fallbackUsers.find((u: any) => String(u.id) === String(id));
+                if (foundU) userEmail = foundU.email;
+            } catch (e) {}
         }
 
-        res.json(result.rows[0]);
+        try {
+            const result = await query(
+                'UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, email, tier',
+                [tier, (id as string)]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            await logAdminAction(req, (req as any).user, 'UPDATE_USER_TIER', `Updated tier for user ID ${id} (${userEmail}) to ${tier}`);
+            res.json(result.rows[0]);
+        } catch (dbError: any) {
+            console.error('Update tier DB error, trying fallback:', dbError.message);
+            
+            // Fallback to JSON
+            try {
+                const users = await getUsers();
+                const index = users.findIndex((u: any) => String(u.id) === String(id));
+                if (index !== -1) {
+                    users[index].tier = tier;
+                    saveToJSON(JSON_USERS_PATH, users);
+                    await logAdminAction(req, (req as any).user, 'UPDATE_USER_TIER', `Updated tier for user ID ${id} (${userEmail}) to ${tier} (fallback)`);
+                    return res.json(users[index]);
+                }
+                res.status(404).json({ error: 'User not found in JSON' });
+            } catch (jsonError: any) {
+                res.status(500).json({ error: jsonError.message });
+            }
+        }
     } catch (error: any) {
         console.error('Update tier error:', error);
-        
-        // Fallback to JSON
-        try {
-            const users = await getUsers();
-            const index = users.findIndex((u: any) => String(u.id) === String(req.params.id));
-            if (index !== -1) {
-                users[index].tier = req.body.tier;
-                saveToJSON(JSON_USERS_PATH, users);
-                return res.json(users[index]);
-            }
-            res.status(404).json({ error: 'User not found in JSON' });
-        } catch (jsonError) {
-            res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Secure User Profile endpoint: Get user profile details
+app.get('/api/users/:id', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const authUser = (req as any).user;
+
+        // Block regular users from fetching other users' profiles (only allow their own ID, unless they are admin)
+        if (String(authUser.id) !== String(id) && authUser.role !== 'admin') {
+            return res.status(403).json({ error: 'Forbidden. Access denied.' });
         }
+
+        // 1. Try DB first
+        try {
+            const result = await query('SELECT id, name, email, role, tier, generations_used, tier_expires_at FROM users WHERE id = $1', [parseInt(id as string)]);
+            if (result.rows.length > 0) {
+                return res.json(result.rows[0]);
+            }
+        } catch (dbErr) {}
+
+        // 2. Fallback to JSON
+        const users = await getUsers();
+        const found = users.find((u: any) => String(u.id) === String(id));
+        if (found) {
+            const { password_hash, session_token, ...safeUser } = found;
+            return res.json(safeUser);
+        }
+
+        res.status(404).json({ error: 'User not found' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get current user's tier status (with expiration check)
+app.get('/api/me/tier', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const authUser = (req as any).user;
+        // Run expiration check — mutates and persists if expired
+        await checkAndDowngradeExpiredTier(authUser);
+
+        const expiresAt = authUser.tier_expires_at || null;
+        const daysRemaining = expiresAt
+            ? Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+            : null;
+
+        res.json({
+            tier: authUser.tier || 'Free',
+            expiresAt,
+            daysRemaining,
+            isExpired: daysRemaining !== null && daysRemaining <= 0,
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -2167,7 +3082,7 @@ app.patch('/api/admin/users/:id/tier', async (req: Request, res: Response) => {
 app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = parseInt(id as string);
 
         let memory = { lastState: {}, history: [], behaviors: {} };
         
@@ -2189,8 +3104,8 @@ app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
         if (fs.existsSync(JSON_MEMORIES_PATH)) {
             try {
                 const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-                if (data[id]) {
-                    memory = data[id];
+                if (data[id as string]) {
+                    memory = data[id as string];
                 }
             } catch (parseErr) {
                 console.warn('Failed to parse memories JSON:', parseErr);
@@ -2207,7 +3122,7 @@ app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
 app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = parseInt(id as string);
         const { lastState, historyItem, behaviorEvent } = req.body;
 
         // Fetch existing memory
@@ -2228,8 +3143,8 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
 
         if (source === 'JSON' && fs.existsSync(JSON_MEMORIES_PATH)) {
             const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-            if (data[id]) {
-                currentMemory = data[id];
+            if (data[id as string]) {
+                currentMemory = data[id as string];
             }
         }
 
@@ -2281,7 +3196,7 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
                 console.warn('Failed to parse memories JSON during save:', parseErr);
             }
         }
-        data[id] = currentMemory;
+        data[id as string] = currentMemory;
         fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
 
         res.json({ success: true, memory: currentMemory });
@@ -2292,16 +3207,16 @@ app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Resp
 });
 
 // Admin endpoint: Get rich user detail including profile and memory
-app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
+app.get('/api/admin/users/:id/detail', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const userId = parseInt(id as string);
 
         let userProfile: any = null;
         
         // 1. Get user profile
         try {
-            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, created_at FROM users WHERE id = $1', [userId]);
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, created_at FROM users WHERE id = $1', [userId]);
             if (result.rows.length > 0) {
                 userProfile = result.rows[0];
             }
@@ -2330,14 +3245,14 @@ app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
                 // Check JSON fallback
                 if (fs.existsSync(JSON_MEMORIES_PATH)) {
                     const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-                    if (data[id]) memory = data[id];
+                    if (data[id as string]) memory = data[id as string];
                 }
             }
         } catch (e) {
             if (fs.existsSync(JSON_MEMORIES_PATH)) {
                 try {
                     const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-                    if (data[id]) memory = data[id];
+                    if (data[id as string]) memory = data[id as string];
                 } catch (parseErr) {}
             }
         }
@@ -2352,11 +3267,69 @@ app.get('/api/admin/users/:id/detail', async (req: Request, res: Response) => {
     }
 });
 
-// Account Deletion Endpoint (App Store & Play Store compliance)
-app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) => {
+// Admin: Reset user password
+app.post('/api/admin/users/:id/reset-password', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const userId = parseInt(id);
+        const { newPassword } = req.body;
+        
+        if (!newPassword || newPassword.length < 4) {
+            return res.status(400).json({ error: 'New password must be at least 4 characters' });
+        }
+        
+        const bcrypt = require('bcryptjs');
+        const hash = await bcrypt.hash(newPassword, 10);
+        
+        const userId = parseInt(id as string);
+        await query('UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, userId]);
+        
+        await logAdminAction(req, (req as any).user, 'RESET_PASSWORD', `Admin reset password for user ID ${userId}`);
+        
+        res.json({ success: true, message: 'Password reset successfully' });
+    } catch (e: any) {
+        console.error('Reset password error:', e);
+        // Fallback: update in JSON
+        try {
+            const users = await getUsers();
+            const idx = users.findIndex((u: any) => String(u.id) === String(req.params.id));
+            if (idx >= 0) {
+                const bcrypt = require('bcryptjs');
+                users[idx].password_hash = await bcrypt.hash(req.body.newPassword, 10);
+                fs.writeFileSync(JSON_USERS_TRACKED, JSON.stringify(users, null, 2));
+                res.json({ success: true, message: 'Password reset successfully (fallback)' });
+            } else {
+                res.status(404).json({ error: 'User not found' });
+            }
+        } catch (fallbackErr: any) {
+            res.status(500).json({ error: 'Failed to reset password' });
+        }
+    }
+});
+
+// Account Deletion Endpoint (App Store & Play Store compliance)
+app.delete('/api/users/:id/delete-account', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id as string);
+        const requestingUser = (req as any).user;
+
+        if (String(requestingUser.id) !== String(id) && requestingUser.role !== 'admin') {
+            return res.status(403).json({ error: 'Forbidden. You do not have permission to delete this account.' });
+        }
+
+        // Get user email for audit log
+        let userEmail = 'unknown';
+        try {
+            const uResult = await query('SELECT email FROM users WHERE id = $1', [userId]);
+            if (uResult.rows.length > 0) userEmail = uResult.rows[0].email;
+        } catch (e) {}
+        if (userEmail === 'unknown') {
+            try {
+                const fallbackUsers = await getUsers();
+                const foundU = fallbackUsers.find((u: any) => String(u.id) === String(id));
+                if (foundU) userEmail = foundU.email;
+            } catch (e) {}
+        }
 
         // Delete from database
         try {
@@ -2375,11 +3348,19 @@ app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) 
 
         if (fs.existsSync(JSON_MEMORIES_PATH)) {
             const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
-            if (data[id]) {
-                delete data[id];
+            if (data[id as string]) {
+                delete data[id as string];
                 fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
             }
         }
+
+        // Log the action!
+        await logAdminAction(
+            req, 
+            requestingUser.role === 'admin' ? requestingUser : { name: 'User Self', email: userEmail, session_token: requestingUser.session_token }, 
+            'DELETE_USER', 
+            `Deleted user account ID ${id} (${userEmail})`
+        );
 
         res.json({ success: true, message: 'Account and associated data deleted successfully.' });
     } catch (e: any) {
@@ -2389,7 +3370,7 @@ app.delete('/api/users/:id/delete-account', async (req: Request, res: Response) 
 });
 
 // Create Admin User (Admin only)
-app.post('/api/admin/users/create-admin', async (req: Request, res: Response) => {
+app.post('/api/admin/users/create-admin', requireAdmin, async (req: Request, res: Response) => {
     try {
         const { name, email, password } = req.body;
         if (!name || !email || !password) {
@@ -2406,6 +3387,8 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
                  RETURNING id, name, email, role, tier, created_at`,
                 [name, email, hashedPassword, 'admin', 'Enterprise']
             );
+            
+            await logAdminAction(req, (req as any).user, 'CREATE_ADMIN', `Created new admin user: ${name} (${email})`);
             res.status(201).json(result.rows[0]);
         } catch (dbError) {
             console.warn('DB down, creating Admin in JSON...');
@@ -2427,6 +3410,7 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
             users.push(newAdmin);
             saveToJSON(JSON_USERS_PATH, users);
             
+            await logAdminAction(req, (req as any).user, 'CREATE_ADMIN', `Created new admin user (fallback): ${name} (${email})`);
             const { password_hash, ...response } = newAdmin;
             res.status(201).json(response);
         }
@@ -2436,9 +3420,9 @@ app.post('/api/admin/users/create-admin', async (req: Request, res: Response) =>
 });
 
 // Get all users (Admin only)
-app.get('/api/admin/users', async (req: Request, res: Response) => {
+app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const result = await query('SELECT id, name, email, role, tier, generations_used, created_at FROM users ORDER BY created_at DESC');
+        const result = await query('SELECT id, name, email, role, tier, generations_used, tier_expires_at, created_at FROM users ORDER BY created_at DESC');
         res.json(result.rows);
     } catch (error: any) {
         console.warn('Database unavailable, reading from local users fallback for admin...');
@@ -2454,12 +3438,22 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
         // Special case for Super Admin
         if (userId === 999) return { allowed: true };
 
-        const result = await query('SELECT tier, generations_used FROM users WHERE id = $1', [userId]);
+        const result = await query('SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1', [userId]);
         if (result.rows.length === 0) return { allowed: false, error: 'User not found' };
 
-        const { tier, generations_used } = result.rows[0];
-        const tierKey = (tier || 'FREE').toUpperCase();
-        const tierConfig = (TIERS as any)[tierKey] || TIERS.FREE;
+        let { id, email, tier, generations_used, tier_expires_at } = result.rows[0];
+        
+        // Check and apply tier expiration downgrade before quota check
+        const userForCheck = { id, email, tier, tier_expires_at };
+        const wasDowngraded = await checkAndDowngradeExpiredTier(userForCheck);
+        if (wasDowngraded) {
+            tier = userForCheck.tier; // 'Free' after downgrade
+        }
+        
+        const tierKey = normalizeTier(tier);
+        
+        const tiers = await getTiers();
+        const tierConfig = tiers[tierKey as keyof TiersConfig] || tiers.FREE;
 
         if (generations_used >= tierConfig.limit) {
             return { allowed: false, limit: tierConfig.limit, used: generations_used };
@@ -2476,8 +3470,13 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
             const user = users.find((u: any) => String(u.id) === String(userId));
             if (!user) return { allowed: true }; // Allow if user not found to avoid blocking
 
+            // Check expiration in JSON fallback too
+            await checkAndDowngradeExpiredTier(user);
+
             const tier = user.tier || 'Free';
-            const tierConfig = TIERS[tier.toUpperCase() as keyof typeof TIERS] || TIERS.FREE;
+            const tierKey = normalizeTier(tier);
+            const tiers = await getTiers();
+            const tierConfig = tiers[tierKey as keyof TiersConfig] || tiers.FREE;
             const used = user.generations_used || 0;
 
             if (used >= tierConfig.limit) {
@@ -2497,27 +3496,13 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
     }
 }
 
-app.get('/api/debug', async (req: Request, res: Response) => {
+app.get('/api/debug', requireAdmin, async (req: Request, res: Response) => {
     const debugInfo: any = {
         status: 'online',
         timestamp: new Date().toISOString(),
         env: {
             node_env: process.env.NODE_ENV,
-            has_db_url: !!process.env.DATABASE_URL,
             port: PORT,
-            has_db_host: !!process.env.DB_HOST,
-            db_host_val: process.env.DB_HOST ? `${process.env.DB_HOST.substring(0, 3)}...` : null,
-            has_db_user: !!process.env.DB_USER,
-            db_user_val: process.env.DB_USER ? `${process.env.DB_USER.substring(0, 3)}...` : null,
-            has_db_password: !!process.env.DB_PASSWORD,
-            has_db_name: !!process.env.DB_NAME,
-            db_name_val: process.env.DB_NAME ? `${process.env.DB_NAME.substring(0, 3)}...` : null,
-            has_db_port: !!process.env.DB_PORT,
-            db_port: process.env.DB_PORT || null,
-            has_telegram_token: !!process.env.TELEGRAM_BOT_TOKEN,
-            telegram_token_len: process.env.TELEGRAM_BOT_TOKEN ? process.env.TELEGRAM_BOT_TOKEN.length : 0,
-            has_telegram_chat_id: !!process.env.TELEGRAM_CHAT_ID,
-            telegram_chat_id_val: process.env.TELEGRAM_CHAT_ID ? `${process.env.TELEGRAM_CHAT_ID.substring(0, 4)}...` : null
         }
     };
 
@@ -2535,44 +3520,6 @@ app.get('/api/debug', async (req: Request, res: Response) => {
         debugInfo.json_users = `error: ${e.message}`;
     }
 
-    try {
-        const cwd = process.cwd();
-        debugInfo.cwd = cwd;
-        debugInfo.env_files_searched = [
-            path.join(cwd, '.env'),
-            path.resolve(cwd, '..', '.env'),
-            path.resolve(cwd, '..', '..', '.env'),
-            path.resolve(cwd, '..', '..', '..', '.env'),
-        ].map(p => ({
-            path: p,
-            exists: fs.existsSync(p)
-        }));
-        debugInfo.has_env_file = debugInfo.env_files_searched.some(e => e.exists);
-        if (fs.existsSync(cwd)) {
-            debugInfo.files = fs.readdirSync(cwd).map(f => {
-                try {
-                    const stat = fs.statSync(path.join(cwd, f));
-                    return `${f} (${stat.isDirectory() ? 'dir' : 'file'}, ${stat.size} bytes)`;
-                } catch (err) {
-                    return `${f} (error: ${err.message})`;
-                }
-            });
-        }
-        const dataPath = path.join(cwd, 'data');
-        if (fs.existsSync(dataPath)) {
-            debugInfo.data_files = fs.readdirSync(dataPath).map(f => {
-                try {
-                    const stat = fs.statSync(path.join(dataPath, f));
-                    return `${f} (${stat.isDirectory() ? 'dir' : 'file'}, ${stat.size} bytes)`;
-                } catch (err) {
-                    return `${f} (error: ${err.message})`;
-                }
-            });
-        }
-    } catch (err) {
-        debugInfo.files_error = err.message;
-    }
-
     res.json(debugInfo);
 });
 
@@ -2587,48 +3534,67 @@ app.post('/api/log-error', (req: Request, res: Response) => {
     errorLog.unshift(entry);
     if (errorLog.length > 50) errorLog.pop();
     console.error('Frontend Error:', entry);
+
+    // Dispatch error alert to Telegram
+    try {
+        const errorObj = new Error(typeof error === 'string' ? error : (error?.message || JSON.stringify(error)));
+        telegramAlerts.sendErrorAlert(
+            errorObj,
+            `Frontend Error (User ID: ${userId || 'Guest'})\nContext: ${context || 'N/A'}`
+        );
+    } catch (tgErr) {
+        console.error('Failed to send frontend error to Telegram:', tgErr);
+    }
+
     res.json({ status: 'logged' });
 });
 
-app.get('/api/debug/errors', (req: Request, res: Response) => {
-    res.json(errorLog);
+app.get('/api/debug/errors', requireAdmin, (req: Request, res: Response) => {
+    res.json(errorLog.slice(0, 10));
 });
 
+// DEPRECATED: Use /api/ai/generate-overlay instead. This endpoint is a legacy stub.
 app.post('/api/ai/generate', async (req: Request, res: Response) => {
-    try {
-        const { userId, type, data } = req.body;
-        if (!userId) return res.status(401).json({ error: 'Authentication required' });
-
-        const quota = await checkAndIncrementQuota(userId);
-        if (!quota.allowed) {
-            return res.status(403).json({ 
-                error: 'Quota exceeded', 
-                message: `You have used ${quota.used}/${quota.limit} generations. Please upgrade your tier.` 
-            });
-        }
-
-        // Logic for calling Gemini
-        const config = await getConfig();
-        const apiKey = config.GEMINI_API_KEY;
-        
-        if (!apiKey) {
-            return res.status(400).json({ error: 'API Key not configured. Please set it in Admin Dashboard.' });
-        }
-
-        res.json({ success: true, quota, apiKey });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
+    res.json({ 
+        success: false, 
+        error: 'This endpoint is deprecated. Please use /api/ai/generate-overlay instead.',
+        deprecated: true
+    });
 });
 
 // Admin Config Endpoints
-app.get('/api/admin/config', async (req: Request, res: Response) => {
+app.get('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     const config = await getConfig();
-    res.json({ hasKey: !!config.GEMINI_API_KEY });
+    res.json({ 
+        aiProvider: config.AI_PROVIDER || 'gemini',
+        hasKey: !!config.GEMINI_API_KEY,
+        hasOpenAIKey: !!config.OPENAI_API_KEY,
+        hasOpenRouterKey: !!config.OPENROUTER_API_KEY,
+        hasStripeSecretKey: !!config.STRIPE_SECRET_KEY,
+        hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET
+    });
+});
+
+// Admin Security Audit Logs Endpoint
+app.get('/api/admin/audit-logs', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        let logs: any[] = [];
+        if (fs.existsSync(JSON_AUDIT_LOGS_PATH)) {
+            try {
+                const content = fs.readFileSync(JSON_AUDIT_LOGS_PATH, 'utf8');
+                logs = JSON.parse(content || '[]');
+            } catch (err) {
+                logs = [];
+            }
+        }
+        res.json(logs);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Debug endpoint — helps diagnose path issues on Hostinger (safe: no key exposed)
-app.get('/api/debug/config-path', async (req: Request, res: Response) => {
+app.get('/api/debug/config-path', requireAdmin, async (req: Request, res: Response) => {
     const searches = JSON_CONFIG_PATHS.map(p => ({
         path: p,
         exists: fs.existsSync(p),
@@ -2643,26 +3609,110 @@ app.get('/api/debug/config-path', async (req: Request, res: Response) => {
         pathsSearched: searches,
         configFound: !!found,
         configPath: found?.path || null,
+        aiProvider: config.AI_PROVIDER || 'gemini',
         keyPresent: !!config.GEMINI_API_KEY,
         keyLength: config.GEMINI_API_KEY?.length || 0,
+        openaiKeyPresent: !!config.OPENAI_API_KEY,
         envKeyPresent: !!(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY),
     });
 });
 
-app.post('/api/admin/config', async (req: Request, res: Response) => {
+app.post('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { apiKey } = req.body;
-        if (!apiKey) return res.status(400).json({ error: 'API Key required' });
+        const { apiKey, openaiApiKey, openrouterApiKey, aiProvider, stripeSecretKey, stripeWebhookSecret } = req.body;
         
         const config = await getConfig();
-        config.GEMINI_API_KEY = apiKey;
+        if (apiKey !== undefined) config.GEMINI_API_KEY = apiKey;
+        if (openaiApiKey !== undefined) config.OPENAI_API_KEY = openaiApiKey;
+        if (openrouterApiKey !== undefined) config.OPENROUTER_API_KEY = openrouterApiKey;
+        if (aiProvider !== undefined) config.AI_PROVIDER = aiProvider;
+        if (stripeSecretKey !== undefined) config.STRIPE_SECRET_KEY = stripeSecretKey;
+        if (stripeWebhookSecret !== undefined) config.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
+        
         saveToJSON(JSON_CONFIG_PATH, config);
         
+        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', `Updated AI provider (${config.AI_PROVIDER}) and server credentials`);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
+
+// Dynamic Tiers Endpoints
+app.get('/api/tiers', async (req: Request, res: Response) => {
+    try {
+        const tiers = await getTiers();
+        res.json(tiers);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/admin/tiers', requireAdmin, express.json(), async (req: Request, res: Response) => {
+    try {
+        const config = req.body;
+        if (!config || !config.FREE) {
+            return res.status(400).json({ error: 'Invalid tiers configuration structure' });
+        }
+        await saveTiers(config);
+        await logAdminAction(req, (req as any).user, 'UPDATE_TIERS_CONFIG', 'Updated pricing tiers, limits, and Stripe IDs configuration');
+        res.json({ success: true, config });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Authentication Endpoints
+// NOTE: The canonical login/signup routes are /api/auth/login and /api/auth/signup (lines ~2806-2895)
+// This is a convenience alias that proxies to the real handler
+app.post('/api/login', async (req: Request, res: Response) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password required' });
+    }
+    try {
+        const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
+
+        // 1. Try DB
+        try {
+            const result = await query(
+                'SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, password_hash FROM users WHERE email = $1',
+                [email]
+            );
+            if (result.rows.length > 0) {
+                const user = result.rows[0];
+                const isMatch = await bcrypt.compare(password, user.password_hash);
+                if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+                try { await query('UPDATE users SET session_token = $1 WHERE id = $2', [sessionToken, user.id]); } catch {}
+                await checkAndDowngradeExpiredTier(user);
+                const { password_hash, ...userResponse } = user;
+                return res.json({ user: { ...userResponse, session_token: sessionToken }, token: sessionToken });
+            }
+            throw new Error('Not found in DB');
+        } catch (dbError) {
+            // 2. JSON fallback
+            const users = await getUsers();
+            const index = users.findIndex((u: any) => u.email === email);
+            if (index === -1) return res.status(401).json({ error: 'Invalid credentials' });
+            const user = users[index];
+            const isMatch = await bcrypt.compare(password, user.password_hash);
+            if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+            user.session_token = sessionToken;
+            saveToJSON(JSON_USERS_PATH, users);
+            await checkAndDowngradeExpiredTier(user);
+            const { password_hash, ...userResponse } = user;
+            return res.json({ user: { ...userResponse, session_token: sessionToken }, token: sessionToken });
+        }
+    } catch (e: any) {
+        console.error('Login error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/protected-test', requireAuth, (req: Request, res: Response) => {
+    res.json({ ok: true, user: (req as any).user?.email });
+});
+
 
 // ===== IMAGE PROXY (solves Google Drive 403 in browser) =====
 // The browser can't directly fetch lh3.googleusercontent.com with CORS/auth.
@@ -2671,6 +3721,18 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
     try {
         const { url } = req.query as { url: string };
         if (!url) return res.status(400).json({ error: 'Missing url param' });
+
+        // Only allow Google Drive / Google User Content domains
+        const allowedProxyDomains = ['lh3.googleusercontent.com', 'drive.google.com', 'drive.usercontent.google.com'];
+        let parsedUrl: URL;
+        try {
+            parsedUrl = new URL(url);
+        } catch {
+            return res.status(400).json({ error: 'Invalid URL' });
+        }
+        if (!allowedProxyDomains.includes(parsedUrl.hostname)) {
+            return res.status(403).json({ error: 'Domain not allowed' });
+        }
 
         const imageRes = await fetch(url, {
             headers: {
@@ -2684,6 +3746,11 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
         }
 
         const contentType = imageRes.headers.get('content-type') || 'image/jpeg';
+        const contentLength = imageRes.headers.get('content-length');
+        if (contentLength && parseInt(contentLength) > 5 * 1024 * 1024) {
+            return res.status(413).json({ error: 'Image too large. Max 5MB.' });
+        }
+
         res.setHeader('Content-Type', contentType);
         res.setHeader('Cache-Control', 'public, max-age=86400'); // cache 24h
 
@@ -2697,13 +3764,32 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
 });
 
 // Serve static files from the frontend build
-const distPath = fs.existsSync(path.join(path.resolve(), 'dist'))
-    ? path.join(path.resolve(), 'dist')
-    : path.resolve();
+// Priority: nodejs/dist (Hostinger Passenger) → dist (local dev) → CWD
+const distPath = (() => {
+    const cwd = path.resolve();
+    const candidates = [
+        path.join(cwd, 'nodejs', 'dist'),   // Hostinger: /home/user/nodejs/dist
+        path.join(cwd, 'dist'),              // Local dev
+        '/nodejs/dist',                       // Hostinger: absolute fallback
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
+            return p;
+        }
+    }
+    return cwd;
+})();
 
 console.log(`📂 Serving static files from: ${distPath}`);
 
 app.use(express.static(distPath));
+
+// Serve product images from /products/
+const productsPath = path.join(path.resolve(), 'products');
+if (!fs.existsSync(productsPath)) {
+    fs.mkdirSync(productsPath, { recursive: true });
+}
+app.use('/products', express.static(productsPath));
 
 // SPA fallback: handle all non-API routes
 app.use((req: Request, res: Response, next) => {
@@ -2718,6 +3804,14 @@ app.use((req: Request, res: Response, next) => {
         return next();
     }
 
+    // If the request is for a static asset that does not exist, return a clean 404
+    // (ends with an extension or resides in /assets/ folder)
+    const hasExtension = path.extname(req.path) !== '';
+    if (hasExtension || req.path.startsWith('/assets/')) {
+        res.status(404).send('Asset not found');
+        return;
+    }
+
     // Otherwise, serve index.html for SPA routing
     res.sendFile(path.join(distPath, 'index.html'));
 });
@@ -2727,6 +3821,60 @@ app.listen(PORT, async () => {
     console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
     console.log(`📊 Serving from: ${distPath}`);
     
+    // Bootstrap admin user if none exists (ensures permanent admin)
+    try {
+        const users = await getUsers();
+        const hasAdmin = users.some((u: any) => u.role === 'admin');
+        if (!hasAdmin) {
+            const adminEmail = process.env.ADMIN_EMAIL || 'admin@buildingapp.us';
+            let adminPassword = process.env.ADMIN_PASSWORD;
+            if (!adminPassword) {
+                if (process.env.NODE_ENV === 'production') {
+                    console.error('[BOOTSTRAP] FATAL: ADMIN_PASSWORD not set in production');
+                    process.exit(1);
+                }
+                console.warn('[BOOTSTRAP] ADMIN_PASSWORD not set, using development default');
+                adminPassword = 'BuildingAdmin2026!';
+            }
+            const bcrypt = await import('bcryptjs');
+            const hash = await bcrypt.hash(adminPassword, 10);
+            const newAdmin = {
+                id: 1,
+                name: 'System Admin',
+                email: adminEmail,
+                phone: null,
+                address: null,
+                password_hash: hash,
+                role: 'admin',
+                tier: 'Enterprise',
+                generations_used: 0,
+                session_token: 'admin_' + require('crypto').randomBytes(16).toString('hex'),
+                created_at: new Date().toISOString()
+            };
+            // Try DB first, fall back to JSON
+            try {
+                await query(
+                    `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     ON CONFLICT (id) DO UPDATE SET password_hash = $4, role = $5, tier = $6`,
+                    [newAdmin.id, newAdmin.name, newAdmin.email, newAdmin.password_hash,
+                     newAdmin.role, newAdmin.tier, newAdmin.generations_used, newAdmin.session_token]
+                );
+                console.log('[BOOTSTRAP] Admin user created/updated in PostgreSQL');
+            } catch (dbErr) {
+                // JSON fallback
+                const filtered = users.filter((u: any) => u.id !== 1);
+                filtered.push(newAdmin);
+                saveToJSON(JSON_USERS_PATH, filtered);
+                console.log('[BOOTSTRAP] Admin user created in JSON fallback');
+            }
+        } else {
+            console.log('[BOOTSTRAP] Admin user already exists');
+        }
+    } catch (e: any) {
+        console.warn('[BOOTSTRAP] Admin check failed:', e.message);
+    }
+
     // Initialize Telegram from config file
     try {
         const { initTelegramFromConfig } = await import('./telegramAlerts');

@@ -1,24 +1,11 @@
-# Dependencies
 node_modules/
-# dist/ (Removed to allow pushing build to Hostinger)
+dist/
+dist-server/
+*.log
 .env
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# OS Files
-.DS_Store
-Thumbs.db
-
-# Temp build scripts
-*.cjs
-materials.json
-materials_utf8.json
-test.webp
-
-# Persistent local databases (ignored by Git to keep server modifications safe)
-data/*.persistent.json
-
-
+.env.local
+.vercel
+# Contains API keys — fill from .env.example
+data/config.json
+.env*.local
+data/config.json

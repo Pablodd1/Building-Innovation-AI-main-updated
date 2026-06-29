@@ -1,130 +1,159 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 interface ImageComparatorProps {
-  beforeImage: string;
-  afterImage: string;
-  materialThumbnail?: string;
-  labelBefore?: string;
-  labelAfter?: string;
+    beforeImage: string;
+    afterImage: string;
+    materialThumbnail?: string;
 }
 
 export const ImageComparator: React.FC<ImageComparatorProps> = ({
-  beforeImage,
-  afterImage,
-  materialThumbnail,
-  labelBefore = "Original",
-  labelAfter = "Visualize"
+    beforeImage,
+    afterImage,
+    materialThumbnail,
 }) => {
-  const [sliderPosition, setSliderPosition] = useState(50);
-  const [isResizing, setIsResizing] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+    const [sliderPos, setSliderPos] = useState(50); // percentage
+    const [isDragging, setIsDragging] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseDown = () => setIsResizing(true);
-  const handleMouseUp = () => setIsResizing(false);
-
-  const handleMouseMove = (e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent) => {
-    if (!isResizing || !containerRef.current) return;
-
-    const rect = containerRef.current.getBoundingClientRect();
-    let x: number;
-
-    // Check if it's a touch event safely
-    if ('touches' in e) {
-      // We need to safely cast to access touches on a generic event union
-      const touchEvent = e as unknown as React.TouchEvent;
-      x = touchEvent.touches[0].clientX;
-    } else {
-      const mouseEvent = e as unknown as React.MouseEvent;
-      x = mouseEvent.clientX;
-    }
-    
-    // Calculate position relative to the container
-    const xRelative = x - rect.left;
-    const percentage = (xRelative / rect.width) * 100;
-
-    // Clamp between 0 and 100
-    setSliderPosition(Math.min(Math.max(percentage, 0), 100));
-  };
-
-  useEffect(() => {
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchend', handleMouseUp);
-    
-    // Add global mousemove to handle dragging outside the component bounds slightly
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove as any);
-      document.addEventListener('touchmove', handleMouseMove as any);
-    }
-
-    return () => {
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('touchend', handleMouseUp);
-      document.removeEventListener('mousemove', handleMouseMove as any);
-      document.removeEventListener('touchmove', handleMouseMove as any);
+    const getClientX = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent): number => {
+        if ('touches' in e) return e.touches[0]?.clientX ?? 0;
+        return e.clientX;
     };
-  }, [isResizing]);
 
-  return (
-    <div 
-      className="relative w-full aspect-[4/3] lg:aspect-[16/9] select-none overflow-hidden rounded-2xl border border-slate-700 shadow-2xl bg-slate-950"
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onTouchMove={handleMouseMove}
-    >
-      {/* Background Image (After/Modified) */}
-      <img 
-        src={afterImage} 
-        alt="Modified" 
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-      />
-      <div className="absolute top-4 right-4 bg-black/60 backdrop-blur text-white text-xs px-2 py-1 rounded pointer-events-none font-semibold border border-white/10 z-10">
-        {labelAfter}
-      </div>
+    const updatePosition = useCallback(
+        (clientX: number) => {
+            if (!containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            const pos = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+            setSliderPos(pos);
+        },
+        [],
+    );
 
-      {/* Foreground Image (Before/Original) - Clipped */}
-      <div 
-        className="absolute inset-0 h-full pointer-events-none overflow-hidden border-r-2 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
-        style={{ width: `${sliderPosition}%` }}
-      >
-        <img 
-          src={beforeImage} 
-          alt="Original" 
-          className="absolute inset-0 w-full h-full object-cover max-w-none"
-          // Important: max-w-none ensures image doesn't squash, it stays fixed relative to container width
-          style={{ width: containerRef.current ? containerRef.current.offsetWidth : '100%' }}
-        />
-         <div className="absolute top-4 left-4 bg-black/60 backdrop-blur text-white text-xs px-2 py-1 rounded pointer-events-none font-semibold border border-white/10">
-          {labelBefore}
+    const handleMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    useEffect(() => {
+        if (!isDragging) return;
+
+        const handleMove = (e: MouseEvent | TouchEvent) => {
+            updatePosition(getClientX(e));
+        };
+
+        const handleUp = () => setIsDragging(false);
+
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('mouseup', handleUp);
+        document.addEventListener('touchmove', handleMove, { passive: false });
+        document.addEventListener('touchend', handleUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleMove);
+            document.removeEventListener('mouseup', handleUp);
+            document.removeEventListener('touchmove', handleMove);
+            document.removeEventListener('touchend', handleUp);
+        };
+    }, [isDragging, updatePosition]);
+
+    // Click on container moves slider
+    const handleContainerClick = (e: React.MouseEvent) => {
+        if (isDragging) return;
+        updatePosition(e.clientX);
+    };
+
+    return (
+        <div className="relative w-full h-full select-none">
+            {/* BEFORE label */}
+            <div className="absolute top-3 left-3 z-30 bg-black/70 text-white text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider backdrop-blur-sm pointer-events-none">
+                Original
+            </div>
+
+            {/* AFTER label */}
+            <div className="absolute top-3 right-3 z-30 bg-blue-600/80 text-white text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider backdrop-blur-sm pointer-events-none">
+                AI Result
+            </div>
+
+            {/* Container */}
+            <div
+                ref={containerRef}
+                className="relative w-full h-full overflow-hidden rounded-xl cursor-col-resize"
+                onClick={handleContainerClick}
+            >
+                {/* Behind layer — Original (BEFORE) */}
+                <img
+                    src={beforeImage}
+                    alt="Original space"
+                    className="absolute inset-0 w-full h-full object-contain bg-black"
+                    draggable={false}
+                />
+
+                {/* Front layer — AI Result (AFTER) — clipped */}
+                <div
+                    className="absolute inset-0 overflow-hidden"
+                    style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
+                >
+                    <img
+                        src={afterImage}
+                        alt="AI generated result"
+                        className="absolute inset-0 w-full h-full object-contain bg-black"
+                        draggable={false}
+                    />
+                </div>
+
+                {/* Slider line */}
+                <div
+                    className="absolute top-0 bottom-0 z-20 pointer-events-none"
+                    style={{ left: `${sliderPos}%` }}
+                >
+                    <div className="absolute inset-0 w-[3px] bg-white shadow-[0_0_12px_rgba(0,0,0,0.6)] -translate-x-1/2" />
+                </div>
+
+                {/* Draggable handle */}
+                <div
+                    className="absolute top-1/2 z-30 -translate-y-1/2 -translate-x-1/2"
+                    style={{ left: `${sliderPos}%` }}
+                    onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
+                >
+                    {/* Outer ring */}
+                    <div className="w-12 h-12 rounded-full bg-white/90 shadow-2xl flex items-center justify-center border-[3px] border-white cursor-col-resize hover:scale-110 transition-transform">
+                        {/* Arrows */}
+                        <div className="flex gap-[2px] text-gray-500">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Material badge if provided */}
+            {materialThumbnail && (
+                <div className="absolute bottom-4 right-4 z-30 w-14 h-14 rounded-xl overflow-hidden border-3 border-white shadow-xl bg-white">
+                    <img
+                        src={materialThumbnail}
+                        alt="Material"
+                        className="w-full h-full object-cover"
+                    />
+                </div>
+            )}
+
+            {/* Instruction hint — fades away */}
+            <div
+                className={`absolute bottom-4 left-4 z-30 text-white/60 text-xs bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full transition-opacity duration-1000 pointer-events-none ${isDragging ? 'opacity-0' : 'opacity-100'}`}
+            >
+                ← Drag slider to compare →
+            </div>
         </div>
-      </div>
-
-      {materialThumbnail && (
-        <div className="absolute bottom-4 right-4 z-20 flex items-center bg-black/70 backdrop-blur-md border border-slate-600 rounded-lg p-2 shadow-xl animate-fadeIn max-w-[150px]">
-          <img 
-            src={materialThumbnail} 
-            alt="Reference" 
-            className="w-10 h-10 rounded border border-slate-500 object-cover mr-3"
-          />
-          <div className="flex flex-col">
-            <span className="text-[9px] uppercase text-slate-400 font-bold tracking-wider">Material Ref</span>
-            <span className="text-[10px] text-white font-bold leading-tight">Applied</span>
-          </div>
-        </div>
-      )}
-
-      {/* Slider Handle */}
-      <div 
-        className="absolute inset-y-0 w-10 -ml-5 cursor-ew-resize flex items-center justify-center group z-30"
-        style={{ left: `${sliderPosition}%` }}
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleMouseDown}
-      >
-        <div className="w-10 h-10 rounded-full bg-blue-600 shadow-lg flex items-center justify-center border-4 border-slate-900 group-hover:scale-110 transition-transform">
-          <svg className="w-5 h-5 text-white pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-          </svg>
-        </div>
-      </div>
-    </div>
-  );
+    );
 };

@@ -1,4 +1,4 @@
-import { Material, RenderOptions } from "../types";
+import { Material, RenderOptions, RoomAnalysisResult } from "../types";
 
 // =============================================================
 // SERVER-PROXIED AI GENERATION
@@ -19,7 +19,7 @@ export const generateRoomAnalysis = async (
     imageBase64: string,
     userId?: number,
     lang: string = "en"
-): Promise<string> => {
+): Promise<RoomAnalysisResult> => {
     const res = await fetch("/api/ai/analyze-room", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -32,7 +32,13 @@ export const generateRoomAnalysis = async (
     }
 
     const data = await res.json();
-    return data.analysis || "Could not analyze the room.";
+    return {
+        text: data.analysis || "Could not analyze the room.",
+        dimensions: data.dimensions,
+        style: data.style,
+        lighting: data.lighting,
+        suggestedMaterials: data.suggestedMaterials,
+    };
 };
 
 // --- Material Overlay Generation ---
@@ -45,27 +51,41 @@ export const generateMaterialOverlay = async (
     lang?: string,
     userId?: number
 ): Promise<string> => {
-    const res = await fetch("/api/ai/generate-overlay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            originalImage: originalImageBase64,
-            material,
-            userInstruction,
-            renderOptions,
-            lang,
-            userId,
-        }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Server error" }));
-        throw new Error(err.error || err.message || "Generation failed");
+    try {
+        const res = await fetch("/api/ai/generate-overlay", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                originalImage: originalImageBase64,
+                material,
+                userInstruction,
+                renderOptions,
+                lang,
+                userId,
+            }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Server error" }));
+            throw new Error(err.error || err.message || "Generation failed");
+        }
+
+        const data = await res.json();
+        if (!data.image) throw new Error("No image returned from server");
+        return data.image;
+    } catch (error: any) {
+        clearTimeout(timeout);
+        if (error.name === "AbortError") {
+            throw new Error("Generation timed out after 60s. Try a smaller image or different product.");
+        }
+        throw error;
     }
-
-    const data = await res.json();
-    if (!data.image) throw new Error("No image returned from server");
-    return data.image;
 };
 
 // --- Video Generation (still client-side, uses same server key) ---

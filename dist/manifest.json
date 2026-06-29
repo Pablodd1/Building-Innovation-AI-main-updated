@@ -1,30 +1,15 @@
 {
-  "short_name": "BuildingAI",
-  "name": "Building Innovation AI Platform",
-  "description": "High-fidelity AI architectural design, material visualization, and smart estimations.",
-  "icons": [
-    {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "logo512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
-    }
-  ],
-  "start_url": ".",
+  "name": "Building Innovation",
+  "short_name": "BuildInnov",
+  "description": "AI-powered material visualization for construction",
+  "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "theme_color": "#000000",
-  "background_color": "#ffffff",
-  "categories": ["business", "productivity", "utilities"]
+  "orientation": "portrait",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "icons": [
+    { "src": "/icon-192.png?v=3", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png?v=3", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
 }

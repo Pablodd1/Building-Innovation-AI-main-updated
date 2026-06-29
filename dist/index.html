@@ -2,8 +2,43 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Building Innovation</title>
+    
+    <!-- Global Error Reporting to Telegram via Backend -->
+    <script>
+      window.addEventListener('error', function(event) {
+        var errorMsg = event.error ? (event.error.stack || event.error.message) : event.message;
+        var errorFile = event.filename || '';
+        var errorLine = event.lineno || '';
+        var errorCol = event.colno || '';
+        
+        fetch('/api/log-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: errorMsg,
+            context: 'Global Uncaught Exception',
+            userId: localStorage.getItem('constructviz_user') ? JSON.parse(localStorage.getItem('constructviz_user')).id : 'Guest'
+          })
+        }).catch(function() {});
+      });
+
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason;
+        var errorMsg = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+        
+        fetch('/api/log-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: errorMsg,
+            context: 'Global Unhandled Promise Rejection',
+            userId: localStorage.getItem('constructviz_user') ? JSON.parse(localStorage.getItem('constructviz_user')).id : 'Guest'
+          })
+        }).catch(function() {});
+      });
+    </script>
     
     <!-- PWA Meta Tags -->
     <meta name="description" content="AI-powered material visualization tool for construction and design" />
@@ -16,10 +51,26 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
     
+    <!-- Performance: Preconnect to critical origins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://res.cloudinary.com" />
+    <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+    
     <!-- App Icons -->
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96x96.png" />
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=3" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=3" />
+    <link rel="apple-touch-icon" href="/icon-192.png?v=3" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png?v=3" />
+    <script>
+      // Suppress CDN Tailwind warning in production
+      const origWarn = console.warn;
+      console.warn = function(...args) {
+        if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+        origWarn.apply(console, args);
+      };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
@@ -78,19 +129,9 @@
         .print\:bg-white { background-color: #fff !important; }
       }
     </style>
-
-  <script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
-  }
-}
-</script>
-  <script type="module" crossorigin src="/assets/index-DPapwLvT.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DpxVymJW.css">
+  <script type="module" crossorigin src="/assets/index-Dqg1zysQ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/react-vendor-DijcRoi0.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-D-RbwkIq.css">
 </head>
   <body class="bg-slate-900 text-white">
     <div id="root"></div>

@@ -1,0 +1,139 @@
+{
+  "0": {
+    "lastState": {
+      "view": "ESTIMATION",
+      "displayCurrency": "USD",
+      "renderOptions": {
+        "lighting": "NATURAL",
+        "viewAngle": "PERSPECTIVE",
+        "declutter": false
+      },
+      "customPrompt": "",
+      "lang": "en",
+      "originalImage": null,
+      "selectedMaterial": {
+        "id": "14031002",
+        "refCode": "14031002",
+        "name": "LAMINA PVC BLANCO MADERA BRILLANTE H-02-I",
+        "category": "CIELO RASO PVC",
+        "subcategory": "CIELO RASO PVC",
+        "description": "Lamina Pvc Blanco Madera Brillante H-02-I. Producto de la categorÃ­a cielo raso pvc, subcategorÃ­a techos, desarrollado para aplicaciones arquitectÃ³nicas y de diseÃ±o interior. Fabricado con materiales de alto desempeÃ±o que garantizan estabilidad, resistencia y durabilidad. Permite una instalaciÃ³n eficiente y un acabado uniforme, ideal para proyectos residenciales, comerciales y corporativos. Especificaciones tÃ©cnicas: dimensiones de 30 x 595 cm, espesor de 8.5 mm.",
+        "imageUrl": "/products/14031002.webp?v=3",
+        "_fallbackImageUrl": "https://buildingapp.us/products/14031002.webp",
+        "usage": "Interior",
+        "promptModifier": "LAMINA PVC BLANCO MADERA BRILLANTE H-02-I, CIELO RASO PVC CIELO RASO PVC",
+        "dimensions": {
+          "width": 30,
+          "length": 595,
+          "thickness": 8.5
+        },
+        "pricing": {
+          "pricePerUnit": 31.599,
+          "currency": "COP",
+          "unitLabel": "Paquete / Package",
+          "itemsPerBox": 6
+        }
+      }
+    },
+    "history": [],
+    "behaviors": {
+      "events": [
+        {
+          "type": "SELECT_MATERIAL",
+          "timestamp": "2026-05-25T13:31:24.515Z",
+          "details": {
+            "id": "14031002",
+            "name": "LAMINA PVC BLANCO MADERA BRILLANTE H-02-I"
+          }
+        },
+        {
+          "type": "ADD_TO_CART",
+          "timestamp": "2026-05-25T13:31:15.625Z",
+          "details": {
+            "materialId": "14031001",
+            "materialName": "LAMINA PVC BLANCO BRILLANTE H-01-I",
+            "quantity": 1,
+            "totalCost": 56.404215
+          }
+        },
+        {
+          "type": "SELECT_MATERIAL",
+          "timestamp": "2026-05-25T13:29:39.041Z",
+          "details": {
+            "id": "14031001",
+            "name": "LAMINA PVC BLANCO BRILLANTE H-01-I"
+          }
+        },
+        {
+          "type": "SELECT_MATERIAL",
+          "timestamp": "2026-05-25T13:13:00.464Z",
+          "details": {
+            "id": "14031001",
+            "name": "LAMINA PVC BLANCO BRILLANTE H-01-I"
+          }
+        },
+        {
+          "type": "SELECT_MATERIAL",
+          "timestamp": "2026-05-25T13:10:20.551Z",
+          "details": {
+            "id": "14031001",
+            "name": "LAMINA PVC BLANCO BRILLANTE H-01-I"
+          }
+        },
+        {
+          "type": "SELECT_MATERIAL",
+          "timestamp": "2026-05-25T13:06:28.227Z",
+          "details": {
+            "id": "14031001",
+            "name": "LAMINA PVC BLANCO BRILLANTE H-01-I"
+          }
+        },
+        {
+          "type": "ADD_TO_CART",
+          "timestamp": "2026-05-25T13:06:19.064Z",
+          "details": {
+            "materialId": "14031001",
+            "materialName": "LAMINA PVC BLANCO BRILLANTE H-01-I",
+            "quantity": 1,
+            "totalCost": 56.404215
+          }
+        },
+        {
+          "type": "CHANGE_LANGUAGE",
+          "timestamp": "2026-05-24T00:31:15.824Z",
+          "details": {
+            "lang": "es"
+          }
+        },
+        {
+          "type": "CHANGE_LANGUAGE",
+          "timestamp": "2026-05-24T00:28:19.641Z",
+          "details": {
+            "lang": "es"
+          }
+        },
+        {
+          "type": "CHANGE_LANGUAGE",
+          "timestamp": "2026-05-24T00:26:26.927Z",
+          "details": {
+            "lang": "es"
+          }
+        },
+        {
+          "type": "SELECT_MATERIAL",
+          "timestamp": "2026-05-23T23:51:36.697Z",
+          "details": {
+            "id": "14031001",
+            "name": "LAMINA PVC BLANCO BRILLANTE H-01-I"
+          }
+        }
+      ],
+      "counts": {
+        "SELECT_MATERIAL": 6,
+        "CHANGE_LANGUAGE": 3,
+        "ADD_TO_CART": 2
+      },
+      "lastActive": "2026-05-25T13:31:24.515Z"
+    }
+  }
+}

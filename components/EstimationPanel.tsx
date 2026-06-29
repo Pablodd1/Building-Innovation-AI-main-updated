@@ -1,826 +1,537 @@
-
-import React, { useState, useEffect } from 'react';
-import { Material, CartItem, Contractor } from '../types';
-import { Button } from './Button';
-import { TRANSLATIONS } from '../constants';
-import { jsPDF } from 'jspdf';
-
-import { 
-  formatDimensionUSA, 
-  formatMetersUSA, 
-  formatAreaUSA, 
-  feetInchesToMeters, 
-  metersToFeetInches 
-} from '../services/unitUtils';
-
-function formatDimensionCM(cm: number): string {
-  return `${cm.toFixed(1)} cm`;
-}
+import React, { useState, useMemo, useEffect } from 'react';
+import { Material, Contractor, Language, RegionUnit, RoomAnalysisResult } from '../types';
 
 interface EstimationPanelProps {
-  material: Material;
-  onBack: () => void;
-  onAddToCart?: () => void;
-  onNewQuote?: () => void;
-  contractors?: Contractor[];
-  lang?: 'en' | 'es';
-  unitSystem?: 'latam' | 'usa';
-  userEmail?: string;
-  userName?: string;
-  userLocation?: { lat: number; lon: number } | null;
+    material: Material;
+    roomAnalysis?: RoomAnalysisResult | null;
+    onBack: () => void;
+    onAddToCart: () => void;
+    onNewQuote: () => void;
+    contractors: Contractor[];
+    lang: Language;
+    unitSystem: RegionUnit;
+    userEmail: string;
+    userName: string;
 }
 
-// Logo Component
-const BrandLogoSmall = ({ className = "stroke-white print:stroke-black" }: { className?: string }) => (
-  <svg width="32" height="32" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 20L20 15L30 20" className={className} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M10 26L20 21L30 26" className={className} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M10 32L20 27L30 32" className={className} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M5 10L20 2L35 10" className={className} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
+// Conversion helpers
+const CM_TO_INCH = 0.393701;
+const CM_TO_FT = 0.0328084;
+const SQM_TO_SQFT = 10.7639;
 
-export const EstimationPanel: React.FC<EstimationPanelProps> = ({ material, onBack, onAddToCart, onNewQuote, contractors = [], lang = 'en', unitSystem = 'usa', userEmail = '', userName = '', userLocation = null }) => {
-  const [width, setWidth] = useState<number>(3);
-  const [height, setHeight] = useState<number>(2.5);
+interface UnitLabels {
+    cm: string;
+    m: string;
+    m2: string;
+    ft: string;
+    inch: string;
+    ft2: string;
+}
 
-  // USA System States
-  const [widthFeet, setWidthFeet] = useState<number>(9);
-  const [widthInches, setWidthInches] = useState<number>(10);
-  const [heightFeet, setHeightFeet] = useState<number>(8);
-  const [heightInches, setHeightInches] = useState<number>(2);
+export const EstimationPanel: React.FC<EstimationPanelProps> = ({
+    material,
+    roomAnalysis,
+    onBack,
+    onAddToCart,
+    onNewQuote,
+    contractors,
+    lang,
+    unitSystem,
+    userEmail,
+    userName,
+}) => {
+    const isLatam = unitSystem === 'latam';
+    const t = isLatam
+        ? { cm: 'cm', m: 'm', m2: 'm²', ft: 'ft', inch: 'in', ft2: 'ft²' }
+        : { cm: 'cm', m: 'm', m2: 'm²', ft: 'ft', inch: 'in', ft2: 'ft²' };
 
-  const [quantity, setQuantity] = useState<number>(0);
-  const [totalCost, setTotalCost] = useState<number>(0);
-  const [useManualCost, setUseManualCost] = useState<boolean>(false);
-  const [manualTotalCost, setManualTotalCost] = useState<number>(0);
+    // Material dimensions in cm (always stored metric)
+    const matWidth = material.dimensions?.width || 30;
+    const matLength = material.dimensions?.length || 30;
+    const matThickness = material.dimensions?.thickness || 0;
 
-  const [patternRepeat, setPatternRepeat] = useState<number>(material.specs?.patternRepeat || 0);
-  const [wasteFactor, setWasteFactor] = useState<number>(material.specs?.recommendedWaste || 0.10);
-  const [layoutStyle, setLayoutStyle] = useState<'STRAIGHT' | 'DIAGONAL'>('STRAIGHT');
+    // Convert material dims to display units
+    const displayMatWidth = isLatam ? matWidth : Math.round(matWidth * CM_TO_INCH * 10) / 10;
+    const displayMatLength = isLatam ? matLength : Math.round(matLength * CM_TO_INCH * 10) / 10;
+    const dimUnit = isLatam ? 'cm' : 'in';
 
-  const [breakdown, setBreakdown] = useState<string[]>([]);
+    // Room dimension inputs (in display units)
+    const [roomWidth, setRoomWidth] = useState<string>('');
+    const [roomHeight, setRoomHeight] = useState<string>('');
+    const [wastePct, setWastePct] = useState<number>(
+        material.specs?.recommendedWaste
+            ? Math.round(material.specs.recommendedWaste * 100)
+            : 5
+    );
+    const [selectedContractor, setSelectedContractor] = useState<string>('');
+    const [laborOverride, setLaborOverride] = useState<string>('');
+    const [manualPrice, setManualPrice] = useState<string>('');
 
-  const [addedToCart, setAddedToCart] = useState<boolean>(false);
-  const [selectedContractor, setSelectedContractor] = useState<string>('');
-  const [laborCost, setLaborCost] = useState<number>(0);
-  const [manualLaborOverride, setManualLaborOverride] = useState<boolean>(false);
-  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [emailError, setEmailError] = useState<string>('');
-  
-  const [nearbyInstallers, setNearbyInstallers] = useState<any[]>([]);
-  const [isSearchingInstallers, setIsSearchingInstallers] = useState(false);
-
-  const fetchNearbyInstallers = async () => {
-    if (!userLocation) return;
-    setIsSearchingInstallers(true);
-    try {
-        const res = await fetch('/api/marketplace/installers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat: userLocation.lat, lon: userLocation.lon })
-        });
-        if (res.ok) {
-            const data = await res.json();
-            setNearbyInstallers(data);
+    // Auto-populate room dimensions from AI analysis when available
+    useEffect(() => {
+        if (roomAnalysis?.dimensions) {
+            const dims = roomAnalysis.dimensions;
+            if (isLatam) {
+                setRoomWidth(String(dims.width));
+                setRoomHeight(String(dims.height));
+            } else {
+                // Convert cm to inches for display
+                setRoomWidth(String(Math.round(dims.width * CM_TO_INCH * 10) / 10));
+                setRoomHeight(String(Math.round(dims.height * CM_TO_INCH * 10) / 10));
+            }
         }
-    } catch (e) {
-        console.error('Failed to fetch installers:', e);
-    } finally {
-        setIsSearchingInstallers(false);
-    }
-  };
+    }, [roomAnalysis, isLatam]);
 
-  const t = TRANSLATIONS[lang];
-  const isUSA = unitSystem === 'usa';
+    // Convert room dims to cm for calculation
+    const roomW_cm = parseFloat(roomWidth) || 0;
+    const roomH_cm = parseFloat(roomHeight) || 0;
+    const roomW = isLatam ? roomW_cm : roomW_cm / CM_TO_INCH;
+    const roomH = isLatam ? roomH_cm : roomH_cm / CM_TO_INCH;
 
-  // Sync Meters with Feet/Inches for USA mode
-  useEffect(() => {
-    if (isUSA) {
-      const w = feetInchesToMeters(widthFeet, widthInches);
-      const h = feetInchesToMeters(heightFeet, heightInches);
-      setWidth(w);
-      setHeight(h);
-    }
-  }, [widthFeet, widthInches, heightFeet, heightInches, isUSA]);
+    // Area in m²
+    const areaM2 = (roomW * roomH) / 10000;
+    const areaDisplay = isLatam ? areaM2 : areaM2 * SQM_TO_SQFT;
+    const areaUnit = isLatam ? 'm²' : 'ft²';
 
-  // Reverse sync when switching TO USA mode to initialize fields
-  useEffect(() => {
-    if (isUSA) {
-       const wInfo = metersToFeetInches(width);
-       setWidthFeet(wInfo.feet);
-       setWidthInches(Math.round(wInfo.inches));
-       
-       const hInfo = metersToFeetInches(height);
-       setHeightFeet(hInfo.feet);
-       setHeightInches(Math.round(hInfo.inches));
-    }
-  }, [isUSA]);
+    // Panel area in cm²
+    const panelAreaCm2 = matWidth * matLength;
+    const panelAreaM2 = panelAreaCm2 / 10000;
 
-  useEffect(() => {
-    // Determine Calculation Mode based on Material Specs or Category fallback
-    const mode = material.specs?.installationType || 
-                 (material.category === 'Zocalos' ? 'LINEAR' : 
-                  material.category === 'Rollos Adhesivos' ? 'ROLL' : 'TILE');
+    // Panels needed
+    const exactPanels = areaM2 > 0 ? areaM2 / panelAreaM2 : 0;
+    const wasteMultiplier = 1 + (wastePct / 100);
+    const panelsWithWaste = Math.ceil(exactPanels * wasteMultiplier);
+    const wastePanels = Math.max(0, panelsWithWaste - Math.ceil(exactPanels));
 
-    let calculatedQty = 0;
-    const log: string[] = [];
-    const u = isUSA ? 'ft' : 'm';
-    const a = isUSA ? 'ft²' : 'm²';
-    const fmt = (val: number) => isUSA ? formatMetersUSA(val) : `${val.toFixed(2)}m`;
-    const fmtArea = (val: number) => isUSA ? formatAreaUSA(val) : `${val.toFixed(2)}m²`;
+    // Pricing — MANUAL INPUT (starts empty, user fills in)
+    const unitPrice = parseFloat(manualPrice) || 0;
+    const unitLabel = material.pricing?.unitLabel || (lang === 'es' ? 'Unidad' : 'Unit');
+    const currency = material.pricing?.currency || 'USD';
 
-    // Basic Product Specs
-    const matWidthM = material.dimensions.width / 100; // cm -> m
-    const matLengthM = material.dimensions.length / 100; // cm -> m
-    const itemsPerBox = material.pricing.itemsPerBox || 1;
+    const materialCost = panelsWithWaste * unitPrice;
+    const wasteCost = wastePanels * unitPrice;
 
-    // --- ALGORITHM A: WALLPAPER & ROLLS (By Area/Strips) ---
-    if (mode === 'ROLL') {
-        const repeatM = patternRepeat / 100; // cm to m
+    // Contractor labor
+    const contractor = contractors.find(c => c.id === selectedContractor);
+    const laborRatePerSqm = contractor?.laborRatePerSqm || parseFloat(laborOverride) || 0;
+    const laborCost = laborRatePerSqm > 0 ? areaM2 * laborRatePerSqm : 0;
 
-        // 1. Calculate Strips needed to cover width
-        const strips = Math.ceil(width / matWidthM);
+    const subtotal = materialCost + wasteCost;
+    const total = subtotal + laborCost;
 
-        // 2. Add Waste Strips
-        const wasteStrips = Math.ceil(strips * wasteFactor);
-        const totalStrips = strips + wasteStrips;
+    // Format currency
+    const fmt = (n: number) =>
+        new Intl.NumberFormat(lang === 'es' ? 'es-CO' : 'en-US', {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: 2,
+        }).format(n);
 
-        log.push(`${lang === 'es' ? 'Cobertura' : 'Coverage'}: ${fmt(width)} / ${fmt(matWidthM)} (${lang === 'es' ? 'ancho rollo' : 'roll width'}) = ${strips} ${lang === 'es' ? 'tiras' : 'strips'}.`);
-        log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} ${(wasteFactor*100).toFixed(0)}%: +${wasteStrips} ${lang === 'es' ? 'tiras' : 'strips'}.`);
+    // Format number
+    const fmtNum = (n: number, decimals = 2) =>
+        isLatam
+            ? n.toLocaleString('es-CO', { maximumFractionDigits: decimals })
+            : n.toLocaleString('en-US', { maximumFractionDigits: decimals });
 
-        // 3. Calculate working length per strip (including pattern match)
-        let workingLength = height;
-        if (repeatM > 0) {
-            workingLength = Math.ceil(height / repeatM) * repeatM;
-            log.push(`${lang === 'es' ? 'Patrón' : 'Pattern'} (${patternRepeat}cm): ${lang === 'es' ? 'Alto ajustado' : 'Height adjusted'} ${fmt(height)} -> ${fmt(workingLength)}.`);
-        } else {
-            workingLength = height + 0.10; // 10cm trim
-            log.push(lang === 'es' ? `Sin patrón: +${isUSA ? '4"' : '10cm'} margen.` : `Trim: Added ${isUSA ? '4"' : '10cm'} safety.`);
+    const specLabel = lang === 'es'
+        ? {
+            material: 'Material',
+            refCode: 'Referencia',
+            category: 'Categoría',
+            dimensions: 'Dimensiones',
+            thickness: 'Grosor',
+            finish: 'Acabado',
+            installation: 'Tipo de Instalación',
+            patternRepeat: 'Repetición de Patrón',
+            waste: 'Factor de Desperdicio',
+            roomDimensions: 'Dimensiones del Espacio',
+            width: 'Ancho',
+            height: 'Altura',
+            area: 'Área',
+            panelsNeeded: 'Paneles Necesarios',
+            exactCalculation: 'Cálculo Exacto',
+            panelsWithWaste: 'Con Desperdicio',
+            wastePanels: 'Paneles de Desperdicio',
+            estimateBreakdown: 'Desglose del Presupuesto',
+            materialCost: 'Costo de Material',
+            wasteCost: 'Costo de Desperdicio',
+            subtotal: 'Subtotal',
+            laborCost: 'Costo de Instalación',
+            total: 'Total Estimado',
+            perUnit: 'por unidad',
+            addToCart: 'Añadir al Carrito',
+            emailQuote: 'Solicitar Cotización',
+            newQuote: 'Nueva Cotización',
+            back: 'Volver',
+            assignContractor: 'Asignar Instalador',
+            selectContractor: 'Seleccionar instalador...',
+            noContractor: 'Sin instalador',
+            manualLabor: 'o ingresa costo manual (por m²):',
+            units: 'unidades',
+            panels: 'paneles',
+            pricePerUnit: 'Precio por unidad',
+            enterPrice: 'Ingresar precio',
+            fromAnalysis: 'Dimensiones detectadas por IA',
         }
+        : {
+            material: 'Material',
+            refCode: 'Reference',
+            category: 'Category',
+            dimensions: 'Dimensions',
+            thickness: 'Thickness',
+            finish: 'Finish',
+            installation: 'Installation Type',
+            patternRepeat: 'Pattern Repeat',
+            waste: 'Waste Factor',
+            roomDimensions: 'Room Dimensions',
+            width: 'Width',
+            height: 'Height',
+            area: 'Area',
+            panelsNeeded: 'Panels Needed',
+            exactCalculation: 'Exact Calculation',
+            panelsWithWaste: 'With Waste',
+            wastePanels: 'Waste Panels',
+            estimateBreakdown: 'Estimate Breakdown',
+            materialCost: 'Material Cost',
+            wasteCost: 'Waste Cost',
+            subtotal: 'Subtotal',
+            laborCost: 'Installation Cost',
+            total: 'Total Estimate',
+            perUnit: 'per unit',
+            addToCart: 'Add to Cart',
+            emailQuote: 'Request Quote',
+            newQuote: 'New Quote',
+            back: 'Back',
+            assignContractor: 'Assign Installer',
+            selectContractor: 'Select installer...',
+            noContractor: 'No installer',
+            manualLabor: 'or enter manual rate (per m²):',
+            units: 'units',
+            panels: 'panels',
+            pricePerUnit: 'Price per Unit',
+            enterPrice: 'Enter price',
+            fromAnalysis: 'AI-detected dimensions',
+        };
 
-        // 4. Calculate Rolls Needed
-        const stripsPerRoll = Math.floor(matLengthM / workingLength);
+    const subst = material.subcategory || material.category || '';
 
-        if (stripsPerRoll >= 1) {
-            calculatedQty = Math.ceil(totalStrips / stripsPerRoll);
-            log.push(`1 ${lang === 'es' ? 'Rollo' : 'Roll'} (${fmt(matLengthM)}) = ${stripsPerRoll} ${lang === 'es' ? 'tiras útiles' : 'usable strips'}.`);
-            log.push(`Total: ${totalStrips} ${lang === 'es' ? 'tiras' : 'strips'} -> ${calculatedQty} ${lang === 'es' ? 'Rollos' : 'Rolls'}.`);
-        } else {
-            // Wall is taller than roll length (rare for wallpaper, possible for other rolls)
-            const totalMetersNeeded = totalStrips * workingLength;
-            calculatedQty = Math.ceil(totalMetersNeeded / matLengthM);
-            log.push(`${lang === 'es' ? 'Alto > Largo Rollo. Total metros' : 'Wall height > Roll length. Total units'}: ${fmt(totalMetersNeeded)}.`);
-        }
-    } 
-    // --- ALGORITHM B: FLOORING & TILES (By Piece/Box) ---
-    else if (mode === 'TILE') {
-        // 1. Calculate Real Area
-        const area = width * height;
-        log.push(`${lang === 'es' ? 'Área Superficie' : 'Surface Area'}: ${fmtArea(area)}`);
-
-        // 2. Apply Waste
-        const effectiveWaste = layoutStyle === 'DIAGONAL' ? 0.15 : wasteFactor;
-        const totalAreaWithWaste = area * (1 + effectiveWaste);
-        log.push(`${lang === 'es' ? 'Desperdicio' : 'Waste'} (${(effectiveWaste*100).toFixed(0)}%): Total ${fmtArea(totalAreaWithWaste)}`);
-
-        // 3. Calculate Single Piece Area
-        const pieceArea = matWidthM * matLengthM;
-
-        // 4. Calculate Total Pieces
-        const totalPieces = Math.ceil(totalAreaWithWaste / pieceArea);
-        log.push(`${lang === 'es' ? 'Tamaño Ítem' : 'Item Size'}: ${material.dimensions.width}x${material.dimensions.length}cm (${fmtArea(pieceArea)})`);
-        log.push(`${lang === 'es' ? 'Piezas Necesarias' : 'Pieces Needed'}: ${totalPieces}.`);
-
-        // 5. Convert to Purchasing Unit (Boxes vs Pieces)
-        if (itemsPerBox > 1) {
-            calculatedQty = Math.ceil(totalPieces / itemsPerBox);
-            log.push(`${lang === 'es' ? 'Empaque' : 'Packaging'}: ${itemsPerBox} ${lang === 'es' ? 'ítems/caja' : 'items/box'}.`);
-            log.push(`${lang === 'es' ? 'Cálculo' : 'Calculation'}: ${totalPieces} / ${itemsPerBox} = ${calculatedQty} ${lang === 'es' ? 'Cajas' : 'Boxes'}.`);
-        } else {
-            calculatedQty = totalPieces;
-            log.push(lang === 'es' ? "Venta individual." : "Sold individually.");
-        }
-    }
-    // --- ALGORITHM C: LINEAR (Baseboards) ---
-    else if (mode === 'LINEAR') {
-        const perimeter = width; // Input field reused as "Length/Perimeter"
-
-        const totalLen = perimeter * (1 + wasteFactor);
-        const pieces = Math.ceil(totalLen / matWidthM); // In Linear mode, 'width' dimension is usually length of the plank
-
-        // Check if sold by box
-        if (itemsPerBox > 1) {
-            calculatedQty = Math.ceil(pieces / itemsPerBox);
-            log.push(`${lang === 'es' ? 'Total Lineal' : 'Linear Total'}: ${fmt(totalLen)}.`);
-            log.push(`${lang === 'es' ? 'Piezas' : 'Pieces'}: ${pieces} (${fmt(matWidthM)} ${lang === 'es' ? 'c/u' : 'each'}).`);
-            log.push(`${lang === 'es' ? 'Empaque' : 'Packaging'}: ${pieces} / ${itemsPerBox} = ${calculatedQty} ${lang === 'es' ? 'Cajas' : 'Boxes'}.`);
-        } else {
-            calculatedQty = pieces;
-            log.push(`${lang === 'es' ? 'Largo Total' : 'Total Length'}: ${fmt(totalLen)}.`);
-            log.push(`${lang === 'es' ? 'Total Unidades' : 'Total Units'}: ${pieces}.`);
-        }
-    }
-
-    setQuantity(calculatedQty);
-    const materialCost = calculatedQty * material.pricing.pricePerUnit;
-    setTotalCost(materialCost);
-    setBreakdown(log);
-
-  }, [width, height, material, patternRepeat, wasteFactor, layoutStyle, lang, selectedContractor, manualLaborOverride, laborCost, contractors]);
-
-  useEffect(() => {
-    if (selectedContractor && !manualLaborOverride) {
-      const contractor = contractors.find(c => c.id === selectedContractor);
-      if (contractor) {
-        const mode = material.specs?.installationType || 
-          (material.category === 'Zocalos' ? 'LINEAR' : 
-           material.category === 'Rollos Adhesivos' ? 'ROLL' : 'TILE');
-        
-        let calculatedLabor = 0;
-        const area = width * height;
-        
-        if (mode === 'TILE' && contractor.laborRatePerSqm) {
-          calculatedLabor = area * contractor.laborRatePerSqm * (1 + wasteFactor);
-        } else if (mode === 'LINEAR' && contractor.laborRatePerLinear) {
-          calculatedLabor = width * contractor.laborRatePerLinear * (1 + wasteFactor);
-        } else if (mode === 'ROLL' && contractor.laborRatePerPiece) {
-          calculatedLabor = quantity * (contractor.laborRatePerPiece || 0);
-        }
-        
-        setLaborCost(Math.round(calculatedLabor));
-      }
-    }
-  }, [selectedContractor, contractors, material, width, height, wasteFactor, quantity, manualLaborOverride]);
-
-  const totalWithLabor = totalCost + laborCost;
-  const displayCost = useManualCost ? manualTotalCost : (laborCost > 0 ? totalWithLabor : totalCost);
-
-  const handleAddToCart = () => {
-    const newItem: CartItem = {
-        id: `${material.id}-${Date.now()}`,
-        material: material,
-        quantity: quantity,
-        totalCost: displayCost,
-        dimensions: { width, height },
-        timestamp: Date.now()
-    };
-    try {
-        const existingCartJson = localStorage.getItem('constructVizCart');
-        const cart: CartItem[] = existingCartJson ? JSON.parse(existingCartJson) : [];
-        cart.push(newItem);
-        localStorage.setItem('constructVizCart', JSON.stringify(cart));
-        setAddedToCart(true);
-        if (onAddToCart) onAddToCart();
-        setTimeout(() => setAddedToCart(false), 3000);
-    } catch (e) {}
-  };
-
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
-    let y = 20;
-
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Building Innovation', margin, y);
-    
-    y += 10;
-    doc.setFontSize(16);
-    doc.text('Quote / Cotización', margin, y);
-    
-    y += 15;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, y);
-    
-    y += 15;
-    doc.setLineWidth(0.5);
-    doc.line(margin, y, pageWidth - margin, y);
-    
-    y += 10;
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Material: ${material.name}`, margin, y);
-    
-    y += 7;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Ref: ${material.refCode}`, margin, y);
-    
-    y += 10;
-    const dimCM = `${material.dimensions.width} x ${material.dimensions.length} cm`;
-    const dimUSA = `${formatDimensionUSA(material.dimensions.width)} x ${formatDimensionUSA(material.dimensions.length)}"`;
-    doc.text(`Dimensions: ${dimCM} | ${dimUSA}`, margin, y);
-    
-    y += 15;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Project Details:', margin, y);
-    
-    y += 8;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const areaValue = !isUSA ? (width * height).toFixed(2) : formatAreaUSA(width * height).replace(' ft²', '');
-    doc.text(`${isLinear ? 'Linear / Perimeter' : 'Area'}: ${isLinear ? (!isUSA ? `${width}m` : formatMetersUSA(width)) : (!isUSA ? `${(width * height).toFixed(2)} m²` : formatAreaUSA(width * height))}`, margin, y);
-    
-    y += 6;
-    doc.text(`Quantity: ${quantity} ${material.pricing.unitLabel}`, margin, y);
-    
-    y += 15;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Cost Breakdown:', margin, y);
-    
-    y += 8;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Material Cost: $${Math.round(displayCost)}`, margin, y);
-    
-    if (laborCost > 0) {
-        y += 6;
-        doc.text(`Installation Cost: $${laborCost}`, margin, y);
-    }
-    
-    y += 10;
-    doc.setFont('helvetica', 'bold');
-    const totalLabel = laborCost > 0 ? 'TOTAL' : 'Estimated Cost';
-    doc.text(`${totalLabel}: $${Math.round(displayCost)}`, margin, y);
-    
-    if (selectedContractorData) {
-        y += 20;
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Assigned Contractor:', margin, y);
-        
-        y += 8;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Name: ${selectedContractorData.name}`, margin, y);
-        y += 5;
-        doc.text(`Region: ${selectedContractorData.region}`, margin, y);
-        y += 5;
-        doc.text(`Phone: ${selectedContractorData.phone}`, margin, y);
-        y += 5;
-        doc.text(`Email: ${selectedContractorData.email}`, margin, y);
-    }
-    
-    y += 20;
-    doc.setFontSize(8);
-    doc.setTextColor(128);
-    doc.text('Building Innovation - We design the future!', pageWidth / 2, y, { align: 'center' });
-    
-    doc.save(`Quote_${material.refCode}_${Date.now()}.pdf`);
-  };
-
-  const handleDownloadPDF = generatePDF;
-
-  const handleSendEmail = async () => {
-      if (!userEmail) {
-          setEmailStatus('error');
-          setEmailError(lang === 'es' ? 'No se encontró email de usuario. Inicie sesión primero.' : 'User email not found. Please log in first.');
-          return;
-      }
-      setEmailStatus('sending');
-      setEmailError('');
-      try {
-          const response = await fetch('/api/send-quote-email', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  materialName: material.name,
-                  refCode: material.refCode,
-                  quantity,
-                  unitLabel: material.pricing.unitLabel,
-                  width,
-                  height,
-                  estimatedCost: displayCost,
-                  userEmail,
-                  userName,
-              }),
-          });
-          const data = await response.json();
-          if (data.success) {
-              setEmailStatus('sent');
-              setTimeout(() => setEmailStatus('idle'), 4000);
-          } else {
-              setEmailStatus('error');
-              setEmailError(data.error || (lang === 'es' ? 'Error al enviar email' : 'Failed to send email'));
-          }
-      } catch (err: any) {
-          setEmailStatus('error');
-          setEmailError(err.message || (lang === 'es' ? 'Error de conexión' : 'Connection error'));
-      }
-  };
-
-  const selectedContractorData = contractors.find(c => c.id === selectedContractor);
-  const isLinear = material.category === 'Zocalos' || material.specs?.installationType === 'LINEAR';
-  const isRoll = material.category === 'Rollos Adhesivos' || material.specs?.installationType === 'ROLL';
-
-  return (
-    <div id="print-area" className="bg-slate-900 print:bg-white border border-slate-700 print:border-none rounded-none md:rounded-lg overflow-hidden shadow-2xl flex flex-col h-full animate-fadeIn">
-      {/* Header */}
-      <div className="bg-black print:bg-white p-4 md:p-6 border-b border-slate-800 print:border-black flex flex-col sm:flex-row justify-between items-start gap-4">
-        <div className="flex items-center gap-4">
-            <img 
-                src={material.imageUrl} 
-                alt={material.name}
-                className="w-16 h-16 md:w-20 md:h-20 object-cover border border-slate-700 print:border-slate-200 print:block rounded"
-            />
-            <div>
-                <div className="flex items-center space-x-2 mb-1">
-                    <BrandLogoSmall />
-                    <span className="text-[10px] md:text-xs font-bold tracking-widest text-slate-400 print:text-slate-600 uppercase">Building Innovation</span>
-                </div>
-                <h2 className="text-xl md:text-2xl font-black text-white print:text-black uppercase leading-none">{material.name}</h2>
-                <div className="text-blue-500 print:text-black font-bold text-sm tracking-wider mt-1">REF: {material.refCode}</div>
-                <div className="text-xs text-slate-500 mt-1">
-                    {!isUSA ? (
-                        <>
-                            {formatDimensionCM(material.dimensions.width)} x {formatDimensionCM(material.dimensions.length)}cm • {material.dimensions.thickness}mm
-                        </>
-                    ) : (
-                        <span className="text-blue-400">{formatDimensionUSA(material.dimensions.width)} x {formatDimensionUSA(material.dimensions.length)}" • {material.dimensions.thickness}mm</span>
-                    )}
-                </div>
-            </div>
-        </div>
-        <div className="text-left sm:text-right hidden sm:block">
-            <div className="text-xs text-slate-500 print:text-slate-600 uppercase">{t.quote.date}</div>
-            <div className="text-white print:text-black text-sm font-medium">{new Date().toLocaleDateString()}</div>
-        </div>
-      </div>
-
-      <div className="p-4 md:p-8 overflow-y-auto flex-1 space-y-8 print:space-y-6">
-
-        {/* INPUTS SECTION */}
-        <section>
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                    <div className="bg-blue-600 print:bg-black text-white text-xs font-bold px-2 py-1 mr-2 rounded">1</div>
-                    <h3 className="text-sm font-bold text-white print:text-black uppercase tracking-wider">
-                        {isLinear ? t.quote.linear : t.quote.area}
-                    </h3>
+    return (
+        <div className="flex flex-col gap-4 max-w-2xl mx-auto pb-8">
+            {/* ── Header ── */}
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={onBack}
+                    className="text-slate-400 hover:text-white transition-colors p-2 -ml-2"
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <div>
+                    <h1 className="text-xl font-bold text-white">{material.name}</h1>
+                    <p className="text-sm text-slate-400">
+                        {material.refCode} · {subst}
+                    </p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                {/* Width Input Block */}
-                <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
-                    <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">
-                            {isLinear ? t.quote.perimeter : t.quote.width} {!isUSA ? '(m)' : '(USA)'}
-                    </label>
-                    {!isUSA ? (
-                        <input 
-                            type="number" 
-                            value={width}
-                            onChange={(e) => setWidth(parseFloat(e.target.value) || 0)}
-                            step="0.1"
-                            className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
+            {/* ── Material Specs Card ── */}
+            <div className="bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden">
+                {/* Image */}
+                {material.imageUrl && (
+                    <div className="aspect-video bg-slate-900 overflow-hidden">
+                        <img
+                            src={material.imageUrl}
+                            alt={material.name}
+                            className="w-full h-full object-cover"
                         />
-                    ) : (
-                        <div className="flex items-end gap-2">
-                             <div className="flex-1">
-                                <input 
-                                    type="number" 
-                                    value={widthFeet}
-                                    onChange={(e) => setWidthFeet(parseInt(e.target.value) || 0)}
-                                    className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                                />
-                                <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.ft || 'ft'}</span>
-                             </div>
-                             <div className="flex-1 border-l border-slate-800 pl-2">
-                                <input 
-                                    type="number" 
-                                    value={widthInches}
-                                    onChange={(e) => setWidthInches(parseInt(e.target.value) || 0)}
-                                    max="11"
-                                    className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                                />
-                                <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.inch || 'in'}</span>
-                             </div>
+                    </div>
+                )}
+                <div className="p-4 grid grid-cols-2 gap-3 text-sm">
+                    {/* Dimensions */}
+                    <div>
+                        <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
+                            {specLabel.dimensions}
+                        </span>
+                        <span className="text-white font-medium">
+                            {fmtNum(displayMatWidth, 1)} × {fmtNum(displayMatLength, 1)} {dimUnit}
+                        </span>
+                    </div>
+                    {matThickness > 0 && (
+                        <div>
+                            <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
+                                {specLabel.thickness}
+                            </span>
+                            <span className="text-white font-medium">
+                                {matThickness} mm
+                            </span>
                         </div>
                     )}
+                    {material.specs?.finish && (
+                        <div>
+                            <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
+                                {specLabel.finish}
+                            </span>
+                            <span className="text-white font-medium">{material.specs.finish}</span>
+                        </div>
+                    )}
+                    {material.specs?.installationType && (
+                        <div>
+                            <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
+                                {specLabel.installation}
+                            </span>
+                            <span className="text-white font-medium capitalize">
+                                {material.specs.installationType.toLowerCase()}
+                            </span>
+                        </div>
+                    )}
+                    {material.specs?.patternRepeat && material.specs.patternRepeat > 0 && (
+                        <div>
+                            <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
+                                {specLabel.patternRepeat}
+                            </span>
+                            <span className="text-white font-medium">
+                                {material.specs.patternRepeat} cm
+                            </span>
+                        </div>
+                    )}
+                    <div>
+                        <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
+                            {specLabel.waste}
+                        </span>
+                        <span className="text-amber-400 font-medium">{wastePct}%</span>
+                    </div>
+                    <div>
+                        <span className="text-slate-500 block text-xs uppercase tracking-wider mb-0.5">
+                            {specLabel.pricePerUnit}
+                        </span>
+                        <input
+                            type="number"
+                            value={manualPrice}
+                            onChange={(e) => setManualPrice(e.target.value)}
+                            placeholder={specLabel.enterPrice}
+                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-white text-sm focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+                            min="0"
+                            step="0.01"
+                        />
+                    </div>
                 </div>
+            </div>
 
-                {/* Height Input Block */}
-                {!isLinear && (
-                    <div className="bg-black print:bg-white p-4 md:p-5 border border-slate-800 print:border-slate-200 group rounded-lg">
-                        <label className="block text-[10px] font-bold text-slate-500 print:text-slate-600 uppercase tracking-widest mb-2">
-                            {t.quote.height} {!isUSA ? '(m)' : '(USA)'}
-                        </label>
-                        {!isUSA ? (
-                            <input 
-                                type="number" 
-                                value={height}
-                                onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
-                                step="0.1"
-                                className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                            />
-                        ) : (
-                            <div className="flex items-end gap-2">
-                                <div className="flex-1">
-                                    <input 
-                                        type="number" 
-                                        value={heightFeet}
-                                        onChange={(e) => setHeightFeet(parseInt(e.target.value) || 0)}
-                                        className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                                    />
-                                    <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.ft || 'ft'}</span>
-                                </div>
-                                <div className="flex-1 border-l border-slate-800 pl-2">
-                                    <input 
-                                        type="number" 
-                                        value={heightInches}
-                                        onChange={(e) => setHeightInches(parseInt(e.target.value) || 0)}
-                                        max="11"
-                                        className="bg-transparent text-2xl md:text-3xl font-black text-white print:text-black w-full focus:outline-none"
-                                    />
-                                    <span className="text-[10px] text-slate-600 font-bold uppercase">{t.common.inch || 'in'}</span>
-                                </div>
+            {/* ── Room Dimensions Input ── */}
+            <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                        {specLabel.roomDimensions}
+                    </h2>
+                    {roomAnalysis?.dimensions && (
+                        <span className="text-xs text-blue-400 flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            {specLabel.fromAnalysis}
+                        </span>
+                    )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-xs text-slate-500 mb-1">{specLabel.width} ({dimUnit})</label>
+                        <input
+                            type="number"
+                            value={roomWidth}
+                            onChange={(e) => setRoomWidth(e.target.value)}
+                            placeholder={isLatam ? 'ej. 400' : 'ex. 157'}
+                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+                            min="0"
+                            step="0.1"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs text-slate-500 mb-1">{specLabel.height} ({dimUnit})</label>
+                        <input
+                            type="number"
+                            value={roomHeight}
+                            onChange={(e) => setRoomHeight(e.target.value)}
+                            placeholder={isLatam ? 'ej. 270' : 'ex. 106'}
+                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+                            min="0"
+                            step="0.1"
+                        />
+                    </div>
+                </div>
+                {/* Waste factor slider */}
+                <div className="mt-3">
+                    <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs text-slate-500">{specLabel.waste}</label>
+                        <span className="text-sm text-amber-400 font-medium">{wastePct}%</span>
+                    </div>
+                    <input
+                        type="range"
+                        min="0"
+                        max="30"
+                        value={wastePct}
+                        onChange={(e) => setWastePct(parseInt(e.target.value))}
+                        className="w-full accent-amber-500"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-600">
+                        <span>0%</span>
+                        <span>15%</span>
+                        <span>30%</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Panel Calculation ── */}
+            {areaM2 > 0 && (
+                <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                    <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">
+                        {specLabel.panelsNeeded}
+                    </h2>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-slate-400">{specLabel.area}</span>
+                            <span className="text-white font-medium">
+                                {fmtNum(areaDisplay, 2)} {areaUnit}
+                            </span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-400">{specLabel.exactCalculation}</span>
+                            <span className="text-white">
+                                {fmtNum(exactPanels, 1)} {specLabel.panels.toLowerCase()}
+                            </span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-400">{specLabel.panelsWithWaste}</span>
+                            <span className="text-amber-400 font-bold">
+                                {panelsWithWaste} {specLabel.panels.toLowerCase()}
+                            </span>
+                        </div>
+                        {wastePanels > 0 && (
+                            <div className="flex justify-between text-xs">
+                                <span className="text-slate-500">{specLabel.wastePanels}</span>
+                                <span className="text-slate-500">{wastePanels} {specLabel.panels.toLowerCase()}</span>
                             </div>
                         )}
                     </div>
-                )}
-            </div>
-
-            {/* ADVANCED SETTINGS */}
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 no-print">
-                {!isLinear && !isRoll && (
-                    <div className="bg-slate-800 p-3 rounded border border-slate-700">
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t.quote.pattern}</label>
-                        <select 
-                            value={layoutStyle}
-                            onChange={e => setLayoutStyle(e.target.value as any)}
-                            className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
-                        >
-                            <option value="STRAIGHT">Straight</option>
-                            <option value="DIAGONAL">Diagonal</option>
-                        </select>
-                    </div>
-                )}
-
-                {isRoll && (
-                    <div className="bg-slate-800 p-3 rounded border border-slate-700">
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Pattern Repeat (cm)</label>
-                        <input 
-                            type="number" 
-                            value={patternRepeat} 
-                            onChange={e => setPatternRepeat(parseFloat(e.target.value))}
-                            className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
-                        />
-                    </div>
-                )}
-
-                <div className="bg-slate-800 p-3 rounded border border-slate-700">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t.quote.waste}</label>
-                    <select 
-                        value={wasteFactor}
-                        onChange={e => setWasteFactor(parseFloat(e.target.value))}
-                        className="w-full bg-black text-white text-base md:text-sm p-2 rounded"
-                    >
-                        <option value="0">0%</option>
-                        <option value="0.05">5%</option>
-                        <option value="0.10">10% ({lang === 'es' ? 'Rec.' : 'Rec.'})</option>
-                        <option value="0.15">15%</option>
-                    </select>
-                </div>
-            </div>
-        </section>
-
-        {/* LOGIC BREAKDOWN */}
-        <section className="bg-slate-800/20 print:bg-slate-50 border border-slate-700 print:border-slate-200 p-4 rounded text-sm text-slate-400 print:text-slate-600">
-             <div className="flex items-center gap-2 mb-2">
-                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                <span className="font-bold uppercase text-xs tracking-wider text-white print:text-black">{t.quote.breakdown}</span> 
-             </div>
-             <ul className="list-disc list-inside space-y-1 text-xs font-mono">
-                {breakdown.map((log, i) => <li key={i}>{log}</li>)}
-             </ul>
-        </section>
-
-        {/* SUMMARY */}
-        <section className="border-t border-slate-800 print:border-slate-200 pt-8 print:pt-4">
-            <div className="flex items-center mb-4">
-                <div className="bg-slate-700 print:bg-slate-200 print:text-black text-white text-xs font-bold px-2 py-1 mr-2 rounded">2</div>
-                <h3 className="text-sm font-bold text-white print:text-black uppercase tracking-wider">{t.quote.summary}</h3>
-            </div>
-
-            <div className="bg-slate-800/30 print:bg-white border border-slate-700 print:border-slate-200 p-6 rounded-lg">
-                <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-700/50 print:border-slate-200">
-                    <span className="text-slate-400 print:text-slate-600 text-sm uppercase tracking-wide">
-                         {t.quote.dimensions}
-                    </span>
-                    <span className="text-white print:text-black font-mono font-bold text-right">
-                         <div className="text-sm">{!isUSA ? (isLinear ? `${width.toFixed(2)}m` : `${width.toFixed(2)}m x ${height.toFixed(2)}m`) : (isLinear ? formatMetersUSA(width) : `${formatMetersUSA(width)} x ${formatMetersUSA(height)}`)}</div>
-                         {isUSA && <div className="text-xs text-blue-400">({isLinear ? `${width.toFixed(2)}m` : `${width.toFixed(2)}m x ${height.toFixed(2)}m`})</div>}
-                    </span>
-                </div>
-
-                <div className="flex justify-between items-end mb-2">
-                    <span className="text-white print:text-black font-bold text-base md:text-lg uppercase">{t.quote.quantity}</span>
-                    <span className="text-3xl font-black text-blue-500 print:text-black">{quantity} <span className="text-lg text-slate-400 print:text-slate-600 font-medium">{material.pricing.unitLabel}</span></span>
-                </div>
-
-                {/* Cost Breakdown */}
-                <div className="mt-4 pt-4 border-t border-slate-700/50 space-y-2">
-                    <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">{t.quote.materialCost || 'Material Cost'}</span>
-                        <span className="text-white">${Math.round(totalCost)}</span>
-                    </div>
-                    {laborCost > 0 && (
-                        <div className="flex justify-between text-sm">
-                            <span className="text-slate-400">{t.quote.laborCost || 'Installation'}</span>
-                            <span className="text-white">${laborCost}</span>
-                        </div>
-                    )}
-                    {laborCost > 0 && (
-                        <div className="flex justify-between text-sm text-slate-500">
-                            <span>{t.quote.wasteEstimate || 'Waste/Cut'}</span>
-                            <span>${Math.round(totalCost * wasteFactor)}</span>
-                        </div>
-                    )}
-                </div>
-
-                {/* Manual Cost Toggle */}
-                <div className="mt-4 no-print">
-                    <div className="flex items-center gap-2 mb-2">
-                        <input 
-                            type="checkbox" 
-                            checked={useManualCost}
-                            onChange={(e) => setUseManualCost(e.target.checked)}
-                            className="rounded"
-                        />
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest cursor-pointer">
-                            {lang === 'es' ? 'Ingresar manualmente' : 'Manual input'}
-                        </label>
-                    </div>
-                </div>
-
-                <div className="mt-6 pt-6 border-t-2 border-slate-800 print:border-black flex justify-between items-center bg-slate-900/50 print:bg-slate-100 -mx-6 -mb-6 p-6 rounded-b-lg">
-                    <span className="font-bold text-slate-300 print:text-black uppercase tracking-widest">{laborCost > 0 ? t.quote.totalCost || 'Total Cost' : t.quote.cost}</span>
-                    {useManualCost ? (
-                        <div className="flex items-center gap-2">
-                            <span className="text-2xl font-black text-slate-400">$</span>
-                            <input 
-                                type="number"
-                                value={manualTotalCost}
-                                onChange={(e) => setManualTotalCost(parseFloat(e.target.value) || 0)}
-                                className="bg-transparent text-3xl font-black text-green-500 print:text-black w-40 text-right focus:outline-none border-b border-slate-600 print:border-none focus:border-green-400"
-                                placeholder={lang === 'es' ? 'Ingrese costo...' : 'Enter cost...'}
-                                step="0.01"
-                            />
-                        </div>
-                    ) : (
-                        <span className="text-3xl font-black text-green-500 print:text-black">${Math.round(displayCost)}</span>
-                    )}
-                </div>
-            </div>
-        </section>
-
-        {/* Contractor (No Print) */}
-        <div className="no-print space-y-4">
-            <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{t.quote.assignContractor}</label>
-                <select 
-                    value={selectedContractor}
-                    onChange={(e) => { setSelectedContractor(e.target.value); setManualLaborOverride(false); }}
-                    className="w-full bg-black border border-slate-700 p-3 text-white rounded text-base md:text-sm"
-                >
-                    <option value="">{t.quote.selectContractor}</option>
-                    {contractors.map(c => <option key={c.id} value={c.id}>{c.name} - {c.region} {c.laborRatePerSqm ? `($${c.laborRatePerSqm}/m²)` : ''}</option>)}
-                </select>
-            </div>
-            
-            {selectedContractor && (
-                <div className="bg-slate-800 p-4 rounded border border-slate-700">
-                    <div className="flex items-center justify-between mb-3">
-                        <label className="text-xs font-bold text-slate-400 uppercase">{t.quote.laborCost || 'Installation Cost'}</label>
-                        <label className="flex items-center gap-2 text-xs text-slate-400">
-                            <input 
-                                type="checkbox" 
-                                checked={manualLaborOverride}
-                                onChange={(e) => setManualLaborOverride(e.target.checked)}
-                                className="rounded"
-                            />
-                            {lang === 'es' ? 'Ingresar manualmente' : 'Manual input'}
-                        </label>
-                    </div>
-                    {manualLaborOverride ? (
-                        <input 
-                            type="number"
-                            value={laborCost}
-                            onChange={(e) => setLaborCost(parseFloat(e.target.value) || 0)}
-                            className="w-full bg-black border border-slate-600 p-2 text-white rounded"
-                            placeholder={lang === 'es' ? 'Costo de instalación...' : 'Installation cost...'}
-                        />
-                    ) : (
-                        <div className="text-2xl font-black text-green-400">${laborCost}</div>
-                    )}
                 </div>
             )}
 
-            {/* Nearby Installers Marketplace */}
-            {userLocation && (
-                <div className="bg-slate-800/40 p-4 rounded-lg border border-slate-700/50">
-                    <div className="flex justify-between items-center mb-3">
-                        <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">
-                            {lang === 'es' ? 'Instaladores Cercanos' : 'Nearby Installers'}
-                        </h4>
-                        <button 
-                            onClick={fetchNearbyInstallers}
-                            disabled={isSearchingInstallers}
-                            className="text-[10px] font-bold text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-                        >
-                            {isSearchingInstallers ? (lang === 'es' ? 'Buscando...' : 'Searching...') : (lang === 'es' ? 'Buscar Proximidad' : 'Search Proximity')}
-                        </button>
-                    </div>
+            {/* ── Cost Breakdown ── */}
+            {areaM2 > 0 && (
+                <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                    <h2 className="text-sm font-semibold text-green-400 uppercase tracking-wider mb-3">
+                        {specLabel.estimateBreakdown}
+                    </h2>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-slate-400">
+                                {specLabel.materialCost} ({panelsWithWaste} {specLabel.panels.toLowerCase()} × {fmt(unitPrice)})
+                            </span>
+                            <span className="text-white">{fmt(materialCost)}</span>
+                        </div>
+                        {wasteCost > 0 && (
+                            <div className="flex justify-between text-xs">
+                                <span className="text-slate-500">
+                                    {specLabel.wasteCost} ({wastePanels} {specLabel.panels.toLowerCase()})
+                                </span>
+                                <span className="text-amber-400">{fmt(wasteCost)}</span>
+                            </div>
+                        )}
+                        <hr className="border-slate-700" />
+                        <div className="flex justify-between font-semibold">
+                            <span className="text-slate-300">{specLabel.subtotal}</span>
+                            <span className="text-white">{fmt(subtotal)}</span>
+                        </div>
 
-                    {nearbyInstallers.length > 0 ? (
-                        <div className="space-y-2">
-                            {nearbyInstallers.map((inst) => (
-                                <div 
-                                    key={inst.id} 
-                                    onClick={() => setSelectedContractor(inst.id)}
-                                    className={`flex justify-between items-center p-2 rounded border cursor-pointer transition-all ${selectedContractor === inst.id ? 'bg-blue-600/20 border-blue-500' : 'bg-black border-slate-700 hover:border-slate-500'}`}
-                                >
-                                    <div>
-                                        <div className="text-xs font-bold text-white">{inst.name}</div>
-                                        <div className="text-[9px] text-slate-500 uppercase">{inst.region}</div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-[10px] font-bold text-blue-400">{inst.distance_km.toFixed(1)} km</div>
-                                        <div className="text-[9px] text-slate-500">{lang === 'es' ? 'Distancia' : 'Distance'}</div>
-                                    </div>
+                        {/* Contractor / Labor */}
+                        <div className="mt-3 pt-3 border-t border-slate-700">
+                            <label className="text-xs text-slate-500 block mb-1">{specLabel.assignContractor}</label>
+                            <select
+                                value={selectedContractor}
+                                onChange={(e) => setSelectedContractor(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                            >
+                                <option value="">{specLabel.noContractor}</option>
+                                {contractors.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.name} {c.laborRatePerSqm ? `(${fmt(c.laborRatePerSqm)}/m²)` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {!selectedContractor && (
+                                <div className="mt-2">
+                                    <label className="text-xs text-slate-500 block mb-1">{specLabel.manualLabor}</label>
+                                    <input
+                                        type="number"
+                                        value={laborOverride}
+                                        onChange={(e) => setLaborOverride(e.target.value)}
+                                        placeholder="0"
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+                                        min="0"
+                                        step="0.01"
+                                    />
                                 </div>
-                            ))}
+                            )}
                         </div>
-                    ) : (
-                        <p className="text-[10px] text-slate-500 italic">
-                            {lang === 'es' ? 'Haga clic para encontrar instaladores certificados en su área.' : 'Click to find certified installers in your area.'}
-                        </p>
-                    )}
+
+                        {laborCost > 0 && (
+                            <div className="flex justify-between">
+                                <span className="text-slate-400">{specLabel.laborCost}</span>
+                                <span className="text-white">{fmt(laborCost)}</span>
+                            </div>
+                        )}
+
+                        <hr className="border-slate-700" />
+                        <div className="flex justify-between font-bold text-base">
+                            <span className="text-white">{specLabel.total}</span>
+                            <span className="text-green-400">{fmt(total)}</span>
+                        </div>
+                    </div>
                 </div>
             )}
-        </div>
 
-        {/* Print Only Footer */}
-        <div className="hidden print:block mt-10">
-            {selectedContractorData && (
-                 <div className="hidden print:block mt-8 pt-6 border-t border-slate-200">
-                    <h4 className="font-bold uppercase tracking-widest text-black mb-3">{t.quote.assignedInstaller}</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm text-black border border-slate-200 p-4">
-                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.name}</span><span className="font-bold">{selectedContractorData.name}</span></div>
-                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.region}</span><span className="font-bold">{selectedContractorData.region}</span></div>
-                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.phone}</span><span className="font-bold">{selectedContractorData.phone}</span></div>
-                        <div><span className="block text-[10px] uppercase text-slate-500">{t.quote.email}</span><span className="font-bold">{selectedContractorData.email}</span></div>
-                    </div>
-                 </div>
-            )}
-            <div className="text-center mt-10 pt-4 border-t border-slate-200">
-                <p className="text-sm font-bold uppercase tracking-widest text-black">{t.quote.footer}</p>
+            {/* ── Actions ── */}
+            <div className="flex flex-col gap-3">
+                <button
+                    onClick={onAddToCart}
+                    disabled={areaM2 <= 0}
+                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
+                    </svg>
+                    {specLabel.addToCart}
+                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => {
+                            const subject = lang === 'es'
+                                ? `Cotización: ${material.name}`
+                                : `Quote: ${material.name}`;
+                            const body = lang === 'es'
+                                ? `Hola,\n\nMe gustaría solicitar una cotización formal para:\n\nMaterial: ${material.name} (${material.refCode})\nDimensiones del espacio: ${fmtNum(roomW_cm, 1)} × ${fmtNum(roomH_cm, 1)} ${isLatam ? 'cm' : 'in'}\nÁrea: ${fmtNum(areaDisplay, 2)} ${areaUnit}\nPaneles necesarios: ${panelsWithWaste}\nCosto estimado: ${fmt(total)}\n\nGracias,\n${userName || ''}`
+                                : `Hello,\n\nI would like to request a formal quote for:\n\nMaterial: ${material.name} (${material.refCode})\nRoom Dimensions: ${fmtNum(roomW_cm, 1)} × ${fmtNum(roomH_cm, 1)} ${isLatam ? 'cm' : 'in'}\nArea: ${fmtNum(areaDisplay, 2)} ${areaUnit}\nPanels Needed: ${panelsWithWaste}\nEstimated Cost: ${fmt(total)}\n\nThank you,\n${userName || ''}`;
+                            window.location.href = `mailto:${userEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        }}
+                        disabled={areaM2 <= 0}
+                        className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white font-medium rounded-xl transition-colors text-sm"
+                    >
+                        {specLabel.emailQuote}
+                    </button>
+                    <button
+                        onClick={onNewQuote}
+                        className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition-colors text-sm"
+                    >
+                        {specLabel.newQuote}
+                    </button>
+                </div>
+                <button
+                    onClick={onBack}
+                    className="py-2 text-slate-500 hover:text-slate-300 text-sm transition-colors"
+                >
+                    ← {specLabel.back}
+                </button>
             </div>
         </div>
-      </div>
-
-      {/* Action Footer - Stacked on Mobile */}
-      <div className="p-4 md:p-6 bg-black border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 no-print">
-        <Button variant="secondary" onClick={onBack} className="uppercase text-xs tracking-wider py-3 md:py-2">{t.common.back}</Button>
-        <Button 
-            variant="secondary" 
-            onClick={handleSendEmail} 
-            isLoading={emailStatus === 'sending'}
-            className={`uppercase text-xs tracking-wider py-3 md:py-2 ${emailStatus === 'sent' ? 'bg-green-600 border-green-500 text-white' : emailStatus === 'error' ? 'bg-red-600 border-red-500 text-white' : ''}`}
-        >
-            {emailStatus === 'sending' ? (lang === 'es' ? 'Enviando...' : 'Sending...') : 
-             emailStatus === 'sent' ? (lang === 'es' ? 'Enviado!' : 'Sent!') : 
-             emailStatus === 'error' ? (lang === 'es' ? 'Error' : 'Error') : 
-             t.common.email}
-        </Button>
-        <Button 
-            onClick={handleAddToCart}
-            className={`uppercase text-xs tracking-wider font-bold py-3 md:py-2 ${addedToCart ? "bg-green-600" : "bg-blue-600"}`}
-        >
-            {addedToCart ? "Added!" : t.quote.addToCart}
-        </Button>
-        <Button 
-            variant="primary" 
-            onClick={handleDownloadPDF}
-            className="uppercase text-xs tracking-wider font-bold bg-white text-black hover:bg-slate-200 py-3 md:py-2" 
-        >
-            PDF
-        </Button>
-        {onNewQuote && (
-            <Button 
-                variant="ghost" 
-                onClick={onNewQuote}
-                className="uppercase text-xs tracking-wider text-slate-400 hover:text-white py-3 md:py-2 hidden sm:block" 
-            >
-                New
-            </Button>
-        )}
-      </div>
-    </div>
-  );
+    );
 };

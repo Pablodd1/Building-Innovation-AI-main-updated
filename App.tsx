@@ -19,8 +19,9 @@ import {
 import { CONTRACTORS as INITIAL_CONTRACTORS, TRANSLATIONS, MATERIALS } from "./constants";
 import { Button } from "./components/Button";
 import { CameraCapture } from "./components/CameraCapture";
-import { ImageComparator } from "./components/ImageComparator";
 import { EstimationPanel } from "./components/EstimationPanel";
+import { ImageComparator } from "./components/ImageComparator";
+import { ProductCard } from "./components/ProductCard";
 import { AdminPurchaseQueue } from "./components/AdminPurchaseQueue";
 import {
     generateMaterialOverlay,
@@ -29,16 +30,19 @@ import {
     generateMaterialProbe,
 } from "./services/geminiService";
 import { formatMetersUSA } from "./services/unitUtils";
+import { HashRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 
 interface HistoryItem {
     resultImage: string | null;
     resultVideo: string | null;
-    analysis: string | null;
+    analysis: import("./types").RoomAnalysisResult | null;
     prompt: string;
     material: Material | null;
 }
 
 // Custom Logo Component
+const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
+
 const LOGO_URL =
     "https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Logo_Building_PNG_u0cjpu.png";
 
@@ -88,13 +92,39 @@ const LoadingSpinner = () => (
 
 // App Component
 const App: React.FC = () => {
-    const [view, setView] = useState<AppView>(AppView.LOGIN);
+    const navigate = useNavigate();
+    const location = useLocation();
+    const view = useMemo(() => {
+        const path = location.pathname.replace(/^\//, '');
+        if (path === 'landing') return AppView.LANDING;
+        if (path === 'admin') return AppView.ADMIN;
+        if (path === 'gallery') return AppView.GALLERY;
+        if (path === 'camera') return AppView.CAMERA;
+        if (path === 'editor') return AppView.EDITOR;
+        if (path === 'estimation') return AppView.ESTIMATION;
+        if (path === 'cart') return AppView.CART;
+        return AppView.LOGIN;
+    }, [location]);
+    const setView = (v: AppView) => {
+        const map: Record<string, string> = {
+            [AppView.LOGIN]: '/login',
+            [AppView.LANDING]: '/landing',
+            [AppView.ADMIN]: '/admin',
+            [AppView.GALLERY]: '/gallery',
+            [AppView.CAMERA]: '/camera',
+            [AppView.EDITOR]: '/editor',
+            [AppView.ESTIMATION]: '/estimation',
+            [AppView.CART]: '/cart',
+        };
+        navigate(map[v] || '/');
+    };
     const [categoryUsage, setCategoryUsage] = useState<
         "Interior" | "Exterior" | "All"
     >("Interior");
     const [lang, setLang] = useState<Language>("en");
     const [unitSystem, setUnitSystem] = useState<"latam" | "usa">("usa");
 
+<<<<<<< HEAD
     // Sync unit system with language
     useEffect(() => {
         setUnitSystem(lang === "es" ? "latam" : "usa");
@@ -150,6 +180,8 @@ const App: React.FC = () => {
         }
     }, [lang]);
     
+=======
+>>>>>>> origin/main
     // Authentication State
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [showMockCheckout, setShowMockCheckout] = useState(false);
@@ -157,15 +189,6 @@ const App: React.FC = () => {
     const [selectedUserDetail, setSelectedUserDetail] = useState<any>(null);
     const [showUserDetailModal, setShowUserDetailModal] = useState(false);
     const [isLoadingUserDetail, setIsLoadingUserDetail] = useState(false);
-
-    // Persist user changes across refreshes
-    useEffect(() => {
-        if (currentUser) {
-            localStorage.setItem('constructviz_user', JSON.stringify(currentUser));
-        } else {
-            localStorage.removeItem('constructviz_user');
-        }
-    }, [currentUser]);
 
     const [authMode, setAuthMode] = useState<"login" | "signup">("login");
     const [authForm, setAuthForm] = useState({
@@ -182,23 +205,216 @@ const App: React.FC = () => {
     const [materials, setMaterials] = useState<Material[]>([]);
     const [materialsLoading, setMaterialsLoading] = useState(true);
     const [contractors, setContractors] = useState<Contractor[]>([]);
-    const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
-        null,
-    );
-    const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">(
-        "USD",
-    );
-    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+    const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+    const [estimationSource, setEstimationSource] = useState<AppView>(AppView.GALLERY);
+    const [displayCurrency, setDisplayCurrency] = useState<"USD" | "COP">("USD");
 
-    // Detect location on mount
-    useEffect(() => {
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-                (err) => console.warn("Location access denied:", err.message)
-            );
+    // Search State
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+    const [tiersConfig, setTiersConfig] = useState<any>(null);
+    const [editableTiers, setEditableTiers] = useState<any>(null);
+    const [isSavingTiers, setIsSavingTiers] = useState(false);
+    const [secureConfig, setSecureConfig] = useState<{ hasKey: boolean; hasOpenAIKey?: boolean; hasOpenRouterKey?: boolean; aiProvider?: string; hasStripeSecretKey: boolean; hasStripeWebhookSecret: boolean } | null>(null);
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
+    const [configForm, setConfigForm] = useState({ aiProvider: "", apiKey: "", openaiApiKey: "", openrouterApiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
+
+    const fetchTiers = async () => {
+        try {
+            const res = await fetch('/api/tiers');
+            if (res.ok) {
+                const data = await res.json();
+                setTiersConfig(data);
+                setEditableTiers(data);
+            }
+        } catch (e) {
+            console.error('Failed to fetch tiers:', e);
         }
+    };
+
+    const getTierLimit = (tierName: string) => {
+        const tiers = tiersConfig || {
+            FREE: { name: 'Tier 1 (Free)', limit: 10 },
+            STANDARD: { name: 'Tier 2 (Standard)', limit: 500 },
+            PREMIUM: { name: 'Tier 3 (Premium)', limit: 1000 },
+            LUXURY: { name: 'Tier 4 (Luxury)', limit: 999999 }
+        };
+        const normalizedTier = tierName.toLowerCase();
+        const matched = Object.values(tiers).find(
+            (t: any) => t.name.toLowerCase() === normalizedTier || 
+                       t.name.toLowerCase().includes(normalizedTier) ||
+                       (t.name.split(' ')[0].toLowerCase() === normalizedTier)
+        ) || (tiers as any)[tierName.toUpperCase()] || tiers.FREE;
+        return matched.limit ?? 10;
+    };
+
+    // Admin Form State
+    const [adminTab, setAdminTab] = useState<"MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS" | "AUDIT_LOGS">("MATERIALS");
+    const [analyticsData, setAnalyticsData] = useState<any>(null);
+    const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false);
+    const [auditSearchQuery, setAuditSearchQuery] = useState("");
+    const [auditActionFilter, setAuditActionFilter] = useState("ALL");
+
+    const [newAdminForm, setNewAdminForm] = useState({ name: "", email: "", password: "" });
+    const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [editForm, setEditForm] = useState<Partial<Material>>({});
+
+    const [contractorForm, setContractorForm] = useState<Partial<Contractor>>({});
+    const [originalImage, setOriginalImage] = useState<string | null>(null);
+    const [customPrompt, setCustomPrompt] = useState<string>("");
+
+    const [renderOptions, setRenderOptions] = useState<RenderOptions>({
+        lighting: "NATURAL",
+        viewAngle: "PERSPECTIVE",
+        declutter: false,
+    });
+
+    const [editorTab, setEditorTab] = useState<"CONFIGURE" | "ANALYZE">("CONFIGURE");
+
+    const [generationState, setGenerationState] = useState<GenerationState>({
+        isGenerating: false,
+        isAnalyzing: false,
+        error: null,
+        resultImage: null,
+        resultVideo: null,
+        analysis: null,
+        materialProbe: null,
+    });
+    const [cartCount, setCartCount] = useState<number>(0);
+    const [toast, setToast] = useState<string | null>(null);
+
+    const [showProbeModal, setShowProbeModal] = useState(false);
+    const [history, setHistory] = useState<HistoryItem[]>([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
+
+    const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+    const [checkoutBody, setCheckoutBody] = useState("");
+
+    const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(new Set());
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+    const [adminCollectionFilter, setAdminCollectionFilter] = useState<"All" | "Interior" | "Exterior">("All");
+
+    // Memoized filtered materials for gallery
+    const filteredMaterials = useMemo(() => {
+        return materials.filter(
+            (m) =>
+                (categoryUsage === "All" || m.usage?.toLowerCase() === categoryUsage.toLowerCase()) &&
+                (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    m.category.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
+    }, [materials, categoryUsage, searchQuery]);
+
+    // Memoized paginated materials for admin table
+    const paginatedMaterials = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return materials.slice(start, start + itemsPerPage);
+    }, [materials, currentPage]);
+
+    // Sync unit system with language
+    useEffect(() => {
+        setUnitSystem(lang === "es" ? "latam" : "usa");
+    }, [lang]);
+
+    // Load persisted user on mount
+    useEffect(() => {
+        // Install global fetch interceptor to automatically inject Authorization token
+        const originalFetch = window.fetch;
+        window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            const stored = localStorage.getItem('constructviz_user');
+            let token = '';
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed && parsed.session_token) {
+                        token = parsed.session_token;
+                    }
+                } catch (e) {}
+            }
+
+            if (token) {
+                init = init || {};
+                init.headers = init.headers || {};
+                if (init.headers instanceof Headers) {
+                    init.headers.set('Authorization', `Bearer ${token}`);
+                } else if (Array.isArray(init.headers)) {
+                    const hasAuth = init.headers.some(h => h[0].toLowerCase() === 'authorization');
+                    if (!hasAuth) {
+                        init.headers.push(['Authorization', `Bearer ${token}`]);
+                    }
+                } else {
+                    if (!init.headers['Authorization'] && !init.headers['authorization']) {
+                        init.headers['Authorization'] = `Bearer ${token}`;
+                    }
+                }
+            }
+            return originalFetch(input, init);
+        };
+
+        try {
+            const saved = localStorage.getItem('constructviz_user');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && parsed.id) {
+                    setCurrentUser(parsed);
+                    setView(AppView.LANDING);
+                    // Load memory
+                    loadUserMemory(parsed.id);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load persisted user:', e);
+        }
+
+        return () => {
+            window.fetch = originalFetch; // restore original fetch on unmount
+        };
     }, []);
+    
+    // Handle Stripe Success/Cancel return
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('session_id');
+        if (sessionId) {
+            // Re-fetch user from server to get updated tier
+            const stored = localStorage.getItem('constructviz_user');
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed && parsed.id) {
+                        fetch(`/api/users/${parsed.id}`)
+                            .then(res => res.json())
+                            .then(refreshedUser => {
+                                if (refreshedUser && refreshedUser.tier) {
+                                    // Merge refreshed user profile fields into current session state
+                                    setCurrentUser(prev => prev ? { ...prev, ...refreshedUser } : refreshedUser);
+                                }
+                            })
+                            .catch(err => console.warn('Failed to refresh user tier', err));
+                    }
+                } catch(e) {}
+            }
+            alert(lang === 'es' ? "¡Pago exitoso! Tu cuenta ha sido actualizada." : "Payment successful! Your account has been updated.");
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }, [lang]);
+    
+    // Persist user changes across refreshes
+    useEffect(() => {
+        if (currentUser) {
+            localStorage.setItem('constructviz_user', JSON.stringify(currentUser));
+        } else {
+            localStorage.removeItem('constructviz_user');
+        }
+    }, [currentUser]);
 
     // Currency conversion rate (1 USD = ~4100 COP approximately)
     const USD_TO_COP_RATE = 4100;
@@ -237,18 +453,6 @@ const App: React.FC = () => {
         }
     };
 
-    // Search State
-    const [searchQuery, setSearchQuery] = useState("");
-
-    const [allUsers, setAllUsers] = useState<User[]>([]);
-    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-
-    // Admin Form State
-    const [adminTab, setAdminTab] = useState<
-        "MATERIALS" | "CONTRACTORS" | "PURCHASES" | "USERS" | "SETTINGS" | "ANALYTICS"
-    >("MATERIALS");
-
     useEffect(() => {
         if (view === AppView.ADMIN && adminTab === "USERS") {
             fetchAllUsers();
@@ -256,10 +460,13 @@ const App: React.FC = () => {
         if (view === AppView.ADMIN && adminTab === "ANALYTICS") {
             fetchAnalytics();
         }
+        if (view === AppView.ADMIN && adminTab === "AUDIT_LOGS") {
+            fetchAuditLogs();
+        }
+        if (view === AppView.ADMIN && adminTab === "SETTINGS") {
+            fetchSecureConfig();
+        }
     }, [view, adminTab]);
-
-    const [analyticsData, setAnalyticsData] = useState<any>(null);
-    const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
 
     // --- User Memory & Behavioral Analytics Helpers ---
     
@@ -309,7 +516,9 @@ const App: React.FC = () => {
     const fetchAnalytics = async () => {
         setIsLoadingAnalytics(true);
         try {
-            const res = await fetch('/api/admin/analytics');
+            const res = await fetch('/api/admin/analytics', {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
             if (res.ok) {
                 const data = await res.json();
                 setAnalyticsData(data);
@@ -324,7 +533,9 @@ const App: React.FC = () => {
     const fetchAllUsers = async () => {
         setIsLoadingUsers(true);
         try {
-            const res = await fetch("/api/admin/users");
+            const res = await fetch("/api/admin/users", {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
             if (res.ok) {
                 const data = await res.json();
                 setAllUsers(data);
@@ -336,8 +547,75 @@ const App: React.FC = () => {
         }
     };
 
-    const [newAdminForm, setNewAdminForm] = useState({ name: "", email: "", password: "" });
-    const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
+    const fetchAuditLogs = async () => {
+        setIsLoadingAuditLogs(true);
+        try {
+            const res = await fetch("/api/admin/audit-logs", {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setAuditLogs(data);
+            }
+        } catch (e) {
+            console.error("Fetch audit logs error:", e);
+        } finally {
+            setIsLoadingAuditLogs(false);
+        }
+    };
+
+    const fetchSecureConfig = async () => {
+        try {
+            const res = await fetch("/api/admin/config", {
+                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSecureConfig(data);
+            }
+        } catch (e) {
+            console.error("Fetch secure config error:", e);
+        }
+    };
+
+    const handleSaveSecureConfig = async () => {
+        if (!configForm.apiKey && !configForm.openaiApiKey && !configForm.openrouterApiKey && !configForm.aiProvider && !configForm.stripeSecretKey && !configForm.stripeWebhookSecret) {
+            alert(lang === 'es' ? "Por favor ingresa al menos un valor para actualizar." : "Please enter at least one value to update.");
+            return;
+        }
+        setIsSavingConfig(true);
+        try {
+            const body: any = {};
+            if (configForm.apiKey) body.apiKey = configForm.apiKey;
+            if (configForm.openaiApiKey) body.openaiApiKey = configForm.openaiApiKey;
+            if (configForm.openrouterApiKey) body.openrouterApiKey = configForm.openrouterApiKey;
+            if (configForm.aiProvider) body.aiProvider = configForm.aiProvider;
+            if (configForm.stripeSecretKey) body.stripeSecretKey = configForm.stripeSecretKey;
+            if (configForm.stripeWebhookSecret) body.stripeWebhookSecret = configForm.stripeWebhookSecret;
+
+            const res = await fetch("/api/admin/config", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
+                body: JSON.stringify(body),
+            });
+            if (res.ok) {
+                alert(lang === 'es' ? "¡Configuración guardada exitosamente!" : "Configuration saved successfully!");
+                setConfigForm({ aiProvider: "", apiKey: "", openaiApiKey: "", openrouterApiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
+                fetchSecureConfig();
+            } else {
+                const data = await res.json();
+                alert(data.error || "Failed to save configuration");
+            }
+        } catch (e) {
+            console.error("Save config error:", e);
+            alert("Failed to save configuration");
+        } finally {
+            setIsSavingConfig(false);
+        }
+    };
 
     const handleCreateAdmin = async () => {
         if (!newAdminForm.name || !newAdminForm.email || !newAdminForm.password) {
@@ -348,7 +626,10 @@ const App: React.FC = () => {
         try {
             const res = await fetch("/api/admin/users/create-admin", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
                 body: JSON.stringify(newAdminForm),
             });
             if (res.ok) {
@@ -370,7 +651,10 @@ const App: React.FC = () => {
         try {
             const res = await fetch(`/api/admin/users/${userId}/tier`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
                 body: JSON.stringify({ tier }),
             });
             if (res.ok) {
@@ -386,7 +670,10 @@ const App: React.FC = () => {
         try {
             const res = await fetch(`/api/admin/users/${userId}/generations`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                },
                 body: JSON.stringify({ generations_used }),
             });
             if (res.ok) {
@@ -426,6 +713,31 @@ const App: React.FC = () => {
             ctx.fillStyle = "rgba(255,255,255,0.7)";
             ctx.textAlign = "right";
             ctx.fillText(copyText, img.width - 16, img.height - barH / 2);
+            // Room analysis text overlay (above watermark bar)
+            const analysisText = generationState.analysis?.text;
+            if (analysisText) {
+                const analysisFontSize = Math.max(11, barH * 0.4);
+                ctx.font = `${analysisFontSize}px Arial, sans-serif`;
+                ctx.fillStyle = "rgba(255,255,255,0.85)";
+                ctx.textAlign = "left";
+                // Word wrap the analysis text
+                const maxWidth = img.width - 32;
+                const words = analysisText.split(' ');
+                let line = '';
+                let lineY = img.height - barH - analysisFontSize - 8;
+                for (const word of words) {
+                    const testLine = line ? line + ' ' + word : word;
+                    const metrics = ctx.measureText(testLine);
+                    if (metrics.width > maxWidth && line) {
+                        ctx.fillText(line, 16, lineY);
+                        lineY -= analysisFontSize + 2;
+                        line = word;
+                    } else {
+                        line = testLine;
+                    }
+                }
+                if (line) ctx.fillText(line, 16, lineY);
+            }
             // Trigger download
             const link = document.createElement("a");
             link.href = canvas.toDataURL("image/jpeg", 0.95);
@@ -436,8 +748,6 @@ const App: React.FC = () => {
         };
         img.src = imgSrc;
     };
-    const [isEditing, setIsEditing] = useState(false);
-    const [editForm, setEditForm] = useState<Partial<Material>>({});
 
     const handleSelectPlan = async (newTier: string) => {
         if (!currentUser) return;
@@ -452,24 +762,32 @@ const App: React.FC = () => {
             const data = await res.json();
             
             if (data.isMock) {
-                // Fallback to simulation for testing
-                const confirmMsg = lang === 'es' 
-                    ? `¿Confirmas la suscripción al plan ${newTier}? (Simulación de pago)` 
-                    : `Confirm subscription to ${newTier} plan? (Payment Simulation)`;
-                    
-                if (confirm(confirmMsg)) {
-                    const updateRes = await fetch(`/api/admin/users/${currentUser.id}/tier`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ tier: newTier }),
-                    });
-                    if (updateRes.ok) {
-                        const updatedUser = await updateRes.json();
-                        setCurrentUser({ ...currentUser, tier: updatedUser.tier });
-                        alert(lang === 'es' ? "¡Suscripción actualizada!" : "Subscription updated!");
-                        setShowSubscriptionModal(false);
+                // Stripe not configured — collect info and send email to admin
+                const name = prompt(lang === 'es' ? 'Tu nombre:' : 'Your name:');
+                const email = prompt(lang === 'es' ? 'Tu email:' : 'Your email:');
+                if (name && email) {
+                    try {
+                        await fetch("/api/purchase-requests", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                user_id: currentUser.id,
+                                customer_name: name,
+                                customer_email: email,
+                                customer_phone: "Not provided",
+                                customer_address: "Not provided",
+                                cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
+                                total_estimate: 0,
+                                project_notes: `Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
+                            }),
+                        });
+                        setToast(lang === 'es' ? `Solicitud de ${newTier} enviada. Te contactaremos.` : `${newTier} upgrade request sent. We'll contact you.`);
+                    } catch {
+                        setToast(lang === 'es' ? `Error al enviar. Contacta al administrador.` : `Failed to send. Contact administrator.`);
                     }
                 }
+                setShowSubscriptionModal(false);
+                setTimeout(() => setToast(null), 4000);
                 return;
             }
 
@@ -484,22 +802,39 @@ const App: React.FC = () => {
             alert(lang === 'es' ? `Error en la suscripción: ${e.message}` : `Subscription error: ${e.message}`);
         }
     };
-    const [contractorForm, setContractorForm] = useState<Partial<Contractor>>(
-        {},
-    );
-    const [originalImage, setOriginalImage] = useState<string | null>(null);
-    const [customPrompt, setCustomPrompt] = useState<string>("");
 
-    const [renderOptions, setRenderOptions] = useState<RenderOptions>({
-        lighting: "NATURAL",
-        viewAngle: "PERSPECTIVE",
-        declutter: false,
-    });
+    const handleUpdateTierField = (tierKey: string, field: string, value: any) => {
+        if (!editableTiers) return;
+        setEditableTiers((prev: any) => ({
+            ...prev,
+            [tierKey]: {
+                ...prev[tierKey],
+                [field]: value
+            }
+        }));
+    };
 
-    const [editorTab, setEditorTab] = useState<"CONFIGURE" | "ANALYZE">(
-        "CONFIGURE",
-    );
+    const handleSaveTiers = async () => {
+        if (!editableTiers) return;
+        
+        // Basic validation
+        for (const [key, info] of Object.entries(editableTiers)) {
+            const tInfo = info as any;
+            if (!tInfo.name.trim()) {
+                alert(lang === 'es' ? `El nombre para la tarifa ${key} no puede estar vacío` : `Name for tier ${key} cannot be empty`);
+                return;
+            }
+            if (isNaN(tInfo.limit) || tInfo.limit < 0) {
+                alert(lang === 'es' ? `Límite inválido para la tarifa ${key}` : `Invalid limit for tier ${key}`);
+                return;
+            }
+            if (isNaN(tInfo.price) || tInfo.price < 0) {
+                alert(lang === 'es' ? `Precio inválido para la tarifa ${key}` : `Invalid price for tier ${key}`);
+                return;
+            }
+        }
 
+<<<<<<< HEAD
     const [generationState, setGenerationState] = useState<GenerationState>({
         isGenerating: false,
         isAnalyzing: false,
@@ -563,6 +898,30 @@ const App: React.FC = () => {
     const [adminCollectionFilter, setAdminCollectionFilter] = useState<
         "All" | "Interior" | "Exterior"
     >("All");
+=======
+        setIsSavingTiers(true);
+        try {
+            const res = await fetch('/api/admin/tiers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editableTiers),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTiersConfig(data.config);
+                alert(lang === 'es' ? '¡Tarifas actualizadas con éxito!' : 'Tiers configuration saved successfully!');
+            } else {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to save tiers');
+            }
+        } catch (e: any) {
+            console.error('Failed to save tiers:', e);
+            alert(lang === 'es' ? `Error al guardar tarifas: ${e.message}` : `Failed to save tiers: ${e.message}`);
+        } finally {
+            setIsSavingTiers(false);
+        }
+    };
+>>>>>>> origin/main
 
     const t = TRANSLATIONS[lang];
 
@@ -580,21 +939,30 @@ const App: React.FC = () => {
 
     // Google Drive blocks direct browser access — route through server proxy
     // Verified: /api/proxy-image returns real PNG images (352KB+)
-    const proxyImageUrl = (url: string): string => {
+    const proxyImageUrl = useCallback((url: string): string => {
         if (!url) return '';
+        // If it's already a proxy URL, return as-is
+        if (url.startsWith('/api/proxy-image') || url.includes('/api/proxy-image')) {
+            return url;
+        }
         if (url.includes('drive.google.com') || url.includes('lh3.googleusercontent.com')) {
             return `/api/proxy-image?url=${encodeURIComponent(url)}`;
         }
+        // Rewrite CDN product image URLs to local static path
+        const match = url.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
+        if (match) {
+            return `/products/${match[1]}?v=2`;
+        }
         return url;
-    };
+    }, []);
 
-    const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement, Event>) => {
         const target = e.target as HTMLImageElement;
         const originalSrc = target.getAttribute('data-original-src') || target.src;
 
         // Already failed — show placeholder
         if (target.getAttribute('data-error-fixed') === 'true') {
-            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
+            target.src = PLACEHOLDER_IMG;
             return;
         }
 
@@ -605,17 +973,31 @@ const App: React.FC = () => {
             return;
         }
 
-        // For local paths that failed, try prepending origin
+        // For local paths that failed, try the original DB fallback URL before giving up
         if (originalSrc.startsWith('/')) {
+            const dbUrl = target.getAttribute('data-original-src');
+            if (dbUrl && dbUrl !== originalSrc && (dbUrl.includes('drive.google.com') || dbUrl.includes('lh3.googleusercontent.com'))) {
+                target.setAttribute('data-error-fixed', 'true');
+                target.src = `/api/proxy-image?url=${encodeURIComponent(dbUrl)}`;
+                return;
+            }
             target.setAttribute('data-error-fixed', 'true');
-            target.src = window.location.origin + originalSrc;
+            target.src = PLACEHOLDER_IMG;
+            return;
+        }
+
+        // If a buildingapp.us WebP CDN image failed, try the original data-original-src
+        const dbUrl = target.getAttribute('data-original-src');
+        if (dbUrl && dbUrl !== originalSrc && (dbUrl.includes('drive.google.com') || dbUrl.includes('lh3.googleusercontent.com'))) {
+            target.setAttribute('data-error-fixed', 'true');
+            target.src = `/api/proxy-image?url=${encodeURIComponent(dbUrl)}`;
             return;
         }
 
         // Fallback placeholder
         target.setAttribute('data-error-fixed', 'true');
-        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23374151' width='100' height='100'/%3E%3Ctext fill='%239ca3af' x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='sans-serif' font-size='10'%3ENo Image%3C/text%3E%3C/svg%3E";
-    };
+        target.src = PLACEHOLDER_IMG;
+    }, []);
 
     const loadMaterialsFromDB = useCallback(async () => {
         setMaterialsLoading(true);
@@ -630,13 +1012,22 @@ const App: React.FC = () => {
                         const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
                         const refCode = m.ref_code || m.refCode || "";
                         
-                        // Prioritize local embedded high-fidelity images
-                        let imageUrl = m.image_url || m.imageUrl || "";
-                        if (refCode) {
-                            imageUrl = `/products/${refCode}.webp`;
+                        // Image resolution: If Google Drive link, proxy it. Otherwise fallback to local /products/.
+                        const dbImageUrl = m.image_url || m.imageUrl || "";
+                        let imageUrl = dbImageUrl;
+                        if (imageUrl.includes('drive.google.com') || imageUrl.includes('lh3.googleusercontent.com')) {
+                            imageUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+                        } else if (refCode) {
+                            imageUrl = `/products/${refCode}.webp?v=4`;
                         } else {
-                            imageUrl = proxyImageUrl(imageUrl);
+                            // Rewrite any CDN URLs to local path
+                            const cdnMatch = imageUrl.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
+                            if (cdnMatch) {
+                                imageUrl = `/products/${cdnMatch[1]}?v=4`;
+                            }
                         }
+                        // Original DB URL kept for error-recovery fallback
+                        const fallbackImageUrl = dbImageUrl || (refCode ? `https://buildingapp.us/products/${refCode}.webp` : "");
 
                         return {
                             id: String(m.id),
@@ -646,6 +1037,7 @@ const App: React.FC = () => {
                             subcategory: m.subcategory || "",
                             description: m.description || "",
                             imageUrl,
+                            _fallbackImageUrl: fallbackImageUrl,  // original DB URL for image error recovery
                             usage: normalizedUsage,
                             promptModifier: m.prompt_modifier || m.promptModifier || "",
                             dimensions: {
@@ -662,55 +1054,56 @@ const App: React.FC = () => {
                         };
                     });
                     setMaterials(converted);
+                    localStorage.setItem('materials_cache_v2', JSON.stringify(converted));
                     setMaterialsLoading(false);
                     return;
                 }
             }
         } catch (e) {
-            console.warn("API materials unavailable, trying local manifest...");
+            console.warn("API materials unavailable, trying localStorage...");
         }
 
+        // Tier 2: localStorage — persists deletions so products don't reappear
+        const cached = localStorage.getItem('materials_cache_v2');
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setMaterials(parsed);
+                    setMaterialsLoading(false);
+                    return;
+                }
+            } catch (e) {}
+        }
+
+        // Tier 3: Local JSON manifest as seed fallback
         try {
-            // Tier 2: Local embedded manifest — proxy image URLs for browser
-            const localRes = await fetch("/data/products.json");
+            const localRes = await fetch("/data/products.json?v=" + Date.now());
             if (localRes.ok) {
                 const localData = await localRes.json();
                 if (Array.isArray(localData) && localData.length > 0) {
-                    const proxied = localData.map((m: any) => {
-                        const rawUsage = m.usage || "Interior";
-                        const normalizedUsage = rawUsage.charAt(0).toUpperCase() + rawUsage.slice(1).toLowerCase();
-                        const refCode = m.ref_code || m.refCode || "";
-                        
-                        // Prioritize local embedded high-fidelity images
-                        let imageUrl = m.image_url || m.imageUrl || "";
-                        if (refCode) {
-                            imageUrl = `/products/${refCode}.webp`;
-                        } else {
-                            imageUrl = proxyImageUrl(imageUrl);
-                        }
-
-                        return {
-                            ...m,
-                            usage: normalizedUsage,
-                            imageUrl: imageUrl,
-                        };
-                    });
+                    const proxied = localData.map((m: any) => ({
+                        ...m,
+                        usage: (m.usage || "Interior").charAt(0).toUpperCase() + (m.usage || "Interior").slice(1).toLowerCase(),
+                    }));
                     setMaterials(proxied);
+                    localStorage.setItem('materials_cache_v2', JSON.stringify(proxied));
                     setMaterialsLoading(false);
                     return;
                 }
             }
         } catch (e) {
-            console.warn("Local manifest unavailable, falling back to constants...");
+            console.warn("Local manifest unavailable, showing empty catalog.");
         }
 
-        // Tier 3: Last resort fallback to hardcoded MATERIALS
-        setMaterials(MATERIALS);
+        // No reliable source — show empty catalog (don't silently load all 322)
+        setMaterials([]);
         setMaterialsLoading(false);
     }, []);
 
     useEffect(() => {
         loadMaterialsFromDB();
+        fetchTiers();
 
         const savedContractors = localStorage.getItem(
             "constructVizContractors",
@@ -743,6 +1136,18 @@ const App: React.FC = () => {
         }
     }, [materials.length, currentPage, itemsPerPage]);
 
+    // Auto-trigger room analysis when entering EDITOR with a new captured image
+    useEffect(() => {
+        if (
+            view === AppView.EDITOR &&
+            originalImage &&
+            !generationState.isAnalyzing &&
+            !generationState.analysis
+        ) {
+            handleRoomAnalysis();
+        }
+    }, [view, originalImage]);
+
     const updateCartCount = () => {
         try {
             const existingCartJson = localStorage.getItem("constructVizCart");
@@ -750,6 +1155,47 @@ const App: React.FC = () => {
             setCartCount(cart.length);
         } catch (e) {}
     };
+
+    const addToCart = useCallback((material: Material, dimensions: { width: number; height: number }, quantity: number = 1) => {
+        const existingCart: CartItem[] = JSON.parse(localStorage.getItem("constructVizCart") || "[]");
+        // Convert cm dimensions to meters for cart storage
+        const widthM = dimensions.width / 100;
+        const heightM = dimensions.height / 100;
+        const area = widthM * heightM;
+        const unitPrice = material.pricing?.pricePerUnit || 0;
+        const totalCost = area * unitPrice * quantity;
+        
+        // Check if this exact material+dimensions combo already exists
+        const existingIndex = existingCart.findIndex(
+            item => item.material.id === material.id && 
+                    Math.abs(item.dimensions.width - widthM) < 0.001 && 
+                    Math.abs(item.dimensions.height - heightM) < 0.001
+        );
+        
+        if (existingIndex >= 0) {
+            existingCart[existingIndex].quantity += quantity;
+            existingCart[existingIndex].totalCost = area * unitPrice * existingCart[existingIndex].quantity;
+        } else {
+            const newItem: CartItem = {
+                id: `cart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                material,
+                dimensions: { width: widthM, height: heightM },
+                quantity,
+                totalCost,
+                timestamp: Date.now(),
+            };
+            existingCart.push(newItem);
+        }
+        
+        localStorage.setItem("constructVizCart", JSON.stringify(existingCart));
+        setCartCount(existingCart.length);
+        
+        const itemName = material.name || material.refCode || "Producto";
+        setToast(lang === 'es' ? `¡${itemName} añadido al carrito!` : `${itemName} added to cart!`);
+        setTimeout(() => setToast(null), 2500);
+        
+        logUserBehavior("ADD_TO_CART", { materialId: material.id, materialName: itemName, quantity, totalCost });
+    }, [lang, setCartCount, setToast]);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -1151,6 +1597,7 @@ const App: React.FC = () => {
             email: contractorForm.email || "",
             phone: contractorForm.phone || "",
             region: contractorForm.region || "",
+            address: contractorForm.address || "",
         };
         setContractors([...contractors, newContractor]);
         setContractorForm({});
@@ -1171,29 +1618,71 @@ const App: React.FC = () => {
 
     // --- Main Logic ---
 
-    const handleStart = (usage: "Interior" | "Exterior" | "All") => {
+    const handleStart = useCallback((usage: "Interior" | "Exterior" | "All") => {
         setCategoryUsage(usage);
         setView(AppView.GALLERY);
-    };
+    }, [setCategoryUsage, setView]);
 
-    const handleSelectMaterial = async (material: Material) => {
+    const handleSelectMaterial = useCallback(async (material: Material) => {
         setSelectedMaterial(material);
         setShowProbeModal(true);
         logUserBehavior("SELECT_MATERIAL", { id: material.id, name: material.name });
+    }, [setSelectedMaterial, setShowProbeModal]);
+
+    // Downscale + recompress an uploaded photo so it stays well under the
+    // server's 5MB limit. Phone camera photos are 3-12MB raw and ~33% larger
+    // as base64, which causes the server to reject them with HTTP 413. Cap the
+    // longest edge to 1600px and re-encode as JPEG 0.85.
+    const downscaleImage = (dataUrl: string, maxEdge = 1600, quality = 0.85): Promise<string> => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const { width, height } = img;
+                const longest = Math.max(width, height);
+                if (longest <= maxEdge) {
+                    // Still recompress to JPEG to strip bloat from large PNGs.
+                    if (dataUrl.startsWith("data:image/jpeg") && dataUrl.length < 4_000_000) {
+                        resolve(dataUrl);
+                        return;
+                    }
+                }
+                const scale = longest > maxEdge ? maxEdge / longest : 1;
+                const w = Math.round(width * scale);
+                const h = Math.round(height * scale);
+                const canvas = document.createElement("canvas");
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                    resolve(dataUrl);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/jpeg", quality));
+            };
+            img.onerror = () => resolve(dataUrl);
+            img.src = dataUrl;
+        });
     };
 
+<<<<<<< HEAD
     const handleImageCapture = (file: File) => {
         if (!file.type.startsWith("image/")) {
             alert(lang === 'es' ? "Por favor suba un archivo de imagen válido." : "Please upload a valid image file.");
             return;
         }
+=======
+    const handleImageCapture = useCallback((file: File) => {
+>>>>>>> origin/main
         const reader = new FileReader();
-        reader.onloadend = () => {
-            setOriginalImage(reader.result as string);
+        reader.onloadend = async () => {
+            const raw = reader.result as string;
+            const optimized = await downscaleImage(raw);
+            setOriginalImage(optimized);
             setView(AppView.EDITOR);
             setHistory([]);
             setHistoryIndex(-1);
-            logUserBehavior("UPLOAD_IMAGE", { fileName: file.name, fileSize: file.size });
+            logUserBehavior("UPLOAD_IMAGE", { fileName: file.name, fileSize: file.size, optimizedBytes: optimized.length });
             setGenerationState((prev) => ({
                 ...prev,
                 resultImage: null,
@@ -1204,7 +1693,7 @@ const App: React.FC = () => {
             }));
         };
         reader.readAsDataURL(file);
-    };
+    }, [setOriginalImage, setView, setHistory, setHistoryIndex, setGenerationState]);
 
     const handleGenerate = async () => {
         if (!originalImage) {
@@ -1224,7 +1713,7 @@ const App: React.FC = () => {
 
         // Pre-check quota
         if (currentUser && currentUser.role !== 'admin') {
-            const limit = currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999;
+            const limit = getTierLimit(currentUser.tier || 'Free');
             if ((currentUser.generations_used || 0) >= limit) {
                 setShowSubscriptionModal(true);
                 return;
@@ -1340,9 +1829,9 @@ const App: React.FC = () => {
             ...prev,
             isAnalyzing: true,
             error: null,
-        })); // Use isAnalyzing instead of isGenerating
+        }));
         try {
-            const analysisText = await generateRoomAnalysis(
+            const analysisResult = await generateRoomAnalysis(
                 originalImage,
                 currentUser?.id,
                 lang,
@@ -1350,9 +1839,9 @@ const App: React.FC = () => {
             setGenerationState((prev) => ({
                 ...prev,
                 isAnalyzing: false,
-                analysis: analysisText,
+                analysis: analysisResult,
             }));
-            logUserBehavior("ROOM_ANALYSIS", { analysisLength: analysisText.length });
+            logUserBehavior("ROOM_ANALYSIS", { analysisLength: analysisResult.text.length });
         } catch (e: any) {
             setGenerationState((prev) => ({
                 ...prev,
@@ -1591,6 +2080,42 @@ const App: React.FC = () => {
                                 : "Sign Up"}
                     </button>
 
+<<<<<<< HEAD
+=======
+                    {/* Skip Login - Demo Mode */}
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            setAuthLoading(true);
+                            try {
+                                const res = await fetch("/api/auth/login", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        email: "admin@buildingapp.us",
+                                        password: "BuildingAdmin2026!"
+                                    }),
+                                });
+                                const data = await res.json();
+                                if (data.user) {
+                                    setCurrentUser(data.user);
+                                    localStorage.setItem('constructviz_user', JSON.stringify(data.user));
+                                    setView(AppView.LANDING);
+                                } else {
+                                    setAuthError(data.error || "Demo login failed");
+                                }
+                            } catch (e) {
+                                setAuthError("Connection error");
+                            } finally {
+                                setAuthLoading(false);
+                            }
+                        }}
+                        className="w-full text-sm text-blue-600 hover:text-blue-800 underline transition-colors py-2 font-bold"
+                    >
+                        {t.login.skip || "Quick Admin Access (Demo)"}
+                    </button>
+
+>>>>>>> origin/main
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>
@@ -1654,9 +2179,29 @@ const App: React.FC = () => {
                 }}
             />
             <header className="relative z-10 flex justify-between items-center mb-4">
-                <div className="text-gray-700 text-sm">
+                <div className="text-gray-700 text-sm flex items-center gap-2">
                     {currentUser && (
-                        <span className="font-medium">{currentUser.name}</span>
+                        <>
+                            {/* User Avatar */}
+                            <div className="w-8 h-8 rounded-full bg-blue-200 border-2 border-blue-300 overflow-hidden flex-shrink-0">
+                                {currentUser.photoURL ? (
+                                    <img
+                                        src={currentUser.photoURL}
+                                        alt={currentUser.name}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            (e.target as HTMLImageElement).style.display = 'none';
+                                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                        }}
+                                    />
+                                ) : null}
+                                {/* Initials fallback */}
+                                <div className={`w-full h-full flex items-center justify-center text-xs font-bold bg-blue-200 text-blue-800 ${currentUser.photoURL ? 'hidden' : ''}`}>
+                                    {currentUser.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                            </div>
+                            <span className="font-medium">{currentUser.name}</span>
+                        </>
                     )}
                 </div>
                 <div className="flex items-center gap-4">
@@ -1717,13 +2262,23 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center w-24">
                                     <span className="text-[9px] font-bold text-blue-600 uppercase">{currentUser.tier}</span>
                                     <span className="text-[9px] font-bold text-blue-400">
-                                        {currentUser.generations_used} / {currentUser.tier === 'Free' ? '5' : currentUser.tier === 'Pro' ? '50' : '∞'}
+                                        {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') === 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
                                     </span>
                                 </div>
+                                {currentUser.tier_expires_at && currentUser.tier?.toUpperCase() !== 'FREE' && (
+                                    <div className="text-[8px] text-amber-600 font-semibold mt-0.5">
+                                        {(() => {
+                                            const days = Math.max(0, Math.ceil((new Date(currentUser.tier_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                                            if (days <= 3) return `${days}d left — renew now!`;
+                                            if (days <= 7) return `${days}d remaining`;
+                                            return null;
+                                        })()}
+                                    </div>
+                                )}
                                 <div className="w-24 h-1 bg-blue-200 rounded-full overflow-hidden mt-0.5">
                                     <div 
                                         className="h-full bg-blue-600 transition-all duration-500" 
-                                        style={{ width: `${Math.min(100, (currentUser.generations_used / (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999)) * 100)}%` }}
+                                        style={{ width: `${Math.min(100, (currentUser.generations_used / getTierLimit(currentUser.tier || 'Free')) * 100)}%` }}
                                     ></div>
                                 </div>
                             </div>
@@ -1811,6 +2366,7 @@ const App: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-4 w-full">
                     <button
+                        type="button"
                         onClick={() => { handleStart("Interior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Interior" }); }}
                         className="group flex flex-col items-center"
                     >
@@ -1827,6 +2383,7 @@ const App: React.FC = () => {
                         </span>
                     </button>
                     <button
+                        type="button"
                         onClick={() => { handleStart("Exterior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Exterior" }); }}
                         className="group flex flex-col items-center"
                     >
@@ -1910,6 +2467,14 @@ const App: React.FC = () => {
                             onClick={() => setAdminTab("SETTINGS")}
                         >
                             {t.admin.settings}
+                        </Button>
+                        <Button
+                            variant={
+                                adminTab === "AUDIT_LOGS" ? "primary" : "ghost"
+                            }
+                            onClick={() => setAdminTab("AUDIT_LOGS")}
+                        >
+                            {lang === "es" ? "Auditoría de Seguridad" : "Security Audit Logs"}
                         </Button>
                     </div>
                 </div>
@@ -2831,6 +3396,8 @@ const App: React.FC = () => {
                                                                 }
                                                                 alt={m.name}
                                                                 onError={handleImageError}
+                                                                loading="lazy"
+                                                                decoding="async"
                                                                 className="w-12 h-12 rounded object-cover border border-gray-300 bg-gray-200"
                                                             />
                                                         </td>
@@ -3024,15 +3591,15 @@ const App: React.FC = () => {
                 )}
 
                 {adminTab === "CONTRACTORS" && (
-                    <div className="space-y-6">
-                        <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
-                            <h3 className="text-lg font-bold text-gray-700 mb-4">
-                                Add Installer
+                    <div className="space-y-6 animate-fadeIn">
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50">
+                            <h3 className="text-xl font-black text-gray-700 uppercase tracking-tighter mb-4">
+                                {lang === "es" ? "Añadir Instalador Profesional" : "Add Professional Installer"}
                             </h3>
-                            <div className="flex gap-4 mb-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                                 <input
-                                    className="bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 flex-1"
-                                    placeholder="Company Name"
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Nombre de la Empresa" : "Company Name"}
                                     value={contractorForm.name || ""}
                                     onChange={(e) =>
                                         setContractorForm({
@@ -3042,8 +3609,8 @@ const App: React.FC = () => {
                                     }
                                 />
                                 <input
-                                    className="bg-gray-200 border border-gray-300 rounded p-2 text-gray-700 flex-1"
-                                    placeholder="Region"
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Región / Departamento" : "Region / Department"}
                                     value={contractorForm.region || ""}
                                     onChange={(e) =>
                                         setContractorForm({
@@ -3052,25 +3619,77 @@ const App: React.FC = () => {
                                         })
                                     }
                                 />
+                                <input
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Correo Electrónico" : "Email Address"}
+                                    value={contractorForm.email || ""}
+                                    onChange={(e) =>
+                                        setContractorForm({
+                                            ...contractorForm,
+                                            email: e.target.value,
+                                        })
+                                    }
+                                />
+                                <input
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    placeholder={lang === "es" ? "Número de Teléfono" : "Phone Number"}
+                                    value={contractorForm.phone || ""}
+                                    onChange={(e) =>
+                                        setContractorForm({
+                                            ...contractorForm,
+                                            phone: e.target.value,
+                                        })
+                                    }
+                                />
+                                <input
+                                    className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold md:col-span-2"
+                                    placeholder={lang === "es" ? "Dirección Física (Ej: Calle 100 # 15-30, Bogotá)" : "Physical Address (e.g., Calle 100 # 15-30, Bogota)"}
+                                    value={contractorForm.address || ""}
+                                    onChange={(e) =>
+                                        setContractorForm({
+                                            ...contractorForm,
+                                            address: e.target.value,
+                                        })
+                                    }
+                                />
                             </div>
-                            <Button onClick={handleSaveContractor}>
-                                Add Installer
-                            </Button>
+                            <div className="flex justify-end">
+                                <button 
+                                    onClick={handleSaveContractor}
+                                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest active:scale-95 transition-all shadow-md shadow-blue-500/10 hover:shadow-blue-500/20"
+                                >
+                                    {lang === "es" ? "Añadir Instalador" : "Add Installer"}
+                                </button>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {contractors.map((c) => (
                                 <div
                                     key={c.id}
-                                    className="bg-gray-200 p-4 rounded-xl border border-gray-300"
+                                    className="bg-white p-6 rounded-3xl border border-gray-200 shadow-lg shadow-gray-100/50 space-y-3 relative overflow-hidden group hover:border-blue-300 transition-all duration-300"
                                 >
-                                    <div className="font-bold text-gray-700">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -z-10 group-hover:bg-blue-100/70 transition-colors"></div>
+                                    <div className="font-black text-gray-700 text-lg uppercase tracking-tight">
                                         {c.name}
                                     </div>
-                                    <div className="text-sm text-blue-400">
-                                        {c.region}
+                                    <div className="inline-flex text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-200">
+                                        📍 {c.region}
                                     </div>
-                                    <div className="text-xs text-gray-500 mt-2">
-                                        {c.email}
+                                    
+                                    <div className="space-y-1.5 pt-3 border-t border-gray-100 text-xs font-semibold text-gray-500">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-400">📧</span>
+                                            <span>{c.email || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-400">📞</span>
+                                            <span>{c.phone || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-400">🏠</span>
+                                            <span>{c.address || (lang === 'es' ? 'Dirección no registrada' : 'No address registered')}</span>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -3157,7 +3776,7 @@ const App: React.FC = () => {
                                                 <div className="w-24 bg-gray-200 rounded-full h-1.5 mb-1">
                                                     <div 
                                                         className="bg-blue-500 h-1.5 rounded-full" 
-                                                        style={{ width: `${Math.min(100, (u.generations_used / (u.tier === 'Free' ? 5 : u.tier === 'Pro' ? 50 : 9999)) * 100)}%` }}
+                                                        style={{ width: `${Math.min(100, (u.generations_used / getTierLimit(u.tier || 'Free')) * 100)}%` }}
                                                     ></div>
                                                 </div>
                                                 <input 
@@ -3195,36 +3814,368 @@ const App: React.FC = () => {
                 )}
 
                 {adminTab === "SETTINGS" && (
-                    <div className="max-w-xl">
-                        <div className="bg-gray-200 p-6 rounded-xl border border-gray-300">
-                            <h3 className="text-lg font-bold text-gray-700 mb-4">
-                                AI Configuration
-                            </h3>
-                            <p className="text-sm text-gray-500 mb-4">
-                                {lang === "es"
-                                    ? "La IA está configurada en el servidor. No se requiere clave de API en el navegador."
-                                    : "AI is configured server-side. No API key required in the browser."}
-                            </p>
-                            <div className="bg-green-100 border border-green-300 rounded p-3 text-sm text-green-800">
-                                ✅ {lang === "es" ? "Protección activa: la clave nunca se expone al cliente." : "Secure: key never exposed to client."}
+                    <div className="max-w-5xl space-y-8 animate-fadeIn">
+                        {/* Tiers Manager */}
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50">
+                            <div className="flex justify-between items-start mb-6">
+                                <div>
+                                    <h3 className="text-2xl font-black text-gray-700 uppercase tracking-tighter">
+                                        Subscription Tiers & Pricing Manager
+                                    </h3>
+                                    <p className="text-sm text-gray-400">
+                                        {lang === "es"
+                                            ? "Personaliza los nombres de planes, límites de renderizado por IA, precios mensuales y Stripe IDs."
+                                            : "Customize display names, AI render limits, monthly pricing, and Stripe IDs for subscription plans."}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {editableTiers ? (
+                                <div className="space-y-8">
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {['FREE', 'STANDARD', 'PREMIUM', 'LUXURY'].map((tierKey) => {
+                                            const tierData = editableTiers[tierKey];
+                                            if (!tierData) return null;
+                                            
+                                            // Curated harmonized visual styles
+                                            const cardStyle = tierKey === 'FREE' 
+                                                ? 'border-gray-200 bg-gray-50/50 shadow-sm' 
+                                                : tierKey === 'STANDARD' 
+                                                ? 'border-blue-200 bg-blue-50/10 shadow-md shadow-blue-500/5 hover:border-blue-400' 
+                                                : tierKey === 'PREMIUM'
+                                                ? 'border-purple-200 bg-purple-50/10 shadow-md shadow-purple-500/5 hover:border-purple-400'
+                                                : 'border-amber-200 bg-amber-50/10 shadow-md shadow-amber-500/5 hover:border-amber-400';
+                                                
+                                            const badgeStyle = tierKey === 'FREE' 
+                                                ? 'bg-gray-100 text-gray-600' 
+                                                : tierKey === 'STANDARD' 
+                                                ? 'bg-blue-100 text-blue-700' 
+                                                : tierKey === 'PREMIUM'
+                                                ? 'bg-purple-100 text-purple-700'
+                                                : 'bg-amber-100 text-amber-700';
+
+                                            return (
+                                                <div key={tierKey} className={`p-6 rounded-3xl border-2 ${cardStyle} transition-all duration-300 hover:shadow-lg space-y-4`}>
+                                                    <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                                                        <span className={`text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider ${badgeStyle}`}>
+                                                            {tierKey}
+                                                        </span>
+                                                        {tierData.limit >= 9999 ? (
+                                                            <span className="text-[10px] bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full border border-green-200">
+                                                                Unlimited Limit
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] text-gray-400 font-medium">
+                                                                {tierData.limit} max renders
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                Display Name
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={tierData.name}
+                                                                onChange={(e) => handleUpdateTierField(tierKey, 'name', e.target.value)}
+                                                                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                AI Render Limit
+                                                            </label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="number"
+                                                                    value={tierData.limit}
+                                                                    onChange={(e) => handleUpdateTierField(tierKey, 'limit', parseInt(e.target.value, 10) || 0)}
+                                                                    className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                                                />
+                                                            </div>
+                                                            <p className="text-[9px] text-gray-400 mt-1 italic">
+                                                                Use 9999 to configure unlimited quota.
+                                                            </p>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                Price ($USD / month)
+                                                            </label>
+                                                            <div className="relative rounded-xl shadow-sm">
+                                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                                    <span className="text-gray-400 text-xs font-bold">$</span>
+                                                                </div>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    value={tierData.price}
+                                                                    onChange={(e) => handleUpdateTierField(tierKey, 'price', parseFloat(e.target.value) || 0)}
+                                                                    className="w-full bg-white border border-gray-200 rounded-xl pl-6 pr-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                                                Stripe Price ID
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="e.g. price_1Hh1..."
+                                                                value={tierData.stripePriceId || ''}
+                                                                onChange={(e) => handleUpdateTierField(tierKey, 'stripePriceId', e.target.value)}
+                                                                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                                            />
+                                                            <p className="text-[9px] text-gray-400 mt-1">
+                                                                Leave blank or configure Stripe catalog item.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="flex justify-end pt-6 border-t border-gray-100">
+                                        <button
+                                            onClick={handleSaveTiers}
+                                            disabled={isSavingTiers}
+                                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:shadow-blue-500/35 active:scale-95 transition-all flex items-center gap-2"
+                                        >
+                                            {isSavingTiers ? (
+                                                <>
+                                                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                    </svg>
+                                                    {lang === "es" ? "Guardando..." : "Saving..."}
+                                                </>
+                                            ) : (
+                                                lang === "es" ? "Guardar Configuración" : "Save Plans Configuration"
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="py-12 flex justify-center items-center">
+                                    <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Secure Credentials Manager Card */}
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 space-y-6 animate-fadeIn">
+                            <div>
+                                <h3 className="text-2xl font-black text-gray-700 uppercase tracking-tighter">
+                                    {lang === "es" ? "Gestor de Credenciales del Servidor" : "Server Credentials & Keys Manager"}
+                                </h3>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    {lang === "es"
+                                        ? "Configura las claves de API del servidor de forma segura. Las claves se guardan de forma encriptada en el servidor y nunca se exponen al navegador."
+                                        : "Securely configure server-side API keys and secrets. Credentials are stored securely on the server and are never exposed to the client browser."}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {/* Provider status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Primary Provider</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.aiProvider ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.aiProvider ? secureConfig.aiProvider.toUpperCase() : 'Not Set'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Gemini status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gemini Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasKey 
+                                                ? (lang === 'es' ? "Configurado" : "Configured") 
+                                                : (lang === 'es' ? "Falta" : "Missing")}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* OpenAI status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">OpenAI Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasOpenAIKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasOpenAIKey ? "Configured" : "Missing"}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* OpenRouter status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">OpenRouter Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasOpenRouterKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasOpenRouterKey ? "Configured" : "Missing"}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Stripe Key status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Stripe Secret Key</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasStripeSecretKey ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasStripeSecretKey 
+                                                ? (lang === 'es' ? "Configurado (Activo)" : "Configured (Active)") 
+                                                : (lang === 'es' ? "No Configurado" : "Not Configured")}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Stripe Webhook status */}
+                                <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex flex-col justify-between space-y-2">
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Stripe Webhook Secret</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${secureConfig?.hasStripeWebhookSecret ? 'bg-green-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                                        <span className="text-xs font-bold text-gray-600">
+                                            {secureConfig?.hasStripeWebhookSecret 
+                                                ? (lang === 'es' ? "Configurado (Activo)" : "Configured (Active)") 
+                                                : (lang === 'es' ? "No Configurado" : "Not Configured")}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 pt-2">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Proveedor Principal de IA" : "Primary AI Provider"}
+                                        </label>
+                                        <select
+                                            value={configForm.aiProvider}
+                                            onChange={(e) => setConfigForm({ ...configForm, aiProvider: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                        >
+                                            <option value="">(No Change)</option>
+                                            <option value="gemini">Google Gemini</option>
+                                            <option value="openrouter">OpenRouter</option>
+                                            <option value="openai">OpenAI</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave de API Gemini" : "New Gemini API Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="AIzaSy..."
+                                            value={configForm.apiKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, apiKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave de OpenRouter" : "New OpenRouter API Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk-or-v1-..."
+                                            value={configForm.openrouterApiKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, openrouterApiKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave de OpenAI" : "New OpenAI API Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk-..."
+                                            value={configForm.openaiApiKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, openaiApiKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                            {lang === 'es' ? "Nueva Clave Secreta de Stripe" : "New Stripe Secret Key"}
+                                        </label>
+                                        <input
+                                            type="password"
+                                            placeholder="sk_live_..."
+                                            value={configForm.stripeSecretKey}
+                                            onChange={(e) => setConfigForm({ ...configForm, stripeSecretKey: e.target.value })}
+                                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                        {lang === 'es' ? "Nuevo Secreto de Webhook Stripe" : "New Stripe Webhook Secret"}
+                                    </label>
+                                    <input
+                                        type="password"
+                                        placeholder="whsec_..."
+                                        value={configForm.stripeWebhookSecret}
+                                        onChange={(e) => setConfigForm({ ...configForm, stripeWebhookSecret: e.target.value })}
+                                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">
+                                        {lang === 'es' 
+                                            ? "Los campos en blanco no se modificarán para proteger tus credenciales guardadas." 
+                                            : "Fields left blank will remain unchanged to protect your existing credentials."}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-4 border-t border-gray-100">
+                                <button
+                                    onClick={handleSaveSecureConfig}
+                                    disabled={isSavingConfig}
+                                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:shadow-blue-500/35 active:scale-95 transition-all flex items-center gap-2"
+                                >
+                                    {isSavingConfig ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                            </svg>
+                                            {lang === "es" ? "Guardando..." : "Saving..."}
+                                        </>
+                                    ) : (
+                                        lang === "es" ? "Guardar Credenciales" : "Save Credentials"
+                                    )}
+                                </button>
                             </div>
                         </div>
                     </div>
                 )}
+
+                {adminTab === "AUDIT_LOGS" && renderAuditLogsComponent()}
             </div>
         </div>
     );
 
     const renderGallery = () => {
-        const filtered = materials.filter(
-            (m) =>
-                (categoryUsage === "All" || m.usage?.toLowerCase() === categoryUsage.toLowerCase()) &&
-                (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    m.category
-                        .toLowerCase()
-                        .includes(searchQuery.toLowerCase())),
-        );
-
         return (
             <div className="min-h-screen bg-gray-100 flex flex-col">
                 <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-gray-300 p-4">
@@ -3261,7 +4212,7 @@ const App: React.FC = () => {
                                 >
                                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                                     <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
-                                        {currentUser.tier === 'Enterprise' ? 'Unlimited' : `${(currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999) - (currentUser.generations_used || 0)} Renders`}
+                                        {getTierLimit(currentUser.tier || 'Free') === 9999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
                                     </span>
                                     <svg className="w-3 h-3 text-blue-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                 </button>
@@ -3269,8 +4220,8 @@ const App: React.FC = () => {
                             <LanguageToggle />
                             <input
                                 type="text"
-                                placeholder="Search..."
-                                className="hidden md:block bg-gray-200 border-none rounded-full px-4 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500"
+                                placeholder={lang === "es" ? "Buscar..." : "Search..."}
+                                className="w-28 sm:w-auto bg-gray-200 border-none rounded-full px-3 py-2 text-xs sm:text-sm text-gray-700 focus:ring-2 focus:ring-blue-500"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -3280,35 +4231,27 @@ const App: React.FC = () => {
 
                 <div className="flex-1 overflow-y-auto p-4 md:p-6">
                     <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-                        {filtered.map((material) => (
-                            <button
+                        {filteredMaterials.map((material) => (
+                            <ProductCard
                                 key={material.id}
-                                onClick={() => handleSelectMaterial(material)}
-                                className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 border border-gray-300 hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-900/20 transition-all text-left"
-                            >
-                                <img
-                                    src={material.imageUrl}
-                                    data-original-src={material.imageUrl}
-                                    alt={material.name}
-                                    onError={handleImageError}
-                                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-2 flex flex-col justify-end">
-                                    <div className="text-[8px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
-                                        {material.category}
-                                    </div>
-                                    <div className="text-gray-700 text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
-                                        {material.name}
-                                    </div>
-                                    <div className="text-[8px] text-gray-500">
-                                        {material.dimensions.width}x
-                                        {material.dimensions.length}cm
-                                    </div>
-                                </div>
-                            </button>
+                                material={material}
+                                lang={lang}
+                                proxyImageUrl={proxyImageUrl}
+                                handleImageError={handleImageError}
+                                onSelect={handleSelectMaterial}
+                                onAddToCart={(m) => {
+                                    const dims = m.dimensions || { width: 30, length: 30 };
+                                    addToCart(m, { width: dims.width, height: dims.length }, 1);
+                                }}
+                                onEstimate={(m) => {
+                                    setSelectedMaterial(m);
+                                    setEstimationSource(AppView.GALLERY);
+                                    setView(AppView.ESTIMATION);
+                                }}
+                            />
                         ))}
                     </div>
-                    {filtered.length === 0 && (
+                    {filteredMaterials.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-20 text-gray-500">
                             <p>{t.gallery.noMaterials}</p>
                         </div>
@@ -3371,64 +4314,32 @@ const App: React.FC = () => {
                             )}
                         </div>
 
-                        {/* AI Analysis Overlay */}
-                        {(generationState.analysis ||
-                            generationState.isAnalyzing) && (
-                            <div className="absolute bottom-8 left-8 right-8 z-40 bg-white/95 backdrop-blur border border-gray-300 p-4 rounded-xl text-xs text-gray-600 max-h-48 overflow-y-auto animate-fadeIn shadow-2xl max-w-2xl mx-auto">
-                                <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white/95 pb-2 border-b border-gray-300">
-                                    <svg
-                                        className="w-4 h-4 text-blue-400"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M13 10V3L4 14h7v7l9-11h-7z"
-                                        />
-                                    </svg>
-                                    <span className="text-blue-400 font-bold uppercase tracking-wider">
-                                        {lang === "es"
-                                            ? "Análisis del Espacio"
-                                            : "Room Analysis"}
-                                    </span>
-                                </div>
-                                {generationState.isAnalyzing ? (
-                                    <div className="space-y-2 py-1">
-                                        <div className="h-1.5 bg-gray-300 rounded w-full animate-pulse"></div>
-                                        <div className="h-1.5 bg-gray-300 rounded w-2/3 animate-pulse"></div>
-                                        <div className="h-1.5 bg-gray-300 rounded w-5/6 animate-pulse"></div>
-                                    </div>
-                                ) : (
-                                    <p className="leading-relaxed">
-                                        {generationState.analysis}
-                                    </p>
-                                )}
-                            </div>
-                        )}
+
                     </div>
                 </div>
 
-                {/* Sidebar Controls */}
-                <div className="w-full md:w-96 bg-white border-l border-gray-300 flex flex-col h-[40vh] md:h-full z-20 shadow-2xl">
-                    <div className="p-4 border-b border-gray-300 flex items-center justify-between">
+                {/* Mobile-Optimised Controls Panel */}
+                <div className="w-full md:w-96 bg-white border-l border-gray-300 flex flex-col h-[50vh] md:h-full z-20 shadow-2xl">
+                    {/* Top bar */}
+                    <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0">
                         <Button
                             variant="ghost"
                             onClick={() => setView(AppView.CAMERA)}
-                            className="text-xs uppercase tracking-wider"
+                            className="text-xs uppercase tracking-wider text-black font-bold"
                         >
+                            <svg className="w-3 h-3 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                            </svg>
                             {t.editor.back}
                         </Button>
                         <div className="flex items-center gap-2">
                             {currentUser && (
-                                <button 
+                                <button
                                     onClick={() => setShowSubscriptionModal(true)}
                                     className="flex items-center gap-2 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"
                                 >
                                     <span className="text-[9px] font-black text-blue-600 uppercase">
-                                        {currentUser.tier === 'Enterprise' ? '∞' : (currentUser.tier === 'Free' ? 5 : currentUser.tier === 'Pro' ? 50 : 9999) - (currentUser.generations_used || 0)} Renders
+                                        {getTierLimit(currentUser.tier || 'Free') >= 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders
                                     </span>
                                 </button>
                             )}
@@ -3436,162 +4347,139 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                        {/* Material Info */}
+                    {/* Scrollable area */}
+                    <div className="flex-1 overflow-y-auto">
+                        {/* Material chip + AI analysis */}
                         {selectedMaterial && (
-                            <div className="flex flex-col gap-2 bg-gray-200 p-4 rounded-xl border border-gray-300">
-                                <div className="flex items-center gap-4">
-                                    <div
-                                        className="relative group cursor-pointer"
-                                        onClick={handleGenerateProbe}
-                                    >
+                            <div className="px-3 pt-3 pb-2">
+                                <div className="flex items-center gap-3 bg-gray-100 p-3 rounded-xl border border-gray-200">
+                                    <div className="relative group cursor-pointer shrink-0" onClick={handleGenerateProbe}>
                                         <img
-                                            src={selectedMaterial.imageUrl}
-                                            data-original-src={selectedMaterial.imageUrl}
+                                            src={proxyImageUrl(selectedMaterial.imageUrl)}
+                                            data-original-src={selectedMaterial._fallbackImageUrl || proxyImageUrl(selectedMaterial.imageUrl)}
                                             onError={handleImageError}
-                                            className="w-16 h-16 rounded-lg object-cover border border-gray-300"
+                                            className="w-12 h-12 rounded-lg object-cover border border-gray-300"
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
-                                            <svg
-                                                className="w-6 h-6 text-gray-700"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    strokeWidth={2}
-                                                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-                                                />
+                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                                             </svg>
                                         </div>
                                     </div>
-                                    <div>
-                                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                                            {t.editor.material}
-                                        </div>
-                                        <div className="font-bold text-gray-700 leading-tight">
-                                            {selectedMaterial.name}
-                                        </div>
-                                        <div className="text-xs text-blue-400 mt-1">
-                                            {selectedMaterial.refCode}
-                                        </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{t.editor.material}</div>
+                                        <div className="font-bold text-gray-700 text-xs leading-tight truncate">{selectedMaterial.name}</div>
+                                        <div className="text-[10px] text-blue-400">{selectedMaterial.refCode}</div>
                                     </div>
+                                    <Button
+                                        variant="ghost"
+                                        onClick={handleRoomAnalysis}
+                                        disabled={generationState.isAnalyzing}
+                                        className="text-[9px] uppercase tracking-widest border border-dashed border-gray-300 hover:border-blue-500 hover:text-blue-400 px-2 py-1 shrink-0"
+                                    >
+                                        {generationState.isAnalyzing ? '...' : 'AI Análisis'}
+                                    </Button>
                                 </div>
-
-
-                        {/* New Analysis Trigger */}
-                                <Button
-                                    variant="ghost"
-                                    onClick={handleRoomAnalysis}
-                                    disabled={generationState.isAnalyzing}
-                                    className="w-full text-[10px] uppercase tracking-widest border border-dashed border-gray-300 hover:border-blue-500 hover:text-blue-400 py-2 mt-2"
-                                >
-                                    {generationState.isAnalyzing
-                                        ? "Analyzing..."
-                                        : "AI Room Analysis"}
-                                </Button>
                             </div>
                         )}
 
-                        {/* Lighting Toggle */}
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block">
-                                {t.editor.lighting}
-                            </label>
-                            <div className="flex gap-2">
-                                {["NATURAL", "SUNSET", "NIGHT_LUXURY"].map(
-                                    (l) => (
+                        {/* 2-column controls grid */}
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-3 pb-3 pt-2">
+
+                            {/* Lighting — full width */}
+                            <div className="col-span-2">
+                                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 block">{t.editor.lighting}</label>
+                                <div className="flex gap-1.5">
+                                    {["NATURAL", "SUNSET", "NIGHT_LUXURY"].map((l) => (
                                         <button
                                             key={l}
-                                            onClick={() =>
-                                                setRenderOptions({
-                                                    ...renderOptions,
-                                                    lighting: l as any,
-                                                })
-                                            }
-                                            className={`flex-1 p-2 rounded-lg text-[10px] font-bold border transition-all ${renderOptions.lighting === l ? "bg-gray-300 border-gray-400 text-gray-700" : "bg-gray-200 border-gray-300 text-gray-500"}`}
+                                            onClick={() => setRenderOptions({ ...renderOptions, lighting: l as any })}
+                                            className={`flex-1 py-2 rounded-lg text-[9px] font-bold border transition-all ${renderOptions.lighting === l ? "bg-gray-700 border-gray-600 text-white" : "bg-gray-100 border-gray-200 text-gray-500"}`}
                                         >
                                             {l.replace("_", " ")}
                                         </button>
-                                    ),
-                                )}
+                                    ))}
+                                </div>
                             </div>
-                        </div>
 
-                        {/* Prompt */}
-                        <div>
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 block">
-                                {t.editor.instructions}
-                            </label>
-                            <textarea
-                                className="w-full bg-gray-200 border border-gray-300 rounded-xl p-3 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
-                                rows={3}
-                                placeholder={
-                                    lang === "es"
-                                        ? "Ej: Añadir plantas, estilo moderno..."
-                                        : "Ex: Add plants, make it modern..."
-                                }
-                                value={customPrompt}
-                                onChange={(e) =>
-                                    setCustomPrompt(e.target.value)
-                                }
-                            />
-                            <div className="flex flex-wrap gap-2 mt-2">
-                                {t.templates
-                                    .slice(0, 3)
-                                    .map((template: string, i: number) => (
-                                        <button
-                                            key={i}
-                                            onClick={() =>
-                                                setCustomPrompt(template)
-                                            }
-                                            className="text-[10px] bg-gray-200 text-gray-500 px-2 py-1 rounded-full hover:bg-gray-300 border border-gray-300 text-left"
-                                        >
+                            {/* Prompt — full width */}
+                            <div className="col-span-2">
+                                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 block">{t.editor.instructions}</label>
+                                <textarea
+                                    className="w-full bg-gray-100 border border-gray-200 rounded-xl p-2.5 text-xs text-gray-700 focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
+                                    rows={2}
+                                    placeholder={lang === "es" ? "Ej: Añadir plantas, estilo moderno..." : "Ex: Add plants, make it modern..."}
+                                    value={customPrompt}
+                                    onChange={(e) => setCustomPrompt(e.target.value)}
+                                />
+                                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                    {t.templates.slice(0, 3).map((template: string, i: number) => (
+                                        <button key={i} onClick={() => setCustomPrompt(template)} className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full hover:bg-gray-200 border border-gray-200">
                                             {template}
                                         </button>
                                     ))}
+                                </div>
                             </div>
-                        </div>
-                    </div>
 
-                    <div className="p-6 bg-white border-t border-gray-300 space-y-3">
-                        {generationState.error && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center">
-                                {generationState.error}
+                            {/* Generate — left col */}
+                            <div className="col-span-1">
+                                {generationState.error && (
+                                    <div className="p-2 mb-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-[10px] text-center">{generationState.error}</div>
+                                )}
+                                <Button
+                                    onClick={handleGenerate}
+                                    isLoading={generationState.isGenerating}
+                                    className="w-full py-3 text-xs uppercase tracking-widest font-black shadow-lg shadow-blue-900/20"
+                                >
+                                    {generationState.resultImage ? t.editor.regenerate : t.editor.generate}
+                                </Button>
                             </div>
-                        )}
-                        <Button
-                            onClick={handleGenerate}
-                            isLoading={generationState.isGenerating}
-                            className="w-full py-4 text-sm uppercase tracking-widest font-black shadow-xl shadow-blue-900/20"
-                        >
-                            {generationState.resultImage
-                                ? t.editor.regenerate
-                                : t.editor.generate}
-                        </Button>
 
-                        {generationState.resultImage && (
-                            <div className="grid grid-cols-1 gap-3">
+                            {/* Download — right col */}
+                            <div className="col-span-1">
                                 <Button
                                     onClick={handleDownloadResult}
                                     variant="primary"
-                                    className="text-xs uppercase whitespace-nowrap"
-                                    icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+                                    disabled={!generationState.resultImage}
+                                    className="w-full py-3 text-xs uppercase whitespace-nowrap"
+                                    icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
                                 >
                                     {t.editor.download}
                                 </Button>
+                            </div>
+
+                            {/* Quote/Cart — full width */}
+                            <div className="col-span-2 flex gap-2">
                                 <Button
-                                    onClick={() => setView(AppView.ESTIMATION)}
+                                    onClick={() => {
+                                        const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
+                                        const wallDims = generationState.analysis?.dimensions;
+                                        const cartDims = wallDims 
+                                            ? { width: wallDims.width, height: wallDims.height } 
+                                            : { width: dims.width, height: dims.length };
+                                        addToCart(selectedMaterial, cartDims, 1);
+                                    }}
                                     variant="secondary"
-                                    className="bg-green-600 border-green-500 hover:bg-green-500 text-white text-xs uppercase whitespace-nowrap"
-                                    icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
+                                    disabled={!generationState.resultImage}
+                                    className="flex-1 py-3 bg-blue-600 border-blue-500 hover:bg-blue-500 text-white text-xs uppercase whitespace-nowrap"
+                                    icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" /></svg>}
+                                >
+                                    {lang === 'es' ? 'Añadir al Carrito' : 'Add to Cart'}
+                                </Button>
+                                <Button
+                                    onClick={() => {
+                                        setEstimationSource(AppView.EDITOR);
+                                        setView(AppView.ESTIMATION);
+                                    }}
+                                    variant="secondary"
+                                    disabled={!generationState.resultImage}
+                                    className="flex-1 py-3 bg-green-600 border-green-500 hover:bg-green-500 text-white text-xs uppercase whitespace-nowrap"
+                                    icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
                                 >
                                     {t.editor.createQuote}
                                 </Button>
                             </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3619,6 +4507,86 @@ const App: React.FC = () => {
                     </h1>
                 </header>
 
+                {/* Tier Info Card */}
+                {(() => {
+                    const tier = currentUser?.tier || 'Free';
+                    const used = currentUser?.generations_used || 0;
+                    const limit = getTierLimit(tier);
+                    const remaining = Math.max(0, limit - used);
+                    const isUnlimited = limit >= 9999;
+                    const pct = isUnlimited ? 100 : Math.max(0, Math.min(100, Math.round((remaining / Math.max(1, limit)) * 100)));
+                    const tierNames: Record<string, string> = {
+                        FREE: t.cart.tierFree, STANDARD: 'STANDARD', PREMIUM: 'PREMIUM', LUXURY: 'LUXURY'
+                    };
+                    const tierColors: Record<string, string> = {
+                        FREE: 'gray', STANDARD: 'blue', PREMIUM: 'purple', LUXURY: 'amber'
+                    };
+                    const color = tierColors[tier.toUpperCase()] || 'gray';
+
+                    return (
+                        <div className={`mb-6 p-5 rounded-2xl border bg-white/90 backdrop-blur border-${color}-200 shadow-sm`}>
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <div className="text-xs uppercase tracking-widest text-gray-400 font-bold mb-1">
+                                        {t.cart.tierLabel}
+                                    </div>
+                                    <span className={`text-lg font-black text-${color}-600`}>
+                                        {tierNames[tier.toUpperCase()] || tier}
+                                    </span>
+                                </div>
+                                {tier !== 'LUXURY' && (
+                                    <Button
+                                        onClick={() => { setShowSubscriptionModal(true); }}
+                                        className="text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl uppercase tracking-wider"
+                                    >
+                                        {t.cart.upgradeTier}
+                                    </Button>
+                                )}
+                            </div>
+
+                            {/* Renders remaining */}
+                            <div className="mt-2">
+                                <div className="flex justify-between text-xs mb-1">
+                                    <span className="text-gray-500">
+                                        {isUnlimited
+                                            ? t.cart.unlimitedRenders
+                                            : `${remaining} ${t.cart.rendersLeft}`}
+                                    </span>
+                                    {!isUnlimited && (
+                                        <span className="text-gray-400">{used}/{limit}</span>
+                                    )}
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ${isUnlimited ? 'bg-green-500' : remaining > limit * 0.3 ? 'bg-green-500' : remaining > limit * 0.1 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                        style={{ width: `${isUnlimited ? 100 : Math.max(0, pct)}%` }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Tier expiration */}
+                            {currentUser?.tier_expires_at && tier.toUpperCase() !== 'FREE' && (
+                                <div className="mt-3 text-xs">
+                                    {(() => {
+                                        const days = Math.max(0, Math.ceil((new Date(currentUser.tier_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                                        if (days <= 0) return <span className="text-red-600 font-bold">Expired — renew to restore access</span>;
+                                        if (days <= 3) return <span className="text-red-600 font-bold">{days} days left — renew now!</span>;
+                                        if (days <= 7) return <span className="text-amber-600 font-semibold">{days} days remaining</span>;
+                                        return <span className="text-gray-400">Expires: {new Date(currentUser.tier_expires_at).toLocaleDateString()}</span>;
+                                    })()}
+                                </div>
+                            )}
+
+                            {/* Explainer for free tier */}
+                            {tier === 'FREE' && (
+                                <p className="mt-3 text-xs text-gray-400 leading-relaxed">
+                                    {t.cart.tierExplainer}
+                                </p>
+                            )}
+                        </div>
+                    );
+                })()}
+
                 <div className="flex-1 max-w-4xl mx-auto w-full">
                     {cartItems.length === 0 ? (
                         <div className="text-center py-20">
@@ -3637,7 +4605,7 @@ const App: React.FC = () => {
                                     className="bg-gray-200 p-4 rounded-xl border border-gray-300 flex gap-4 items-center"
                                 >
                                     <img
-                                        src={item.material.imageUrl}
+                                        src={proxyImageUrl(item.material.imageUrl)}
                                         className="w-16 h-16 rounded object-cover"
                                     />
                                     <div className="flex-1">
@@ -3703,8 +4671,12 @@ const App: React.FC = () => {
                                                     `- ${i.material.name}: ${i.quantity} units ($${Math.round(i.totalCost)})`,
                                             )
                                             .join("\n");
+                                        // Include room analysis if available
+                                        const analysisSection = generationState.analysis?.text
+                                            ? `\n\n${lang === "es" ? "Análisis del Espacio" : "Room Analysis"}:\n${generationState.analysis.text}\n`
+                                            : "";
                                         setCheckoutBody(
-                                            `${lang === "es" ? "Orden de Compra" : "Order Request"}:\n\n${body}\n\nTotal: $${Math.round(total)}`,
+                                            `${lang === "es" ? "Orden de Compra" : "Order Request"}:\n\n${body}\n\nTotal: $${Math.round(total)}${analysisSection}`,
                                         );
                                         setShowCheckoutModal(true);
                                     }}
@@ -3724,31 +4696,75 @@ const App: React.FC = () => {
                                 {t.cart.confirmOrder}
                             </h3>
                             <p className="text-sm text-gray-600 mb-6">
-                                You will be redirected to your email client to
-                                send this order request to our sales team.
+                                {lang === 'es' 
+                                    ? 'Elige cómo deseas pagar tu orden, o envíala por email a nuestro equipo de ventas.'
+                                    : 'Choose how you want to pay for your order, or email it to our sales team.'}
                             </p>
                             <div className="bg-slate-100 p-4 rounded text-xs font-mono mb-6 whitespace-pre-wrap">
                                 {checkoutBody}
                             </div>
-                            <div className="flex gap-3">
+                            <div className="space-y-3">
+                                {/* Stripe Checkout Button */}
                                 <Button
-                                    variant="secondary"
-                                    onClick={() => setShowCheckoutModal(false)}
-                                    className="flex-1 border-gray-300 text-gray-600 hover:bg-gray-200"
+                                    onClick={async () => {
+                                        setShowCheckoutModal(false);
+                                        try {
+                                            const res = await fetch('/api/checkout/create-product-session', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    items: cartItems,
+                                                    userId: currentUser?.id,
+                                                    email: currentUser?.email,
+                                                    name: currentUser?.name,
+                                                }),
+                                            });
+                                            const data = await res.json();
+                                            if (data.url) {
+                                                window.location.href = data.url;
+                                            } else if (data.isMock) {
+                                                // Fallback to email if Stripe is in mock mode
+                                                window.open(
+                                                    `mailto:comercial.buildinginnovation@gmail.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
+                                                );
+                                            }
+                                        } catch (err) {
+                                            // Fallback to email on error
+                                            window.open(
+                                                `mailto:comercial.buildinginnovation@gmail.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
+                                            );
+                                        }
+                                    }}
+                                    className="w-full py-4 bg-[#635BFF] hover:bg-[#7C73FF] text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2"
                                 >
-                                    {t.common.cancel}
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M13.976 6.32c-.623.512-1.196 1.024-1.196 2.048 0 1.28 1.024 2.048 2.456 3.072 1.432 1.024 2.456 2.56 2.456 4.608 0 3.072-2.048 5.12-5.16 5.12-2.456 0-4.16-1.432-5.16-3.584l2.56-1.432c.624.96 1.432 1.84 2.6 1.84 1.024 0 1.84-.624 1.84-1.84 0-1.28-1.024-2.048-2.456-3.072-1.432-1.024-2.456-2.56-2.456-4.608 0-3.072 2.048-5.12 4.976-5.12 2.048 0 3.584 1.024 4.608 2.56l-2.56 1.432c-.624-1.024-1.432-1.432-2.048-1.432-1.024 0-1.84.624-1.84 1.432z"/>
+                                    </svg>
+                                    {lang === 'es' ? 'Pagar con Tarjeta' : 'Pay with Card'}
                                 </Button>
-                                <Button
+                                
+                                {/* Email Order Button (secondary) */}
+                                <button
                                     onClick={() => {
                                         window.open(
                                             `mailto:comercial.buildinginnovation@gmail.com?subject=New Order Request&body=${encodeURIComponent(checkoutBody)}`,
                                         );
                                         setShowCheckoutModal(false);
                                     }}
-                                    className="flex-1"
+                                    className="w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
                                 >
-                                    {t.cart.openGmail}
-                                </Button>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                    {lang === 'es' ? 'Enviar por Email' : 'Email Order Request'}
+                                </button>
+
+                                <button
+                                    onClick={() => setShowCheckoutModal(false)}
+                                    className="w-full py-2 text-gray-400 hover:text-gray-600 text-xs font-bold transition-colors"
+                                >
+                                    {t.common.cancel}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -3793,7 +4809,7 @@ const App: React.FC = () => {
                     <div className="bg-black flex items-center justify-center min-h-[200px] max-h-[50vh] relative overflow-hidden">
                         {selectedMaterial ? (
                             <img
-                                src={selectedMaterial.imageUrl}
+                                src={proxyImageUrl(selectedMaterial.imageUrl)}
                                 className="w-full h-full object-contain max-h-[50vh]"
                             />
                         ) : (
@@ -3821,6 +4837,7 @@ const App: React.FC = () => {
                                 variant="secondary"
                                 onClick={() => {
                                     setShowProbeModal(false);
+                                    setEstimationSource(AppView.GALLERY);
                                     setView(AppView.ESTIMATION);
                                 }}
                                 className="uppercase text-xs"
@@ -3838,6 +4855,245 @@ const App: React.FC = () => {
                             </Button>
                         </div>
                     </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderAuditLogsComponent = () => {
+        const filteredLogs = auditLogs.filter((log) => {
+            const matchesSearch = 
+                (log.adminName?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.adminEmail?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.action?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.details?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase()) ||
+                (log.ipAddress?.toLowerCase() || "").includes(auditSearchQuery.toLowerCase());
+
+            if (!matchesSearch) return false;
+
+            if (auditActionFilter === "ALL") return true;
+            if (auditActionFilter === "DELETIONS") return log.action?.includes("DELETE") || log.action?.includes("RESET");
+            if (auditActionFilter === "MODIFICATIONS") return log.action?.includes("CREATE") || log.action?.includes("UPDATE");
+            if (auditActionFilter === "CONFIG") return log.action?.includes("CONFIG") || log.action?.includes("TIERS") || log.action?.includes("ADMIN");
+            return true;
+        });
+
+        const deleteCount = auditLogs.filter(l => l.action?.includes('DELETE') || l.action?.includes('RESET')).length;
+        const configCount = auditLogs.filter(l => l.action?.includes('CONFIG') || l.action?.includes('TIERS') || l.action?.includes('ADMIN')).length;
+
+        return (
+            <div className="space-y-6 animate-fadeIn max-w-5xl">
+                {/* Header Banner */}
+                <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                    <div className="space-y-1">
+                        <h2 className="text-2xl font-black text-gray-700 uppercase tracking-tighter flex items-center gap-2">
+                            <span className="p-2 bg-red-50 text-red-600 rounded-xl">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                            </span>
+                            {lang === "es" ? "Bitácora de Seguridad" : "Security Audit Logs"}
+                        </h2>
+                        <p className="text-gray-400 text-xs leading-relaxed max-w-xl">
+                            {lang === "es" 
+                                ? "Auditoría activa y persistente de todas las modificaciones críticas de la base de datos, configuraciones del motor visual de IA y eliminaciones de cuentas." 
+                                : "Active persistent auditing of all critical database operations, subscription tier updates, account deletions, and system configurations."}
+                        </p>
+                    </div>
+                    <div className="flex-shrink-0">
+                        <Button 
+                            variant="secondary"
+                            onClick={fetchAuditLogs} 
+                            disabled={isLoadingAuditLogs}
+                            className="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-xs font-bold uppercase tracking-wider px-4 py-2 text-gray-600 flex items-center gap-2 active:scale-95 transition-all"
+                        >
+                            {isLoadingAuditLogs ? (
+                                <>
+                                    <svg className="animate-spin h-3 w-3 text-gray-500" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    {lang === "es" ? "Actualizando..." : "Refreshing..."}
+                                </>
+                            ) : (
+                                <span>{lang === "es" ? "Actualizar Logs" : "Refresh Logs"}</span>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Metrics Stats Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/30 flex items-center gap-4">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                            </svg>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">
+                                {lang === "es" ? "Eventos Auditados" : "Audited Events"}
+                            </span>
+                            <span className="text-xl font-black text-gray-700">{auditLogs.length}</span>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/30 flex items-center gap-4">
+                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">
+                                {lang === "es" ? "Eliminaciones" : "Deletions"}
+                            </span>
+                            <span className="text-xl font-black text-red-600">{deleteCount}</span>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/30 flex items-center gap-4">
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">
+                                {lang === "es" ? "Ajustes de Config" : "Config Updates"}
+                            </span>
+                            <span className="text-xl font-black text-amber-600">{configCount}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Filters and Search Bar Card */}
+                <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 space-y-6">
+                    <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+                        {/* Search Input */}
+                        <div className="relative w-full lg:w-96">
+                            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </span>
+                            <input
+                                type="text"
+                                placeholder={lang === "es" ? "Buscar por admin, acción, ip..." : "Search by admin, action, ip..."}
+                                value={auditSearchQuery}
+                                onChange={(e) => setAuditSearchQuery(e.target.value)}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                            />
+                        </div>
+
+                        {/* Action Filter Button Group */}
+                        <div className="flex flex-wrap gap-1.5 w-full lg:w-auto">
+                            {[
+                                { key: "ALL", label: lang === "es" ? "Todos" : "All" },
+                                { key: "DELETIONS", label: lang === "es" ? "Eliminaciones" : "Deletions" },
+                                { key: "MODIFICATIONS", label: lang === "es" ? "Modificaciones" : "Modifications" },
+                                { key: "CONFIG", label: lang === "es" ? "Configuración" : "Config" }
+                            ].map((btn) => (
+                                <button
+                                    key={btn.key}
+                                    onClick={() => setAuditActionFilter(btn.key)}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 border ${
+                                        auditActionFilter === btn.key
+                                            ? "bg-slate-900 border-slate-950 text-white shadow-md"
+                                            : "bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200"
+                                    }`}
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Audit Logs Table */}
+                    {isLoadingAuditLogs ? (
+                        <div className="py-20 flex flex-col items-center justify-center gap-3">
+                            <svg className="animate-spin h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest animate-pulse">
+                                {lang === "es" ? "Cargando Bitácoras..." : "Loading Secure Audits..."}
+                            </span>
+                        </div>
+                    ) : filteredLogs.length === 0 ? (
+                        <div className="py-16 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+                            <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <h4 className="text-sm font-bold text-gray-600 uppercase tracking-wider">
+                                {lang === "es" ? "No se encontraron registros" : "No logs found"}
+                            </h4>
+                            <p className="text-gray-400 text-xs mt-1">
+                                {lang === "es" ? "Intente ajustar la búsqueda o los filtros." : "Try adjusting your search query or filter options."}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-inner bg-gray-50/10">
+                            <table className="min-w-full divide-y divide-gray-200 text-left">
+                                <thead className="bg-gray-50/75 sticky top-0">
+                                    <tr className="border-b border-gray-200">
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                            {lang === "es" ? "Fecha" : "Date & Time"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                            {lang === "es" ? "Administrador" : "Admin User"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
+                                            {lang === "es" ? "Acción" : "Action"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                            {lang === "es" ? "Descripción" : "Description"}
+                                        </th>
+                                        <th scope="col" className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest font-mono">
+                                            IP ADDRESS
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-150">
+                                    {filteredLogs.map((log) => {
+                                        let badgeColor = "bg-blue-50 text-blue-700 border-blue-100";
+                                        if (log.action?.includes("DELETE") || log.action?.includes("RESET")) {
+                                            badgeColor = "bg-red-50 text-red-700 border-red-200 font-extrabold shadow-sm shadow-red-100";
+                                        } else if (log.action?.includes("CREATE")) {
+                                            badgeColor = "bg-green-50 text-green-700 border-green-200";
+                                        } else if (log.action?.includes("UPDATE")) {
+                                            badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
+                                        }
+
+                                        return (
+                                            <tr key={log.id} className="hover:bg-gray-50/50 transition-colors duration-150">
+                                                <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-gray-400 font-mono">
+                                                    {new Date(log.timestamp).toLocaleString()}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs font-bold text-gray-700">{log.adminName}</span>
+                                                        <span className="text-[10px] text-gray-400 font-mono mt-0.5">{log.adminEmail}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wider border ${badgeColor}`}>
+                                                        {log.action}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-xs font-semibold text-gray-600 max-w-sm break-words leading-normal">
+                                                    {log.details}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-400">
+                                                    {log.ipAddress}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -4003,93 +5259,149 @@ const App: React.FC = () => {
                                         </div>
                                     ))}
                                 </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                                )}
+                                </div>
+                                </div>
+
+                                {/* Admin Actions — Reset Password */}
+                                <div className="bg-red-50 p-4 rounded-2xl border border-red-200">
+                                <h3 className="font-bold text-red-700 uppercase text-[10px] tracking-widest mb-3">Reset Password</h3>
+                                <div className="flex gap-2">
+                                <input
+                                type="text"
+                                placeholder="New password (min 4 chars)"
+                                className="flex-1 bg-white border border-red-200 rounded-lg p-2 text-xs text-gray-700"
+                                id={`reset-pwd-${u.id}`}
+                                />
+                                <button
+                                onClick={async () => {
+                                    const inp = document.getElementById(`reset-pwd-${u.id}`) as HTMLInputElement;
+                                    const pwd = inp?.value?.trim();
+                                    if (!pwd || pwd.length < 4) return alert('Password must be at least 4 characters');
+                                    try {
+                                        const res = await fetch(`/api/admin/users/${u.id}/reset-password`, {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({newPassword: pwd})
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) { inp.value = ''; alert('Password reset successfully'); }
+                                        else alert('Failed: ' + (data.error || 'Unknown error'));
+                                    } catch (e) { alert('Error resetting password'); }
+                                }}
+                                className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors"
+                                >
+                                Reset
+                                </button>
+                                </div>
+                                </div>
+                                </div>
             </div>
         );
     };
 
-    const renderSubscriptionModal = () => {
+        const renderSubscriptionModal = () => {
         const tier = currentUser?.tier || 'Free';
         const used = currentUser?.generations_used || 0;
-        const limit = tier === 'Free' ? 5 : tier === 'Pro' ? 50 : 9999;
+        const limit = getTierLimit(tier);
         const remaining = Math.max(0, limit - used);
 
+        const defaultTiers = {
+            FREE: { name: 'FREE', price: 0, limit: 10 },
+            STANDARD: { name: 'STANDARD', price: 4.99, limit: 500 },
+            PREMIUM: { name: 'PREMIUM', price: 24.99, limit: 1000 },
+            LUXURY: { name: 'LUXURY', price: 49.99, limit: 999999 }
+        };
+        const config = tiersConfig || defaultTiers;
+        const plans = [
+            { 
+                key: 'FREE',
+                name: config.FREE?.name || 'FREE', 
+                price: config.FREE?.price === 0 ? 'SIN COSTO' : `${config.FREE?.price} USD`, 
+                limit: config.FREE?.limit >= 9999 ? 'ILIMITADOS' : (config.FREE?.limit ?? 10),
+                features: ['10 creditos para fotos', 'Usabilidad en 1 dispositivo'],
+                color: 'gray' 
+            },
+            { 
+                key: 'STANDARD',
+                name: config.STANDARD?.name || 'STANDARD', 
+                price: `${config.STANDARD?.price ?? 4.99} USD`, 
+                limit: config.STANDARD?.limit >= 9999 ? 'ILIMITADOS' : (config.STANDARD?.limit ?? 500),
+                features: ['1 mes de Servicio', 'Descarga de imagen HD', '500 creditos para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 2 dispositivos'],
+                color: 'blue' 
+            },
+            { 
+                key: 'PREMIUM',
+                name: config.PREMIUM?.name || 'PREMIUM', 
+                price: `${config.PREMIUM?.price ?? 24.99} USD`, 
+                limit: config.PREMIUM?.limit >= 9999 ? 'ILIMITADOS' : (config.PREMIUM?.limit ?? 1000),
+                features: ['6 meses de Servicio', 'Descarga de imagen HD', '1000 creditos para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 2 dispositivos'],
+                color: 'purple',
+                featured: true
+            },
+            { 
+                key: 'LUXURY',
+                name: config.LUXURY?.name || 'LUXURY', 
+                price: `${config.LUXURY?.price ?? 49.99} USD`, 
+                limit: config.LUXURY?.limit >= 9999 ? 'ILIMITADOS' : (config.LUXURY?.limit ?? 999999),
+                features: ['12 meses de Servicio', 'Descarga de imagen HD', 'Creditos ILIMITADOS para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 3 dispositivos'],
+                color: 'amber' 
+            },
+        ];
+
         return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fadeIn">
-                <div className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col md:flex-row h-full max-h-[80vh]">
-                    <div className="flex-1 p-8 bg-gray-50 overflow-y-auto">
-                        <div className="flex justify-between items-start mb-8">
-                            <div>
-                                <h2 className="text-3xl font-black text-gray-700 uppercase tracking-tighter">Your Plan</h2>
-                                <p className="text-gray-500">Manage your subscription and credits</p>
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 lg:p-8 animate-fadeIn">
+                <div className="bg-[#0b0c10] rounded-[2rem] max-w-7xl w-full overflow-hidden shadow-2xl shadow-purple-900/20 flex flex-col h-full max-h-[95vh] border border-[#1f2833]">
+                    <div className="flex-1 p-8 lg:p-12 overflow-y-auto">
+                        <div className="flex justify-between items-start mb-12 relative">
+                            <div className="w-full text-center">
+                                <h2 className="text-3xl md:text-4xl font-black text-white tracking-[0.3em] uppercase">Planes Disponibles</h2>
+                                {currentUser?.tier_expires_at && tier.toUpperCase() !== 'FREE' && (
+                                    <div className="mt-3 text-sm font-medium">
+                                        {(() => {
+                                            const days = Math.max(0, Math.ceil((new Date(currentUser.tier_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                                            if (days <= 0) return <span className="text-red-500">Your plan expired on {new Date(currentUser.tier_expires_at).toLocaleDateString()}</span>;
+                                            if (days <= 3) return <span className="text-red-500">Your plan expires in {days} days — renew now!</span>;
+                                            if (days <= 7) return <span className="text-amber-400">Your plan expires in {days} days</span>;
+                                            return <span className="text-gray-400">Current plan expires: {new Date(currentUser.tier_expires_at).toLocaleDateString()}</span>;
+                                        })()}
+                                    </div>
+                                )}
                             </div>
-                            <button onClick={() => setShowSubscriptionModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                            <button onClick={() => setShowSubscriptionModal(false)} className="absolute right-0 top-0 p-3 hover:bg-white/10 rounded-full transition-colors text-white">
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            {[
-                                { name: 'Free', price: '$0', limit: 5, color: 'gray' },
-                                { name: 'Pro', price: '$10', limit: 50, color: 'blue', featured: true },
-                                { name: 'Enterprise', price: '$50', limit: '∞', color: 'purple' },
-                            ].map((p) => (
-                                <div key={p.name} className={`relative p-6 rounded-2xl border-2 transition-all ${p.name === tier ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 bg-white'} ${p.featured ? 'scale-105 shadow-xl z-10 border-blue-400' : ''}`}>
-                                    {p.featured && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">Most Popular</div>}
-                                    <div className="text-xl font-black text-gray-700 mb-1">{p.name}</div>
-                                    <div className="text-3xl font-black text-blue-600 mb-4">{p.price}<span className="text-xs text-gray-400 font-normal">/mo</span></div>
-                                    <ul className="space-y-2 mb-6">
-                                        <li className="text-xs text-gray-500 flex items-center gap-2">
-                                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
-                                            {p.limit} AI Generations
-                                        </li>
-                                        <li className="text-xs text-gray-500 flex items-center gap-2">
-                                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" /></svg>
-                                            High-Fidelity Export
-                                        </li>
-                                    </ul>
-                                    <button 
-                                        disabled={p.name === tier}
-                                        onClick={() => handleSelectPlan(p.name)}
-                                        className={`w-full py-2 rounded-xl font-bold text-sm transition-all ${p.name === tier ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/20 active:scale-95'}`}
-                                    >
-                                        {p.name === tier ? 'Current Plan' : 'Select Plan'}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                            {plans.map((p) => {
+                                const isCurrent = p.key.toLowerCase() === tier.toLowerCase();
+                                return (
+                                    <div key={p.key} className={`relative flex flex-col p-[2px] transition-all bg-gradient-to-b from-[#b340eb] to-[#450a80] ${p.featured ? 'scale-105 shadow-[0_0_40px_rgba(179,64,235,0.4)] z-10' : ''}`} style={{ clipPath: 'polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%)' }}>
+                                        <div className="bg-[#0b0c10] h-full flex flex-col text-center" style={{ clipPath: 'polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%)' }}>
+                                            <div className="p-8 flex-1 flex flex-col items-center">
+                                                <div className="text-2xl font-black text-white mb-10 tracking-[0.2em]">{p.name}</div>
+                                                
+                                                <div className="flex-1 flex flex-col justify-center space-y-8 mb-8 w-full">
+                                                    {p.features.map((feat, idx) => (
+                                                        <div key={idx} className="text-sm text-gray-300 font-medium">{feat}</div>
+                                                    ))}
+                                                </div>
+                                            </div>
 
-                    <div className="w-full md:w-80 bg-white border-l border-gray-200 p-8 flex flex-col">
-                        <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest mb-6">Usage Summary</h3>
-                        <div className="flex-1">
-                            <div className="mb-6">
-                                <div className="flex justify-between text-xs font-bold mb-2">
-                                    <span className="text-gray-500">GENERATIONS</span>
-                                    <span className="text-gray-700">{used} / {limit === 9999 ? '∞' : limit}</span>
-                                </div>
-                                <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                                    <div 
-                                        className="bg-blue-500 h-full transition-all duration-1000" 
-                                        style={{ width: `${Math.min(100, (used / limit) * 100)}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-
-                            <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
-                                <div className="text-[10px] font-bold text-blue-500 mb-1 uppercase">Remaining</div>
-                                <div className="text-4xl font-black text-blue-600">{limit === 9999 ? '∞' : remaining}</div>
-                                <div className="text-[10px] text-blue-400">Renders available this month</div>
-                            </div>
-                        </div>
-
-                        <div className="mt-auto pt-6 border-t border-gray-100">
-                            <p className="text-[10px] text-gray-400 leading-relaxed">
-                                Generations reset on the 1st of every month. Unused credits do not roll over.
-                            </p>
+                                            <div className="mt-auto">
+                                                <button 
+                                                    disabled={isCurrent}
+                                                    onClick={() => handleSelectPlan(p.key)}
+                                                    className={`w-full py-5 font-black tracking-widest text-lg transition-all ${isCurrent ? 'bg-purple-900/50 text-white/50 cursor-default' : 'bg-[#c75af6] text-white hover:bg-[#d67bf9] shadow-[0_0_20px_rgba(199,90,246,0.5)] active:scale-95'}`}
+                                                >
+                                                    {isCurrent ? 'PLAN ACTUAL' : p.price}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -4099,6 +5411,17 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700">
+            {/* Floating Toast Notification */}
+            {toast && (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] animate-bounce-in">
+                    <div className="bg-green-600 text-white px-5 py-3 rounded-full shadow-2xl text-sm font-bold flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        {toast}
+                    </div>
+                </div>
+            )}
             {view === AppView.LOGIN && renderLogin()}
             {view === AppView.LANDING && renderLanding()}
             {view === AppView.ADMIN && renderAdmin()}
@@ -4134,9 +5457,15 @@ const App: React.FC = () => {
                         <div className="w-full max-w-4xl h-full">
                             <EstimationPanel
                                 material={selectedMaterial}
-                                onBack={() => setView(AppView.EDITOR)}
+                                roomAnalysis={generationState.analysis}
+                                onBack={() => setView(estimationSource)}
                                 onAddToCart={() => {
-                                    updateCartCount();
+                                    const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
+                                    const wallDims = generationState.analysis?.dimensions;
+                                    const cartDims = wallDims 
+                                        ? { width: wallDims.width, height: wallDims.height } 
+                                        : { width: dims.width, height: dims.length };
+                                    addToCart(selectedMaterial, cartDims, 1);
                                 }}
                                 onNewQuote={() => setView(AppView.GALLERY)}
                                 contractors={contractors}
@@ -4172,8 +5501,94 @@ const App: React.FC = () => {
             {showSubscriptionModal && renderSubscriptionModal()}
             {showUserDetailModal && renderUserDetailModal()}
             {renderProbeModal()}
+
+            {/* ── Bottom Navigation Bar ── */}
+            {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART].includes(view) && (
+                <nav className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100/95 backdrop-blur-md border-t border-gray-300 safe-area-bottom">
+                    <div className="flex justify-around items-center h-16 max-w-lg mx-auto px-2">
+                        {/* Home */}
+                        <button
+                            onClick={() => setView(AppView.LANDING)}
+                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.LANDING ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.LANDING ? 2.5 : 1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                            </svg>
+                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Inicio' : 'Home'}</span>
+                        </button>
+
+                        {/* Gallery */}
+                        <button
+                            onClick={() => setView(AppView.GALLERY)}
+                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.GALLERY ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.GALLERY ? 2.5 : 1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Catálogo' : 'Catalog'}</span>
+                        </button>
+
+                        {/* Camera */}
+                        <button
+                            onClick={() => {
+                                setOriginalImage(null);
+                                setGenerationState(prev => ({ ...prev, resultImage: null, error: null, analysis: null }));
+                                setView(AppView.CAMERA);
+                            }}
+                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.CAMERA ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CAMERA ? 2.5 : 1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CAMERA ? 2.5 : 1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Cámara' : 'Camera'}</span>
+                        </button>
+
+                        {/* Admin (only if admin) */}
+                        {currentUser?.role === 'admin' && (
+                            <button
+                                onClick={() => setView(AppView.ADMIN)}
+                                className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.ADMIN ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.ADMIN ? 2.5 : 1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.ADMIN ? 2.5 : 1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                <span className="text-[10px] font-semibold">{lang === 'es' ? 'Admin' : 'Admin'}</span>
+                            </button>
+                        )}
+
+                        {/* Cart */}
+                        <button
+                            onClick={() => setView(AppView.CART)}
+                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] relative ${view === AppView.CART ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CART ? 2.5 : 1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                            </svg>
+                            {cartCount > 0 && (
+                                <span className="absolute top-0 right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">
+                                    {cartCount}
+                                </span>
+                            )}
+                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Cotizar' : 'Quote'}</span>
+                        </button>
+                    </div>
+                </nav>
+            )}
+
+            {/* Safe area padding for bottom nav */}
+            {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART].includes(view) && (
+                <div className="h-20" />
+            )}
         </div>
     );
 };
 
-export default App;
+const AppWrapper: React.FC = () => (
+    <HashRouter>
+        <App />
+    </HashRouter>
+);
+
+export default AppWrapper;

@@ -1,0 +1,26 @@
+{
+  "FREE": {
+    "name": "FREE",
+    "limit": 10,
+    "price": 0,
+    "stripePriceId": ""
+  },
+  "STANDARD": {
+    "name": "STANDARD",
+    "limit": 500,
+    "price": 4.99,
+    "stripePriceId": "price_standard_placeholder"
+  },
+  "PREMIUM": {
+    "name": "PREMIUM",
+    "limit": 1000,
+    "price": 24.99,
+    "stripePriceId": "price_premium_placeholder"
+  },
+  "LUXURY": {
+    "name": "LUXURY",
+    "limit": 999999,
+    "price": 49.99,
+    "stripePriceId": "price_luxury_placeholder"
+  }
+}
