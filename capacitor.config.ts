@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     iosScheme: 'https',
     cleartext: false,
-    hostname: 'buildingapp.us',
+    hostname: 'localhost',
     allowNavigation: ['buildingapp.us', '*.buildingapp.us']
   },
   android: {
