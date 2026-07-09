@@ -328,6 +328,17 @@ const App: React.FC = () => {
         // Install global fetch interceptor to automatically inject Authorization token
         const originalFetch = window.fetch;
         window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            let finalInput = input;
+            if (typeof input === 'string') {
+                if (input.startsWith('/api/')) {
+                    finalInput = `https://buildingapp.us${input}`;
+                }
+            } else if (input instanceof URL) {
+                if (input.pathname.startsWith('/api/')) {
+                    finalInput = new URL(input.pathname + input.search, 'https://buildingapp.us').href;
+                }
+            }
+
             const stored = localStorage.getItem('constructviz_user');
             let token = '';
             if (stored) {
@@ -355,7 +366,7 @@ const App: React.FC = () => {
                     }
                 }
             }
-            return originalFetch(input, init);
+            return originalFetch(finalInput, init);
         };
 
         try {
@@ -2156,11 +2167,11 @@ const App: React.FC = () => {
                     
                     {/* App Store Compliance: Legal Links */}
                     <div className="mt-6 flex justify-center space-x-4 text-xs text-gray-500">
-                        <a href="https://buildingapp.us/privacy.html" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                        <a href="https://www.unitecusadesign.com/policies/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Política de Privacidad" : "Privacy Policy"}
                         </a>
                         <span>|</span>
-                        <a href="https://buildingapp.us/terms.html" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                        <a href="https://www.unitecusadesign.com/policies/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Términos de Servicio" : "Terms of Service"}
                         </a>
                     </div>

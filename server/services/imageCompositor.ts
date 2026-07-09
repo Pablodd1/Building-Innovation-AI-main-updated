@@ -69,23 +69,37 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
 
     // Try local file paths first
     const possiblePaths: string[] = [];
+    
+    // Resolve project root based on file location to handle Passenger/Hostinger cwd issues
+    let projectRoot = process.cwd();
+    try {
+        if (typeof __dirname !== 'undefined') {
+            projectRoot = path.resolve(__dirname, '..');
+        }
+    } catch (e) {}
 
     if (imageUrl.startsWith(SELF_URL)) {
         const localPath = imageUrl.substring(SELF_URL.length);
         const cleanPath = localPath.startsWith("/") ? localPath.substring(1) : localPath;
         possiblePaths.push(
+            path.join(projectRoot, "public", cleanPath),
+            path.join(projectRoot, cleanPath),
             path.join(process.cwd(), "public", cleanPath),
             path.join(process.cwd(), cleanPath),
             path.resolve(cleanPath)
         );
     } else if (imageUrl.startsWith("/")) {
         possiblePaths.push(
+            path.join(projectRoot, "public", imageUrl.substring(1)),
+            path.join(projectRoot, imageUrl.substring(1)),
             path.join(process.cwd(), "public", imageUrl.substring(1)),
             path.join(process.cwd(), imageUrl.substring(1)),
             path.resolve(imageUrl.substring(1))
         );
     } else if (!imageUrl.startsWith("http")) {
         possiblePaths.push(
+            path.join(projectRoot, "public", imageUrl),
+            path.join(projectRoot, imageUrl),
             path.join(process.cwd(), "public", imageUrl),
             path.join(process.cwd(), imageUrl),
             path.resolve(imageUrl)
