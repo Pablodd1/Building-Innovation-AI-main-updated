@@ -124,7 +124,6 @@ const App: React.FC = () => {
     const [lang, setLang] = useState<Language>("en");
     const [unitSystem, setUnitSystem] = useState<"latam" | "usa">("usa");
 
-<<<<<<< HEAD
     // Sync unit system with language
     useEffect(() => {
         setUnitSystem(lang === "es" ? "latam" : "usa");
@@ -180,8 +179,6 @@ const App: React.FC = () => {
         }
     }, [lang]);
     
-=======
->>>>>>> origin/main
     // Authentication State
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [showMockCheckout, setShowMockCheckout] = useState(false);
@@ -845,71 +842,6 @@ const App: React.FC = () => {
             }
         }
 
-<<<<<<< HEAD
-    const [generationState, setGenerationState] = useState<GenerationState>({
-        isGenerating: false,
-        isAnalyzing: false,
-        error: null,
-        resultImage: null,
-        resultVideo: null,
-        analysis: null,
-        materialProbe: null,
-    });
-    const [cartCount, setCartCount] = useState<number>(0);
-
-    const [showProbeModal, setShowProbeModal] = useState(false);
-    const [history, setHistory] = useState<HistoryItem[]>([]);
-    const [historyIndex, setHistoryIndex] = useState(-1);
-
-    const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-
-    // Helper to save current workspace state
-    const saveWorkspaceState = async (updates: any = {}) => {
-        if (!currentUser) return;
-        try {
-            const stateToSave = {
-                view,
-                displayCurrency,
-                renderOptions,
-                customPrompt,
-                lang,
-                originalImage,
-                selectedMaterial,
-                ...updates
-            };
-            
-            await fetch(`/api/users/${currentUser.id}/memory`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lastState: stateToSave })
-            });
-        } catch (e) {
-            console.warn('Workspace sync failed:', e);
-        }
-    };
-
-    // Auto-save changes dynamically with a debounced sync
-    useEffect(() => {
-        if (currentUser) {
-            const timer = setTimeout(() => {
-                saveWorkspaceState();
-            }, 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [view, displayCurrency, renderOptions, customPrompt, lang, originalImage, selectedMaterial, currentUser]);
-
-    const [checkoutBody, setCheckoutBody] = useState("");
-
-    // Admin pagination and multi-select state
-    const [selectedMaterialIds, setSelectedMaterialIds] = useState<Set<string>>(
-        new Set(),
-    );
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
-    const [adminCollectionFilter, setAdminCollectionFilter] = useState<
-        "All" | "Interior" | "Exterior"
-    >("All");
-=======
         setIsSavingTiers(true);
         try {
             const res = await fetch('/api/admin/tiers', {
@@ -932,7 +864,8 @@ const App: React.FC = () => {
             setIsSavingTiers(false);
         }
     };
->>>>>>> origin/main
+
+
 
     const t = TRANSLATIONS[lang];
 
@@ -1676,15 +1609,11 @@ const App: React.FC = () => {
         });
     };
 
-<<<<<<< HEAD
-    const handleImageCapture = (file: File) => {
+    const handleImageCapture = useCallback((file: File) => {
         if (!file.type.startsWith("image/")) {
             alert(lang === 'es' ? "Por favor suba un archivo de imagen válido." : "Please upload a valid image file.");
             return;
         }
-=======
-    const handleImageCapture = useCallback((file: File) => {
->>>>>>> origin/main
         const reader = new FileReader();
         reader.onloadend = async () => {
             const raw = reader.result as string;
@@ -2091,8 +2020,6 @@ const App: React.FC = () => {
                                 : "Sign Up"}
                     </button>
 
-<<<<<<< HEAD
-=======
                     {/* Skip Login - Demo Mode */}
                     <button
                         type="button"
@@ -2125,8 +2052,6 @@ const App: React.FC = () => {
                     >
                         {t.login.skip || "Quick Admin Access (Demo)"}
                     </button>
-
->>>>>>> origin/main
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>
