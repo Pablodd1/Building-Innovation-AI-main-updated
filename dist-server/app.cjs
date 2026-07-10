@@ -123394,7 +123394,7 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: "Internal server error during authorization" });
     }
   };
-  const allowedOrigins = ["https://buildingapp.us", "https://www.buildingapp.us", "http://localhost:5173", "http://localhost:3000"];
+  const allowedOrigins = ["https://buildingapp.us", "https://www.buildingapp.us", "http://localhost:5173", "http://localhost:3000", "http://localhost", "https://localhost", "capacitor://localhost", "ionic://localhost"];
   app.use((0, import_cors.default)({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) {
