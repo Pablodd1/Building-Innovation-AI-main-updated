@@ -960,14 +960,16 @@ const App: React.FC = () => {
                         const dbImageUrl = m.image_url || m.imageUrl || "";
                         let imageUrl = dbImageUrl;
                         if (imageUrl.includes('drive.google.com') || imageUrl.includes('lh3.googleusercontent.com')) {
-                            imageUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+                            imageUrl = `https://buildingapp.us/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
                         } else if (refCode) {
-                            imageUrl = `/products/${refCode}.webp?v=4`;
+                            imageUrl = `https://buildingapp.us/products/${refCode}.webp?v=4`;
                         } else {
-                            // Rewrite any CDN URLs to local path
+                            // Rewrite any CDN URLs to use live server path
                             const cdnMatch = imageUrl.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
                             if (cdnMatch) {
-                                imageUrl = `/products/${cdnMatch[1]}?v=4`;
+                                imageUrl = `https://buildingapp.us/products/${cdnMatch[1]}?v=4`;
+                            } else if (imageUrl.startsWith('/')) {
+                                imageUrl = `https://buildingapp.us${imageUrl}`;
                             }
                         }
                         // Original DB URL kept for error-recovery fallback
@@ -4166,7 +4168,7 @@ const App: React.FC = () => {
                 </header>
 
                 <div className="flex-1 overflow-y-auto p-4 md:p-6">
-                    <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
                         {filteredMaterials.map((material) => (
                             <ProductCard
                                 key={material.id}
