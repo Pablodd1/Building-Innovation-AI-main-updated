@@ -35,7 +35,7 @@ const config: CapacitorConfig = {
       androidScaleType: 'CENTER_CROP',
     },
     CapacitorHttp: {
-      enabled: true,
+      enabled: false,
     }
   }
 };
