@@ -972,7 +972,7 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
 };
 
 // Middleware + Monitoring + Security
-const allowedOrigins = ['https://buildingapp.us', 'https://www.buildingapp.us', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost', 'capacitor://localhost', 'ionic://localhost'];
+const allowedOrigins = ['https://buildingapp.us', 'https://www.buildingapp.us', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost', 'https://localhost', 'capacitor://localhost', 'ionic://localhost'];
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
