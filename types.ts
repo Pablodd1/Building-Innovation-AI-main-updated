@@ -64,6 +64,7 @@ export interface RoomDimensions {
 export interface RoomAnalysisResult {
   text: string;           // Human-readable analysis text
   dimensions?: RoomDimensions; // Estimated room dimensions from AI
+  surfaces?: any[];       // Detected surfaces for compositing
   style?: string;         // Detected design style
   lighting?: string;      // Detected lighting condition
   suggestedMaterials?: string[]; // Suggested materials

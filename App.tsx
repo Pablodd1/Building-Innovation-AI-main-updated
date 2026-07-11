@@ -1675,7 +1675,8 @@ const App: React.FC = () => {
                 customPrompt,
                 renderOptions,
                 lang,
-                currentUser?.id
+                currentUser?.id,
+                generationState.analysis
             );
 
             const newHistoryItem: HistoryItem = {

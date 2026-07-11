@@ -69,6 +69,7 @@ export interface GenerationResult {
 export interface AnalysisResult {
     analysis: string;
     dimensions?: RoomAnalysisDimensions;
+    surfaces?: any[];
     model: string;
     durationMs: number;
     provider: AIProvider;
@@ -417,9 +418,17 @@ Return your response in this EXACT JSON format:
   },
   "style": "Modern Minimalist",
   "lighting": "Natural daylight from large windows",
-  "suggestedMaterials": ["Polished concrete", "White oak flooring"]
+  "suggestedMaterials": ["Polished concrete", "White oak flooring"],
+  "surfaces": [
+    {
+      "type": "wall",
+      "bounds": { "x": 0.1, "y": 0.15, "width": 0.8, "height": 0.5 },
+      "confidence": 0.9
+    }
+  ]
 }
 
+For surfaces: identify the main target surfaces (walls, floor, ceiling, countertop) visible in the photo. Detect their coordinates in the image as normalized values (0.0 to 1.0) and return them under "bounds". Be as accurate as possible to enable high-fidelity product rendering on that specific surface.
 For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
 
 function parseAnalysisResponse(rawText: string, model: string, provider: AIProvider, durationMs: number): AnalysisResult {
@@ -435,8 +444,9 @@ function parseAnalysisResponse(rawText: string, model: string, provider: AIProvi
             typeof parsed.dimensions.areaM2 === "number"
             ? parsed.dimensions
             : undefined;
+        const surfaces = Array.isArray(parsed.surfaces) ? parsed.surfaces : undefined;
 
-        return { analysis: text, dimensions, model, provider, durationMs };
+        return { analysis: text, dimensions, surfaces, model, provider, durationMs };
     } catch (e) {
         return { analysis: rawText, model, provider, durationMs };
     }

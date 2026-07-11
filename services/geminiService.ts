@@ -35,6 +35,7 @@ export const generateRoomAnalysis = async (
     return {
         text: data.analysis || "Could not analyze the room.",
         dimensions: data.dimensions,
+        surfaces: data.surfaces,
         style: data.style,
         lighting: data.lighting,
         suggestedMaterials: data.suggestedMaterials,
@@ -49,7 +50,8 @@ export const generateMaterialOverlay = async (
     userInstruction: string,
     renderOptions?: RenderOptions,
     lang?: string,
-    userId?: number
+    userId?: number,
+    analysis?: any
 ): Promise<string> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
@@ -65,6 +67,7 @@ export const generateMaterialOverlay = async (
                 renderOptions,
                 lang,
                 userId,
+                analysis,
             }),
             signal: controller.signal,
         });

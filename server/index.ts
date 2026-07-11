@@ -1943,14 +1943,15 @@ const getServerApiKey = (): string => {
 // POST /api/ai/generate-overlay — Multi-provider AI image generation
 app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
     try {
-        const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider } = req.body;
+        const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider, analysis } = req.body;
 
         // Input validation: image must be a valid data URL and under 5MB
         if (!originalImage || typeof originalImage !== 'string') {
             return res.status(400).json({ error: 'originalImage is required and must be a string' });
         }
 
-        const match = originalImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        const cleanedImage = originalImage.replace(/[\r\n\s]/g, "");
+        const match = cleanedImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
         if (!match) {
             return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
         }
@@ -1989,10 +1990,11 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
 
         // Generate via server-side compositing for 100% fidelity
         const compositeResult = await compositeProductOntoPhoto({
-            originalImage,
+            originalImage: cleanedImage,
             material,
             userInstruction: userInstruction || "",
             renderOptions,
+            analysis,
         });
 
         if (compositeResult.method === "composited") {
@@ -2098,11 +2100,11 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'image is required and must be a string' });
         }
 
-        console.log('[AI Debug] Received image. Length:', image.length);
-        console.log('[AI Debug] Image prefix:', image.substring(0, 100));
-        console.log('[AI Debug] Image suffix:', image.substring(image.length - 100));
+        const cleanedImage = image.replace(/[\r\n\s]/g, "");
+        console.log('[AI Debug] Received image. Length:', cleanedImage.length);
+        console.log('[AI Debug] Image prefix:', cleanedImage.substring(0, 100));
 
-        const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+        const match = cleanedImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
         if (!match) {
             console.log('[AI Debug] Image regex match failed!');
             return res.status(400).json({ error: 'Invalid image format. Must be base64 data URL (jpeg, png, webp).' });
@@ -2132,12 +2134,13 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
             return res.status(500).json({ error: "Gemini API Key not configured" });
         }
 
-        const result = await analyzeRoom({ image, lang }, provider, config);
+        const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
 
         res.json({
             success: true,
             analysis: result.analysis,
             dimensions: result.dimensions,
+            surfaces: result.surfaces,
             provider,
             model: result.model
         });

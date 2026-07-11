@@ -104679,9 +104679,17 @@ Return your response in this EXACT JSON format:
   },
   "style": "Modern Minimalist",
   "lighting": "Natural daylight from large windows",
-  "suggestedMaterials": ["Polished concrete", "White oak flooring"]
+  "suggestedMaterials": ["Polished concrete", "White oak flooring"],
+  "surfaces": [
+    {
+      "type": "wall",
+      "bounds": { "x": 0.1, "y": 0.15, "width": 0.8, "height": 0.5 },
+      "confidence": 0.9
+    }
+  ]
 }
 
+For surfaces: identify the main target surfaces (walls, floor, ceiling, countertop) visible in the photo. Detect their coordinates in the image as normalized values (0.0 to 1.0) and return them under "bounds". Be as accurate as possible to enable high-fidelity product rendering on that specific surface.
 For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
 function parseAnalysisResponse(rawText, model, provider, durationMs) {
   try {
@@ -104690,7 +104698,8 @@ function parseAnalysisResponse(rawText, model, provider, durationMs) {
     const parsed = JSON.parse(jsonStr);
     const text = parsed.text || "Could not analyze the room.";
     const dimensions = parsed.dimensions && typeof parsed.dimensions.width === "number" && typeof parsed.dimensions.height === "number" && typeof parsed.dimensions.areaM2 === "number" ? parsed.dimensions : void 0;
-    return { analysis: text, dimensions, model, provider, durationMs };
+    const surfaces = Array.isArray(parsed.surfaces) ? parsed.surfaces : void 0;
+    return { analysis: text, dimensions, surfaces, model, provider, durationMs };
   } catch (e2) {
     return { analysis: rawText, model, provider, durationMs };
   }
@@ -124149,11 +124158,12 @@ Auto-downgraded to Free.`
   };
   app.post("/api/ai/generate-overlay", async (req, res) => {
     try {
-      const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider } = req.body;
+      const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider, analysis } = req.body;
       if (!originalImage || typeof originalImage !== "string") {
         return res.status(400).json({ error: "originalImage is required and must be a string" });
       }
-      const match = originalImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+      const cleanedImage = originalImage.replace(/[\r\n\s]/g, "");
+      const match = cleanedImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
       if (!match) {
         return res.status(400).json({ error: "Invalid image format. Must be base64 data URL (jpeg, png, webp)." });
       }
@@ -124184,10 +124194,11 @@ Auto-downgraded to Free.`
         });
       }
       const compositeResult = await compositeProductOntoPhoto({
-        originalImage,
+        originalImage: cleanedImage,
         material,
         userInstruction: userInstruction || "",
-        renderOptions
+        renderOptions,
+        analysis
       });
       if (compositeResult.method === "composited") {
         pushGenerationLog({
@@ -124278,10 +124289,10 @@ Auto-downgraded to Free.`
         console.log("[AI Debug] Invalid image body: not a string or empty");
         return res.status(400).json({ error: "image is required and must be a string" });
       }
-      console.log("[AI Debug] Received image. Length:", image.length);
-      console.log("[AI Debug] Image prefix:", image.substring(0, 100));
-      console.log("[AI Debug] Image suffix:", image.substring(image.length - 100));
-      const match = image.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+      const cleanedImage = image.replace(/[\r\n\s]/g, "");
+      console.log("[AI Debug] Received image. Length:", cleanedImage.length);
+      console.log("[AI Debug] Image prefix:", cleanedImage.substring(0, 100));
+      const match = cleanedImage.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
       if (!match) {
         console.log("[AI Debug] Image regex match failed!");
         return res.status(400).json({ error: "Invalid image format. Must be base64 data URL (jpeg, png, webp)." });
@@ -124307,11 +124318,12 @@ Auto-downgraded to Free.`
       if (provider === "gemini" && !config.GEMINI_API_KEY) {
         return res.status(500).json({ error: "Gemini API Key not configured" });
       }
-      const result = await analyzeRoom({ image, lang }, provider, config);
+      const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
       res.json({
         success: true,
         analysis: result.analysis,
         dimensions: result.dimensions,
+        surfaces: result.surfaces,
         provider,
         model: result.model
       });
