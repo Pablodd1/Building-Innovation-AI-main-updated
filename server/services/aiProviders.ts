@@ -488,20 +488,16 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     contents.parts.push({ text: finalPrompt });
 
     // ═══════════════════════════════════════════════════════════
-    // GEMINI IMAGE MODEL FALLBACK CHAIN — Updated June 2026
-    // Ordered by capability (best first).
-    // NOTE: Only gemini-2.0-flash-exp supports native image OUTPUT.
-    //       Newer models (3.5-flash) are vision-IN only — not used here.
+    // GEMINI IMAGE MODEL FALLBACK CHAIN — Updated July 2026
+    // Only models that ACTUALLY EXIST and support native image OUTPUT.
+    // Previous chain had hallucinated model names (3.1-flash-image,
+    // 3-pro-image, 2.5-flash-image) that never existed — all 404'd.
     // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        // Primary — latest Gemini 3.1 Flash Image model ("Nano Banana 2")
-        { name: "gemini-3.1-flash-image", supportsImageOutput: true, note: "Primary — native image output (Nano Banana 2)" },
-        // Secondary — Gemini 3 Pro Image model ("Nano Banana Pro")
-        { name: "gemini-3-pro-image", supportsImageOutput: true, note: "Secondary — native image output (Nano Banana Pro)" },
-        // Tertiary — Gemini 2.5 Flash Image model
-        { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "Tertiary — native image output" },
-        // Fallback — text-only description if image gen fails
-        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — retiring Oct 2026, text only" },
+        // Primary — gemini-2.0-flash-exp: ONLY model with native image output
+        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output (experimental but alive)" },
+        // Fallback — text-only description (cannot output images, used for error context)
+        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — text only, will throw if reached" },
     ];
 
     let response;
@@ -646,65 +642,16 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
     const base64Data = cleanBase64(req.originalImage);
     const { prompt: finalPrompt } = buildOverlayPrompt(req);
 
-    // OpenRouter model fallback chain for image generation — updated June 2026
-    // Note: Most OR models return text descriptions, not actual images.
-    // Real image rendering is handled by the sharp compositor (primary path).
-    const OR_IMAGE_MODELS = [
-        "google/gemini-2.5-flash",                       // Latest Gemini 2.5 Flash
-        "openai/gpt-4o",                                 // OpenAI GPT-4o
-        "openai/gpt-4o-mini",                            // OpenAI GPT-4o Mini
-    ];
-
-    let lastError: any = null;
-
-    for (const modelName of OR_IMAGE_MODELS) {
-        try {
-            console.log(`[AI] Trying OpenRouter model: ${modelName}...`);
-            
-            // Note: Most models on OpenRouter don't support native image output
-            // This is a best-effort fallback that returns text descriptions
-            const response = await ai.chat.completions.create({
-                model: modelName,
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
-                            { type: "text", text: finalPrompt + "\n\nIMPORTANT: Return a detailed text description of what the final image would look like." },
-                        ],
-                    },
-                ],
-                max_tokens: 1000,
-            });
-
-            const text = response.choices[0]?.message?.content || "Image generation unavailable";
-            
-            // Create a placeholder with the description
-            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
-                <rect fill="#f0f0f0" width="800" height="600"/>
-                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
-                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, '&quot;')}...</text>
-                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
-            </svg>`;
-            
-            const base64Svg = Buffer.from(svgContent).toString('base64');
-            
-            console.log(`[AI] ✅ OpenRouter success with model: ${modelName}`);
-            recordSuccess("openrouter");
-            return {
-                image: `data:image/svg+xml;base64,${base64Svg}`,
-                model: modelName,
-                durationMs: Date.now() - startTime,
-                provider: "openrouter"
-            };
-        } catch (error: any) {
-            lastError = error;
-            console.warn(`[AI] ⚠️ OpenRouter model ${modelName} failed: ${error.message}`);
-        }
-    }
-
-    recordFailure("openrouter", lastError);
-    throw lastError || new Error("All OpenRouter models failed");
+    // OpenRouter does NOT have any models that support native image OUTPUT.
+    // Chat completion models can only describe images in text — they cannot
+    // generate pixels. Returning a text-wrapped SVG as "success" was misleading
+    // users into seeing a gray placeholder instead of a real overlay.
+    //
+    // FIX (July 2026): Fail honestly so the provider chain falls through to
+    // the sharp compositor or Gemini (gemini-2.0-flash-exp) which CAN output images.
+    console.warn("[AI] OpenRouter cannot generate images — skipping. Use Gemini or compositor instead.");
+    recordFailure("openrouter", new Error("OpenRouter has no image-generation capable models"));
+    throw new Error("OpenRouter cannot generate image overlays (no image-output models available).");
 }
 
 async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Promise<AnalysisResult> {

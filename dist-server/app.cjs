@@ -104727,14 +104727,10 @@ async function generateOverlayGemini(req, config, startTime) {
   }
   contents.parts.push({ text: finalPrompt });
   const IMAGE_MODELS = [
-    // Primary — latest Gemini 3.1 Flash Image model ("Nano Banana 2")
-    { name: "gemini-3.1-flash-image", supportsImageOutput: true, note: "Primary \u2014 native image output (Nano Banana 2)" },
-    // Secondary — Gemini 3 Pro Image model ("Nano Banana Pro")
-    { name: "gemini-3-pro-image", supportsImageOutput: true, note: "Secondary \u2014 native image output (Nano Banana Pro)" },
-    // Tertiary — Gemini 2.5 Flash Image model
-    { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "Tertiary \u2014 native image output" },
-    // Fallback — text-only description if image gen fails
-    { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback \u2014 retiring Oct 2026, text only" }
+    // Primary — gemini-2.0-flash-exp: ONLY model with native image output
+    { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary \u2014 native image output (experimental but alive)" },
+    // Fallback — text-only description (cannot output images, used for error context)
+    { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback \u2014 text only, will throw if reached" }
   ];
   let response;
   let usedModel = IMAGE_MODELS[0].name;
@@ -104843,54 +104839,9 @@ async function generateOverlayOpenRouter(req, config, startTime) {
   const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
   const base64Data = cleanBase64(req.originalImage);
   const { prompt: finalPrompt } = buildOverlayPrompt(req);
-  const OR_IMAGE_MODELS = [
-    "google/gemini-2.5-flash",
-    // Latest Gemini 2.5 Flash
-    "openai/gpt-4o",
-    // OpenAI GPT-4o
-    "openai/gpt-4o-mini"
-    // OpenAI GPT-4o Mini
-  ];
-  let lastError = null;
-  for (const modelName of OR_IMAGE_MODELS) {
-    try {
-      console.log(`[AI] Trying OpenRouter model: ${modelName}...`);
-      const response = await ai.chat.completions.create({
-        model: modelName,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
-              { type: "text", text: finalPrompt + "\n\nIMPORTANT: Return a detailed text description of what the final image would look like." }
-            ]
-          }
-        ],
-        max_tokens: 1e3
-      });
-      const text = response.choices[0]?.message?.content || "Image generation unavailable";
-      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
-                <rect fill="#f0f0f0" width="800" height="600"/>
-                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
-                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, "&quot;")}...</text>
-                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
-            </svg>`;
-      const base64Svg = Buffer.from(svgContent).toString("base64");
-      console.log(`[AI] \u2705 OpenRouter success with model: ${modelName}`);
-      recordSuccess("openrouter");
-      return {
-        image: `data:image/svg+xml;base64,${base64Svg}`,
-        model: modelName,
-        durationMs: Date.now() - startTime,
-        provider: "openrouter"
-      };
-    } catch (error) {
-      lastError = error;
-      console.warn(`[AI] \u26A0\uFE0F OpenRouter model ${modelName} failed: ${error.message}`);
-    }
-  }
-  recordFailure("openrouter", lastError);
-  throw lastError || new Error("All OpenRouter models failed");
+  console.warn("[AI] OpenRouter cannot generate images \u2014 skipping. Use Gemini or compositor instead.");
+  recordFailure("openrouter", new Error("OpenRouter has no image-generation capable models"));
+  throw new Error("OpenRouter cannot generate image overlays (no image-output models available).");
 }
 async function analyzeRoomOpenRouter(req, config) {
   if (!config.OPENROUTER_API_KEY) {
@@ -105220,13 +105171,17 @@ async function getProductImageBuffer(imageUrl) {
       path4.resolve(imageUrl)
     );
   }
+  console.log(`[Compositor] Looking for product image: ${imageUrl}`);
+  console.log(`[Compositor] SELF_URL=${SELF_URL2}, cwd=${process.cwd()}, projectRoot=${typeof __dirname !== "undefined" ? path4.resolve(__dirname, "..") : "N/A"}`);
   for (const p of possiblePaths) {
     if (fs4.existsSync(p)) {
+      console.log(`[Compositor] \u2713 Found product image at: ${p}`);
       const buffer = fs4.readFileSync(p);
       const metadata = await (0, import_sharp.default)(buffer).metadata();
       return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
     }
   }
+  console.warn(`[Compositor] \u2717 Product image not found in any of ${possiblePaths.length} paths:`, possiblePaths);
   if (imageUrl.startsWith("http")) {
     try {
       const response = await fetch(imageUrl, {
@@ -105383,7 +105338,13 @@ async function compositeProductOntoPhoto(req) {
       }
     };
   } catch (error) {
-    console.error("[Compositor] Error:", error.message);
+    console.error("[Compositor] FAILED \u2014 falling back to AI generation:", {
+      error: error.message,
+      materialImageUrl: req.material.imageUrl,
+      materialName: req.material.name,
+      cwd: process.cwd(),
+      hasAnalysis: !!req.analysis
+    });
     return {
       image: req.originalImage,
       method: "fallback",
@@ -122586,7 +122547,7 @@ async function sendPurchaseNotifications(params) {
 var import_crypto2 = __toESM(require("crypto"), 1);
 
 // server/buildInfo.ts
-var BUILD_COMMIT = "${GITHUB_SHA:-unknown}";
+var BUILD_COMMIT = "unknown";
 var BUILD_TIME = (/* @__PURE__ */ new Date()).toISOString();
 
 // server/index.ts

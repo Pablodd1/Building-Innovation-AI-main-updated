@@ -106,13 +106,18 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
         );
     }
 
+    console.log(`[Compositor] Looking for product image: ${imageUrl}`);
+    console.log(`[Compositor] SELF_URL=${SELF_URL}, cwd=${process.cwd()}, projectRoot=${typeof __dirname !== 'undefined' ? path.resolve(__dirname, '..') : 'N/A'}`);
+
     for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
+            console.log(`[Compositor] ✓ Found product image at: ${p}`);
             const buffer = fs.readFileSync(p);
             const metadata = await sharp(buffer).metadata();
             return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
         }
     }
+    console.warn(`[Compositor] ✗ Product image not found in any of ${possiblePaths.length} paths:`, possiblePaths);
 
     // Fetch from URL
     if (imageUrl.startsWith("http")) {
@@ -369,7 +374,13 @@ export async function compositeProductOntoPhoto(
             },
         };
     } catch (error: any) {
-        console.error("[Compositor] Error:", error.message);
+        console.error("[Compositor] FAILED — falling back to AI generation:", {
+            error: error.message,
+            materialImageUrl: req.material.imageUrl,
+            materialName: req.material.name,
+            cwd: process.cwd(),
+            hasAnalysis: !!req.analysis,
+        });
         
         // Cleanly return fallback so that server/index.ts can use AI generation
         return {
