@@ -82,6 +82,8 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
         const localPath = imageUrl.substring(SELF_URL.length);
         const cleanPath = localPath.startsWith("/") ? localPath.substring(1) : localPath;
         possiblePaths.push(
+            path.join(projectRoot, "dist", cleanPath),
+            path.join(process.cwd(), "dist", cleanPath),
             path.join(projectRoot, "public", cleanPath),
             path.join(projectRoot, cleanPath),
             path.join(process.cwd(), "public", cleanPath),
@@ -90,6 +92,8 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
         );
     } else if (imageUrl.startsWith("/")) {
         possiblePaths.push(
+            path.join(projectRoot, "dist", imageUrl.substring(1)),
+            path.join(process.cwd(), "dist", imageUrl.substring(1)),
             path.join(projectRoot, "public", imageUrl.substring(1)),
             path.join(projectRoot, imageUrl.substring(1)),
             path.join(process.cwd(), "public", imageUrl.substring(1)),
@@ -98,6 +102,8 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
         );
     } else if (!imageUrl.startsWith("http")) {
         possiblePaths.push(
+            path.join(projectRoot, "dist", imageUrl),
+            path.join(process.cwd(), "dist", imageUrl),
             path.join(projectRoot, "public", imageUrl),
             path.join(projectRoot, imageUrl),
             path.join(process.cwd(), "public", imageUrl),
@@ -106,18 +112,13 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
         );
     }
 
-    console.log(`[Compositor] Looking for product image: ${imageUrl}`);
-    console.log(`[Compositor] SELF_URL=${SELF_URL}, cwd=${process.cwd()}, projectRoot=${typeof __dirname !== 'undefined' ? path.resolve(__dirname, '..') : 'N/A'}`);
-
     for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
-            console.log(`[Compositor] ✓ Found product image at: ${p}`);
             const buffer = fs.readFileSync(p);
             const metadata = await sharp(buffer).metadata();
             return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
         }
     }
-    console.warn(`[Compositor] ✗ Product image not found in any of ${possiblePaths.length} paths:`, possiblePaths);
 
     // Fetch from URL
     if (imageUrl.startsWith("http")) {
@@ -150,143 +151,148 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
 }
 
 /**
- * Detect where to place the product based on category and analysis.
- * Returns target bounds as percentage of image (0-1).
+ * Detect WALL surfaces only.
+ * Per product spec: "AI segmentation must specifically target and map to wall panels.
+ * It must completely ignore interior floors, decks, and ceilings."
+ *
+ * Strategy:
+ *   1. If AI-detected wall surfaces exist (from analyzeRoom), use them directly.
+ *   2. Otherwise, infer the wall area as the space between the ceiling bottom and
+ *      floor top, using AI-detected ceiling/floor bounds to narrow the region.
+ *   3. Final fallback: top 10% to 72% of the image (typical interior wall zone).
  */
-function detectTargetSurface(
+function detectTargetSurfaces(
     req: CompositingRequest,
     imgWidth: number,
     imgHeight: number
-): { x: number; y: number; width: number; height: number; rotation: number } | null {
-    const category = (req.material.category || "").toLowerCase();
-    const subcategory = (req.material.subcategory || "").toLowerCase();
-    const usage = (req.material.usage || "").toLowerCase();
+): Array<{ x: number; y: number; width: number; height: number; rotation: number }> {
 
-    // Use AI-provided surface detection if available
+    // --- Option 1: Use AI-detected wall surfaces directly ---
     if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
-        const bestSurface = req.analysis.surfaces.reduce((best, s) =>
-            s.confidence > best.confidence ? s : best
+        const wallSurfaces = req.analysis.surfaces.filter(
+            (s: any) => s.type === "wall" && s.confidence > 0.4
         );
-        if (bestSurface.confidence > 0.5) {
-            return {
-                x: bestSurface.bounds.x * imgWidth,
-                y: bestSurface.bounds.y * imgHeight,
-                width: bestSurface.bounds.width * imgWidth,
-                height: bestSurface.bounds.height * imgHeight,
-                rotation: 0,
-            };
+        if (wallSurfaces.length > 0) {
+            console.log(`[Compositor] Using ${wallSurfaces.length} AI-detected wall surface(s)`);
+            return wallSurfaces.map((s: any) => ({
+                x: Math.round(s.bounds.x * imgWidth),
+                y: Math.round(s.bounds.y * imgHeight),
+                width: Math.round(s.bounds.width * imgWidth),
+                height: Math.round(s.bounds.height * imgHeight),
+                rotation: s.rotation || 0,
+            }));
         }
     }
 
-    // Heuristic placement based on product category
-    const W = imgWidth;
-    const H = imgHeight;
+    // --- Option 2: Infer wall zone from ceiling/floor bounds ---
+    let ceilingBottom = Math.round(imgHeight * 0.08);   // default: 8% from top
+    let floorTop = Math.round(imgHeight * 0.72);         // default: 72% from top
 
-    // Wall / Ceiling products → upper portion
-    if (
-        category.includes("cielo") ||
-        category.includes("ceiling") ||
-        category.includes("panel") ||
-        subcategory.includes("pared") ||
-        subcategory.includes("wall") ||
-        usage.includes("wall")
-    ) {
-        // Place on upper wall area
-        return {
-            x: W * 0.1,
-            y: H * 0.15,
-            width: W * 0.8,
-            height: H * 0.5,
-            rotation: 0,
-        };
+    if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
+        const ceilingSurfaces = req.analysis.surfaces.filter(
+            (s: any) => s.type === "ceiling" && s.confidence > 0.5
+        );
+        if (ceilingSurfaces.length > 0) {
+            ceilingBottom = Math.max(
+                ...ceilingSurfaces.map((s: any) =>
+                    Math.round((s.bounds.y + s.bounds.height) * imgHeight)
+                )
+            );
+        }
+
+        const floorSurfaces = req.analysis.surfaces.filter(
+            (s: any) => s.type === "floor" && s.confidence > 0.5
+        );
+        if (floorSurfaces.length > 0) {
+            floorTop = Math.min(
+                ...floorSurfaces.map((s: any) =>
+                    Math.round(s.bounds.y * imgHeight)
+                )
+            );
+        }
     }
 
-    // Floor products → lower portion
-    if (
-        category.includes("piso") ||
-        category.includes("floor") ||
-        usage.includes("floor")
-    ) {
-        return {
-            x: W * 0.1,
-            y: H * 0.55,
-            width: W * 0.8,
-            height: H * 0.35,
-            rotation: 0,
-        };
-    }
+    // Sanity clamps
+    if (ceilingBottom >= imgHeight * 0.4) ceilingBottom = Math.round(imgHeight * 0.08);
+    if (floorTop <= imgHeight * 0.4 || floorTop > imgHeight) floorTop = Math.round(imgHeight * 0.72);
 
-    // Countertop / surface products → middle
-    if (
-        category.includes("counter") ||
-        subcategory.includes("counter")
-    ) {
-        return {
-            x: W * 0.2,
-            y: H * 0.4,
-            width: W * 0.6,
-            height: H * 0.2,
-            rotation: 0,
-        };
-    }
+    const wallHeight = Math.max(1, floorTop - ceilingBottom);
 
-    // Default: center of image
-    return {
-        x: W * 0.1,
-        y: H * 0.2,
-        width: W * 0.8,
-        height: H * 0.5,
-        rotation: 0,
-    };
+    console.log(`[Compositor] Inferred wall zone: y=${ceilingBottom}→${floorTop} (${wallHeight}px)`);
+
+    return [{
+        x: 0,
+        y: ceilingBottom,
+        width: imgWidth,
+        height: wallHeight,
+        rotation: 0
+    }];
 }
 
 /**
- * Apply perspective transform to product image to match target surface.
- * Uses Sharp's affine transform for perspective correction.
+ * Resize and tile the product image in a grid to fill the target surface.
+ * Always uses wall-style grid tiling (per spec: walls only).
  */
-async function transformProductImage(
+async function tileProductImage(
     productBuffer: Buffer,
+    productWidth: number,
+    productHeight: number,
     targetWidth: number,
-    targetHeight: number,
-    rotation: number
+    targetHeight: number
 ): Promise<Buffer> {
-    // Resize product to fit target area while maintaining aspect ratio
-    const productMeta = await sharp(productBuffer).metadata();
-    const productAspect = (productMeta.width || 1) / (productMeta.height || 1);
-    const targetAspect = targetWidth / targetHeight;
+    const aspect = productWidth / productHeight;
 
-    let resizeWidth = targetWidth;
-    let resizeHeight = targetHeight;
+    // Wall panel grid: 200px base tile, preserving aspect ratio
+    let tileWidth = 200;
+    let tileHeight = Math.round(tileWidth / aspect);
 
-    if (productAspect > targetAspect) {
-        resizeWidth = targetWidth;
-        resizeHeight = targetWidth / productAspect;
-    } else {
-        resizeHeight = targetHeight;
-        resizeWidth = targetHeight * productAspect;
+    // Shrink tile unit if it exceeds target dimensions
+    if (tileWidth > targetWidth) {
+        tileWidth = targetWidth;
+        tileHeight = Math.round(tileWidth / aspect);
+    }
+    if (tileHeight > targetHeight) {
+        tileHeight = targetHeight;
+        tileWidth = Math.round(tileHeight * aspect);
     }
 
-    // Apply slight rotation if needed (in degrees)
-    const rotateAngle = rotation || 0;
+    // Ensure tile size is at least 1x1
+    tileWidth = Math.max(1, tileWidth);
+    tileHeight = Math.max(1, tileHeight);
 
-    const transformed = await sharp(productBuffer)
-        .resize(Math.round(resizeWidth), Math.round(resizeHeight), {
-            fit: "inside",
-            withoutEnlargement: false,
-        })
-        .rotate(rotateAngle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    console.log(`[Compositor] Tiling product ${productWidth}x${productHeight} → tile ${tileWidth}x${tileHeight} over ${targetWidth}x${targetHeight}`);
+
+    // Resize product to the tile size
+    const resizedTile = await sharp(productBuffer)
+        .resize(tileWidth, tileHeight, { fit: "fill" })
         .toBuffer();
 
-    return transformed;
+    // Tile the product over a white canvas of target width and height
+    const tiled = await sharp({
+        create: {
+            width: targetWidth,
+            height: targetHeight,
+            channels: 3,
+            background: { r: 255, g: 255, b: 255 }
+        }
+    })
+    .composite([{
+        input: resizedTile,
+        tile: true
+    }])
+    .raw()
+    .toBuffer();
+
+    return tiled;
 }
 
 /**
  * Main compositing function.
  * 1. Loads user's photo
- * 2. Loads product image (100% from database)
- * 3. Detects target surface
- * 4. Transforms and composites product onto photo
- * 5. Returns final image
+ * 2. Loads product image
+ * 3. Chooses blend mode based on product brightness
+ * 4. Tiles product to cover target surfaces
+ * 5. Blends onto user photo
  */
 export async function compositeProductOntoPhoto(
     req: CompositingRequest
@@ -308,56 +314,96 @@ export async function compositeProductOntoPhoto(
         }
 
         // 3. Detect where to place the product
-        const target = detectTargetSurface(req, imgWidth, imgHeight);
-        if (!target) {
-            throw new Error("Could not detect target surface for compositing");
-        }
+        const targets = detectTargetSurfaces(req, imgWidth, imgHeight);
 
-        // 4. Transform product to fit target area
-        const transformedProduct = await transformProductImage(
-            productInfo.buffer,
-            target.width,
-            target.height,
-            target.rotation
-        );
+        // 4. Build composite operations for all targets
+        const category = req.material.category || "";
+        const compositeOperations = [];
 
-        // 5. Composite onto user's photo
-        const opacity = req.renderOptions?.opacity ?? 1.0;
-        const blendMode = opacity < 1.0 ? "over" : "over";
+        for (const target of targets) {
+            // Clamp target bounds to fit strictly inside the image
+            const x = Math.max(0, Math.min(target.x, imgWidth - 1));
+            const y = Math.max(0, Math.min(target.y, imgHeight - 1));
+            const width = Math.max(1, Math.min(target.width, imgWidth - x));
+            const height = Math.max(1, Math.min(target.height, imgHeight - y));
 
-        // Ensure transformed product fits within user photo bounds
-        const productMeta = await sharp(transformedProduct).metadata();
-        const prodW = productMeta.width || target.width;
-        const prodH = productMeta.height || target.height;
+            // Extract original cropped area to determine dynamic luminance threshold
+            const croppedOriginal = sharp(userPhotoData).extract({ left: x, top: y, width, height });
+            const { channels } = await croppedOriginal.stats();
+            const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
+            // Set threshold to avgLuma - 20, clamped between 50 and 200
+            const thresholdValue = Math.max(50, Math.min(200, Math.round(avgLuma - 20)));
+            console.log(`[Compositor] Target x:${x} y:${y} mean luma: ${avgLuma.toFixed(1)}, using threshold: ${thresholdValue}`);
 
-        // Clamp composite to photo bounds (sharp requires input <= canvas)
-        const maxW = Math.min(prodW, imgWidth);
-        const maxH = Math.min(prodH, imgHeight);
-        let compositeLeft = Math.round(target.x + (target.width - prodW) / 2);
-        let compositeTop = Math.round(target.y + (target.height - prodH) / 2);
-
-        // Clamp position so composite stays within photo
-        compositeLeft = Math.max(0, Math.min(compositeLeft, imgWidth - maxW));
-        compositeTop = Math.max(0, Math.min(compositeTop, imgHeight - maxH));
-
-        // Resize product if it still exceeds photo dimensions
-        let finalProduct = transformedProduct;
-        if (prodW > imgWidth || prodH > imgHeight) {
-            finalProduct = await sharp(transformedProduct)
-                .resize(imgWidth, imgHeight, { fit: "inside", withoutEnlargement: true })
+            // Create smooth greyscale threshold mask (wall plaster = white, dark foreground items = black)
+            const mask = await croppedOriginal
+                .greyscale()
+                .threshold(thresholdValue)
+                .blur(1.5)
+                .raw()
                 .toBuffer();
+
+            // Tile the product (returns raw RGB buffer)
+            const tiledProduct = await tileProductImage(
+                productInfo.buffer,
+                productInfo.width,
+                productInfo.height,
+                width,
+                height
+            );
+
+            // Join the raw mask as the alpha channel of the raw tiled product
+            const maskedProduct = await sharp(tiledProduct, {
+                raw: {
+                    width,
+                    height,
+                    channels: 3
+                }
+            })
+            .joinChannel(mask, {
+                raw: {
+                    width,
+                    height,
+                    channels: 1
+                }
+            })
+            .png()
+            .toBuffer();
+
+            // Two-pass blend for photorealism:
+            //  Pass 1 (multiply): merges the texture color with the wall, preserving shadows
+            //  Pass 2 (soft-light): recovers brightness that multiply darkens,
+            //         giving a natural "painted on" look
+            compositeOperations.push({
+                input: maskedProduct,
+                left: x,
+                top: y,
+                blend: "multiply" as any
+            });
+
+            // Build a lighter (50% opacity) version of the masked product for soft-light recovery
+            const softLightLayer = await sharp(maskedProduct)
+                .ensureAlpha()
+                .composite([{
+                    input: Buffer.from([0, 0, 0, 128]),  // 50% transparent black overlay
+                    raw: { width: 1, height: 1, channels: 4 },
+                    tile: true,
+                    blend: "dest-in" as any  // reduces alpha to 50%
+                }])
+                .png()
+                .toBuffer();
+
+            compositeOperations.push({
+                input: softLightLayer,
+                left: x,
+                top: y,
+                blend: "soft-light" as any
+            });
         }
 
-        // Create the composite
-        const compositeImage = await userPhoto
-            .composite([
-                {
-                    input: finalProduct,
-                    left: compositeLeft,
-                    top: compositeTop,
-                    blend: blendMode,
-                },
-            ])
+        // 5. Composite all layers onto user's photo
+        const compositeImage = await sharp(userPhotoData)
+            .composite(compositeOperations)
             .jpeg({ quality: 95 })
             .toBuffer();
 
@@ -369,20 +415,13 @@ export async function compositeProductOntoPhoto(
             durationMs,
             details: {
                 productImageUsed: req.material.imageUrl || "unknown",
-                transform: `resize(${target.width}x${target.height}), rotate(${target.rotation}deg)`,
+                transform: `tiled x${targets.length} surfaces, luma-shaded over`,
                 surfaceDetected: !!req.analysis?.surfaces,
             },
         };
     } catch (error: any) {
-        console.error("[Compositor] FAILED — falling back to AI generation:", {
-            error: error.message,
-            materialImageUrl: req.material.imageUrl,
-            materialName: req.material.name,
-            cwd: process.cwd(),
-            hasAnalysis: !!req.analysis,
-        });
+        console.error("[Compositor] Error:", error.stack || error.message);
         
-        // Cleanly return fallback so that server/index.ts can use AI generation
         return {
             image: req.originalImage,
             method: "fallback",

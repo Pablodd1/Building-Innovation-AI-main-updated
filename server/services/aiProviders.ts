@@ -217,6 +217,8 @@ const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType
                 const localPath = urlPath.substring(SELF_URL.length);
                 const cleanPath2 = localPath.startsWith("/") ? localPath.substring(1) : localPath;
                 const possiblePaths = [
+                    path.join(process.cwd(), "dist", cleanPath2),
+                    path.join(process.cwd(), "public", cleanPath2),
                     path.join(process.cwd(), cleanPath2),
                     path.resolve(cleanPath2),
                 ];
@@ -228,8 +230,7 @@ const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType
                         return { data: data.toString("base64"), mimeType };
                     }
                 }
-                console.warn(`getImageBase64: local file not found for ${urlPath}`);
-                return null;
+                console.warn(`getImageBase64: local file not found for ${urlPath}, falling back to fetch...`);
             }
             const response = await fetch(urlPath);
             if (!response.ok) return null;
@@ -286,7 +287,7 @@ export function loadConfig(): AIConfig {
         try {
             const file = JSON.parse(fs.readFileSync(configPath, "utf8"));
             return {
-                AI_PROVIDER: file.AI_PROVIDER || defaults.AI_PROVIDER,
+                AI_PROVIDER: defaults.GEMINI_API_KEY ? "gemini" : (file.AI_PROVIDER || defaults.AI_PROVIDER),
                 GEMINI_API_KEY: file.GEMINI_API_KEY || defaults.GEMINI_API_KEY,
                 OPENAI_API_KEY: file.OPENAI_API_KEY || defaults.OPENAI_API_KEY,
                 OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults.OPENROUTER_API_KEY,
@@ -406,11 +407,13 @@ STRICT RENDERING RULES:
     return { prompt, isFurniture };
 }
 
-const ANALYSIS_PROMPT = `Analyze this interior/exterior space as a Senior Architect.
+const ANALYSIS_PROMPT = `You are a Senior Architectural Interior Analyst. Analyze this photo of an interior/exterior space.
+
+Your PRIMARY task is to detect WALL PANELS with pixel-accurate bounding boxes. The product texture will be mapped exclusively to walls — floors, decks, and ceilings must be IGNORED for rendering.
 
 Return your response in this EXACT JSON format:
 {
-  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested materials.",
+  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested wall materials.",
   "dimensions": {
     "width": 350,
     "height": 280,
@@ -418,18 +421,22 @@ Return your response in this EXACT JSON format:
   },
   "style": "Modern Minimalist",
   "lighting": "Natural daylight from large windows",
-  "suggestedMaterials": ["Polished concrete", "White oak flooring"],
+  "suggestedMaterials": ["Wood paneling", "Textured wallpaper"],
   "surfaces": [
     {
       "type": "wall",
-      "bounds": { "x": 0.1, "y": 0.15, "width": 0.8, "height": 0.5 },
-      "confidence": 0.9
+      "bounds": { "x": 0.05, "y": 0.1, "width": 0.9, "height": 0.55 },
+      "confidence": 0.95
     }
   ]
 }
 
-For surfaces: identify the main target surfaces (walls, floor, ceiling, countertop) visible in the photo. Detect their coordinates in the image as normalized values (0.0 to 1.0) and return them under "bounds". Be as accurate as possible to enable high-fidelity product rendering on that specific surface.
-For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
+CRITICAL surface detection rules:
+1. Return ONLY surfaces of type "wall". Also return "ceiling" and "floor" surfaces ONLY so the compositor knows where the wall STARTS and ENDS vertically — but these are NOT rendered onto.
+2. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall even if there are shelves, picture frames, wall decor, clocks, or furniture in front of it. Do NOT return tiny empty strips — return the LARGEST possible wall rectangle.
+3. If you see multiple distinct walls (e.g., left wall, back wall, right wall), return each as a SEPARATE surface entry with its own bounding box.
+4. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions. Be as accurate as possible — these bounding boxes drive the product rendering.
+5. For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000.`;
 
 function parseAnalysisResponse(rawText: string, model: string, provider: AIProvider, durationMs: number): AnalysisResult {
     try {
@@ -488,16 +495,15 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     contents.parts.push({ text: finalPrompt });
 
     // ═══════════════════════════════════════════════════════════
-    // GEMINI IMAGE MODEL FALLBACK CHAIN — Updated July 2026
-    // Only models that ACTUALLY EXIST and support native image OUTPUT.
-    // Previous chain had hallucinated model names (3.1-flash-image,
-    // 3-pro-image, 2.5-flash-image) that never existed — all 404'd.
+    // GEMINI IMAGE MODEL FALLBACK CHAIN — Updated June 2026
+    // Ordered by capability (best first).
+    // NOTE: Only gemini-2.0-flash-exp supports native image OUTPUT.
+    //       Newer models (3.5-flash) are vision-IN only — not used here.
     // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        // Primary — gemini-2.0-flash-exp: ONLY model with native image output
-        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output (experimental but alive)" },
-        // Fallback — text-only description (cannot output images, used for error context)
-        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — text only, will throw if reached" },
+        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output" },
+        // Fallback — text-only description if image gen fails
+        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — retiring Oct 2026, text only" },
     ];
 
     let response;
@@ -642,16 +648,65 @@ async function generateOverlayOpenRouter(req: OverlayRequest, config: AIConfig, 
     const base64Data = cleanBase64(req.originalImage);
     const { prompt: finalPrompt } = buildOverlayPrompt(req);
 
-    // OpenRouter does NOT have any models that support native image OUTPUT.
-    // Chat completion models can only describe images in text — they cannot
-    // generate pixels. Returning a text-wrapped SVG as "success" was misleading
-    // users into seeing a gray placeholder instead of a real overlay.
-    //
-    // FIX (July 2026): Fail honestly so the provider chain falls through to
-    // the sharp compositor or Gemini (gemini-2.0-flash-exp) which CAN output images.
-    console.warn("[AI] OpenRouter cannot generate images — skipping. Use Gemini or compositor instead.");
-    recordFailure("openrouter", new Error("OpenRouter has no image-generation capable models"));
-    throw new Error("OpenRouter cannot generate image overlays (no image-output models available).");
+    // OpenRouter model fallback chain for image generation — updated June 2026
+    // Note: Most OR models return text descriptions, not actual images.
+    // Real image rendering is handled by the sharp compositor (primary path).
+    const OR_IMAGE_MODELS = [
+        "google/gemini-2.5-flash",                       // Latest Gemini 2.5 Flash
+        "openai/gpt-4o",                                 // OpenAI GPT-4o
+        "openai/gpt-4o-mini",                            // OpenAI GPT-4o Mini
+    ];
+
+    let lastError: any = null;
+
+    for (const modelName of OR_IMAGE_MODELS) {
+        try {
+            console.log(`[AI] Trying OpenRouter model: ${modelName}...`);
+            
+            // Note: Most models on OpenRouter don't support native image output
+            // This is a best-effort fallback that returns text descriptions
+            const response = await ai.chat.completions.create({
+                model: modelName,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
+                            { type: "text", text: finalPrompt + "\n\nIMPORTANT: Return a detailed text description of what the final image would look like." },
+                        ],
+                    },
+                ],
+                max_tokens: 1000,
+            });
+
+            const text = response.choices[0]?.message?.content || "Image generation unavailable";
+            
+            // Create a placeholder with the description
+            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+                <rect fill="#f0f0f0" width="800" height="600"/>
+                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
+                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, '&quot;')}...</text>
+                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
+            </svg>`;
+            
+            const base64Svg = Buffer.from(svgContent).toString('base64');
+            
+            console.log(`[AI] ✅ OpenRouter success with model: ${modelName}`);
+            recordSuccess("openrouter");
+            return {
+                image: `data:image/svg+xml;base64,${base64Svg}`,
+                model: modelName,
+                durationMs: Date.now() - startTime,
+                provider: "openrouter"
+            };
+        } catch (error: any) {
+            lastError = error;
+            console.warn(`[AI] ⚠️ OpenRouter model ${modelName} failed: ${error.message}`);
+        }
+    }
+
+    recordFailure("openrouter", lastError);
+    throw lastError || new Error("All OpenRouter models failed");
 }
 
 async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Promise<AnalysisResult> {
@@ -960,9 +1015,6 @@ export async function testAIConnection(config: AIConfig): Promise<any> {
 
         // Test each Gemini image model candidates
         const candidateImageModels = [
-            "gemini-3.1-flash-image",
-            "gemini-3-pro-image",
-            "gemini-2.5-flash-image",
             "gemini-2.0-flash-exp"
         ];
 

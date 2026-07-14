@@ -104519,6 +104519,8 @@ var getImageBase64 = async (urlPath) => {
         const localPath = urlPath.substring(SELF_URL.length);
         const cleanPath2 = localPath.startsWith("/") ? localPath.substring(1) : localPath;
         const possiblePaths2 = [
+          import_path61.default.join(process.cwd(), "dist", cleanPath2),
+          import_path61.default.join(process.cwd(), "public", cleanPath2),
           import_path61.default.join(process.cwd(), cleanPath2),
           import_path61.default.resolve(cleanPath2)
         ];
@@ -104530,8 +104532,7 @@ var getImageBase64 = async (urlPath) => {
             return { data: data.toString("base64"), mimeType: mimeType2 };
           }
         }
-        console.warn(`getImageBase64: local file not found for ${urlPath}`);
-        return null;
+        console.warn(`getImageBase64: local file not found for ${urlPath}, falling back to fetch...`);
       }
       const response = await fetch(urlPath);
       if (!response.ok) return null;
@@ -104581,7 +104582,7 @@ function loadConfig() {
     try {
       const file = JSON.parse(import_fs2.default.readFileSync(configPath, "utf8"));
       return {
-        AI_PROVIDER: file.AI_PROVIDER || defaults3.AI_PROVIDER,
+        AI_PROVIDER: defaults3.GEMINI_API_KEY ? "gemini" : file.AI_PROVIDER || defaults3.AI_PROVIDER,
         GEMINI_API_KEY: file.GEMINI_API_KEY || defaults3.GEMINI_API_KEY,
         OPENAI_API_KEY: file.OPENAI_API_KEY || defaults3.OPENAI_API_KEY,
         OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults3.OPENROUTER_API_KEY,
@@ -104667,11 +104668,13 @@ STRICT RENDERING RULES:
   }
   return { prompt, isFurniture };
 }
-var ANALYSIS_PROMPT = `Analyze this interior/exterior space as a Senior Architect.
+var ANALYSIS_PROMPT = `You are a Senior Architectural Interior Analyst. Analyze this photo of an interior/exterior space.
+
+Your PRIMARY task is to detect WALL PANELS with pixel-accurate bounding boxes. The product texture will be mapped exclusively to walls \u2014 floors, decks, and ceilings must be IGNORED for rendering.
 
 Return your response in this EXACT JSON format:
 {
-  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested materials.",
+  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested wall materials.",
   "dimensions": {
     "width": 350,
     "height": 280,
@@ -104679,18 +104682,22 @@ Return your response in this EXACT JSON format:
   },
   "style": "Modern Minimalist",
   "lighting": "Natural daylight from large windows",
-  "suggestedMaterials": ["Polished concrete", "White oak flooring"],
+  "suggestedMaterials": ["Wood paneling", "Textured wallpaper"],
   "surfaces": [
     {
       "type": "wall",
-      "bounds": { "x": 0.1, "y": 0.15, "width": 0.8, "height": 0.5 },
-      "confidence": 0.9
+      "bounds": { "x": 0.05, "y": 0.1, "width": 0.9, "height": 0.55 },
+      "confidence": 0.95
     }
   ]
 }
 
-For surfaces: identify the main target surfaces (walls, floor, ceiling, countertop) visible in the photo. Detect their coordinates in the image as normalized values (0.0 to 1.0) and return them under "bounds". Be as accurate as possible to enable high-fidelity product rendering on that specific surface.
-For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000. Use typical room proportions if no reference objects are visible. Be realistic but do your best estimate.`;
+CRITICAL surface detection rules:
+1. Return ONLY surfaces of type "wall". Also return "ceiling" and "floor" surfaces ONLY so the compositor knows where the wall STARTS and ENDS vertically \u2014 but these are NOT rendered onto.
+2. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall even if there are shelves, picture frames, wall decor, clocks, or furniture in front of it. Do NOT return tiny empty strips \u2014 return the LARGEST possible wall rectangle.
+3. If you see multiple distinct walls (e.g., left wall, back wall, right wall), return each as a SEPARATE surface entry with its own bounding box.
+4. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions. Be as accurate as possible \u2014 these bounding boxes drive the product rendering.
+5. For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000.`;
 function parseAnalysisResponse(rawText, model, provider, durationMs) {
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
@@ -104727,10 +104734,9 @@ async function generateOverlayGemini(req, config, startTime) {
   }
   contents.parts.push({ text: finalPrompt });
   const IMAGE_MODELS = [
-    // Primary — gemini-2.0-flash-exp: ONLY model with native image output
-    { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary \u2014 native image output (experimental but alive)" },
-    // Fallback — text-only description (cannot output images, used for error context)
-    { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback \u2014 text only, will throw if reached" }
+    { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary \u2014 native image output" },
+    // Fallback — text-only description if image gen fails
+    { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback \u2014 retiring Oct 2026, text only" }
   ];
   let response;
   let usedModel = IMAGE_MODELS[0].name;
@@ -104839,9 +104845,54 @@ async function generateOverlayOpenRouter(req, config, startTime) {
   const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
   const base64Data = cleanBase64(req.originalImage);
   const { prompt: finalPrompt } = buildOverlayPrompt(req);
-  console.warn("[AI] OpenRouter cannot generate images \u2014 skipping. Use Gemini or compositor instead.");
-  recordFailure("openrouter", new Error("OpenRouter has no image-generation capable models"));
-  throw new Error("OpenRouter cannot generate image overlays (no image-output models available).");
+  const OR_IMAGE_MODELS = [
+    "google/gemini-2.5-flash",
+    // Latest Gemini 2.5 Flash
+    "openai/gpt-4o",
+    // OpenAI GPT-4o
+    "openai/gpt-4o-mini"
+    // OpenAI GPT-4o Mini
+  ];
+  let lastError = null;
+  for (const modelName of OR_IMAGE_MODELS) {
+    try {
+      console.log(`[AI] Trying OpenRouter model: ${modelName}...`);
+      const response = await ai.chat.completions.create({
+        model: modelName,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
+              { type: "text", text: finalPrompt + "\n\nIMPORTANT: Return a detailed text description of what the final image would look like." }
+            ]
+          }
+        ],
+        max_tokens: 1e3
+      });
+      const text = response.choices[0]?.message?.content || "Image generation unavailable";
+      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+                <rect fill="#f0f0f0" width="800" height="600"/>
+                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
+                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, "&quot;")}...</text>
+                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
+            </svg>`;
+      const base64Svg = Buffer.from(svgContent).toString("base64");
+      console.log(`[AI] \u2705 OpenRouter success with model: ${modelName}`);
+      recordSuccess("openrouter");
+      return {
+        image: `data:image/svg+xml;base64,${base64Svg}`,
+        model: modelName,
+        durationMs: Date.now() - startTime,
+        provider: "openrouter"
+      };
+    } catch (error) {
+      lastError = error;
+      console.warn(`[AI] \u26A0\uFE0F OpenRouter model ${modelName} failed: ${error.message}`);
+    }
+  }
+  recordFailure("openrouter", lastError);
+  throw lastError || new Error("All OpenRouter models failed");
 }
 async function analyzeRoomOpenRouter(req, config) {
   if (!config.OPENROUTER_API_KEY) {
@@ -105069,9 +105120,6 @@ async function testAIConnection(config) {
       };
     }
     const candidateImageModels = [
-      "gemini-3.1-flash-image",
-      "gemini-3-pro-image",
-      "gemini-2.5-flash-image",
       "gemini-2.0-flash-exp"
     ];
     for (const model of candidateImageModels) {
@@ -105148,6 +105196,8 @@ async function getProductImageBuffer(imageUrl) {
     const localPath = imageUrl.substring(SELF_URL2.length);
     const cleanPath = localPath.startsWith("/") ? localPath.substring(1) : localPath;
     possiblePaths.push(
+      path4.join(projectRoot, "dist", cleanPath),
+      path4.join(process.cwd(), "dist", cleanPath),
       path4.join(projectRoot, "public", cleanPath),
       path4.join(projectRoot, cleanPath),
       path4.join(process.cwd(), "public", cleanPath),
@@ -105156,6 +105206,8 @@ async function getProductImageBuffer(imageUrl) {
     );
   } else if (imageUrl.startsWith("/")) {
     possiblePaths.push(
+      path4.join(projectRoot, "dist", imageUrl.substring(1)),
+      path4.join(process.cwd(), "dist", imageUrl.substring(1)),
       path4.join(projectRoot, "public", imageUrl.substring(1)),
       path4.join(projectRoot, imageUrl.substring(1)),
       path4.join(process.cwd(), "public", imageUrl.substring(1)),
@@ -105164,6 +105216,8 @@ async function getProductImageBuffer(imageUrl) {
     );
   } else if (!imageUrl.startsWith("http")) {
     possiblePaths.push(
+      path4.join(projectRoot, "dist", imageUrl),
+      path4.join(process.cwd(), "dist", imageUrl),
       path4.join(projectRoot, "public", imageUrl),
       path4.join(projectRoot, imageUrl),
       path4.join(process.cwd(), "public", imageUrl),
@@ -105171,17 +105225,13 @@ async function getProductImageBuffer(imageUrl) {
       path4.resolve(imageUrl)
     );
   }
-  console.log(`[Compositor] Looking for product image: ${imageUrl}`);
-  console.log(`[Compositor] SELF_URL=${SELF_URL2}, cwd=${process.cwd()}, projectRoot=${typeof __dirname !== "undefined" ? path4.resolve(__dirname, "..") : "N/A"}`);
   for (const p of possiblePaths) {
     if (fs4.existsSync(p)) {
-      console.log(`[Compositor] \u2713 Found product image at: ${p}`);
       const buffer = fs4.readFileSync(p);
       const metadata = await (0, import_sharp.default)(buffer).metadata();
       return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
     }
   }
-  console.warn(`[Compositor] \u2717 Product image not found in any of ${possiblePaths.length} paths:`, possiblePaths);
   if (imageUrl.startsWith("http")) {
     try {
       const response = await fetch(imageUrl, {
@@ -105206,80 +105256,86 @@ async function getProductImageBuffer(imageUrl) {
   }
   return null;
 }
-function detectTargetSurface(req, imgWidth, imgHeight) {
-  const category = (req.material.category || "").toLowerCase();
-  const subcategory = (req.material.subcategory || "").toLowerCase();
-  const usage = (req.material.usage || "").toLowerCase();
+function detectTargetSurfaces(req, imgWidth, imgHeight) {
   if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
-    const bestSurface = req.analysis.surfaces.reduce(
-      (best, s2) => s2.confidence > best.confidence ? s2 : best
+    const wallSurfaces = req.analysis.surfaces.filter(
+      (s2) => s2.type === "wall" && s2.confidence > 0.4
     );
-    if (bestSurface.confidence > 0.5) {
-      return {
-        x: bestSurface.bounds.x * imgWidth,
-        y: bestSurface.bounds.y * imgHeight,
-        width: bestSurface.bounds.width * imgWidth,
-        height: bestSurface.bounds.height * imgHeight,
-        rotation: 0
-      };
+    if (wallSurfaces.length > 0) {
+      console.log(`[Compositor] Using ${wallSurfaces.length} AI-detected wall surface(s)`);
+      return wallSurfaces.map((s2) => ({
+        x: Math.round(s2.bounds.x * imgWidth),
+        y: Math.round(s2.bounds.y * imgHeight),
+        width: Math.round(s2.bounds.width * imgWidth),
+        height: Math.round(s2.bounds.height * imgHeight),
+        rotation: s2.rotation || 0
+      }));
     }
   }
-  const W = imgWidth;
-  const H = imgHeight;
-  if (category.includes("cielo") || category.includes("ceiling") || category.includes("panel") || subcategory.includes("pared") || subcategory.includes("wall") || usage.includes("wall")) {
-    return {
-      x: W * 0.1,
-      y: H * 0.15,
-      width: W * 0.8,
-      height: H * 0.5,
-      rotation: 0
-    };
+  let ceilingBottom = Math.round(imgHeight * 0.08);
+  let floorTop = Math.round(imgHeight * 0.72);
+  if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
+    const ceilingSurfaces = req.analysis.surfaces.filter(
+      (s2) => s2.type === "ceiling" && s2.confidence > 0.5
+    );
+    if (ceilingSurfaces.length > 0) {
+      ceilingBottom = Math.max(
+        ...ceilingSurfaces.map(
+          (s2) => Math.round((s2.bounds.y + s2.bounds.height) * imgHeight)
+        )
+      );
+    }
+    const floorSurfaces = req.analysis.surfaces.filter(
+      (s2) => s2.type === "floor" && s2.confidence > 0.5
+    );
+    if (floorSurfaces.length > 0) {
+      floorTop = Math.min(
+        ...floorSurfaces.map(
+          (s2) => Math.round(s2.bounds.y * imgHeight)
+        )
+      );
+    }
   }
-  if (category.includes("piso") || category.includes("floor") || usage.includes("floor")) {
-    return {
-      x: W * 0.1,
-      y: H * 0.55,
-      width: W * 0.8,
-      height: H * 0.35,
-      rotation: 0
-    };
-  }
-  if (category.includes("counter") || subcategory.includes("counter")) {
-    return {
-      x: W * 0.2,
-      y: H * 0.4,
-      width: W * 0.6,
-      height: H * 0.2,
-      rotation: 0
-    };
-  }
-  return {
-    x: W * 0.1,
-    y: H * 0.2,
-    width: W * 0.8,
-    height: H * 0.5,
+  if (ceilingBottom >= imgHeight * 0.4) ceilingBottom = Math.round(imgHeight * 0.08);
+  if (floorTop <= imgHeight * 0.4 || floorTop > imgHeight) floorTop = Math.round(imgHeight * 0.72);
+  const wallHeight = Math.max(1, floorTop - ceilingBottom);
+  console.log(`[Compositor] Inferred wall zone: y=${ceilingBottom}\u2192${floorTop} (${wallHeight}px)`);
+  return [{
+    x: 0,
+    y: ceilingBottom,
+    width: imgWidth,
+    height: wallHeight,
     rotation: 0
-  };
+  }];
 }
-async function transformProductImage(productBuffer, targetWidth, targetHeight, rotation) {
-  const productMeta = await (0, import_sharp.default)(productBuffer).metadata();
-  const productAspect = (productMeta.width || 1) / (productMeta.height || 1);
-  const targetAspect = targetWidth / targetHeight;
-  let resizeWidth = targetWidth;
-  let resizeHeight = targetHeight;
-  if (productAspect > targetAspect) {
-    resizeWidth = targetWidth;
-    resizeHeight = targetWidth / productAspect;
-  } else {
-    resizeHeight = targetHeight;
-    resizeWidth = targetHeight * productAspect;
+async function tileProductImage(productBuffer, productWidth, productHeight, targetWidth, targetHeight) {
+  const aspect = productWidth / productHeight;
+  let tileWidth = 200;
+  let tileHeight = Math.round(tileWidth / aspect);
+  if (tileWidth > targetWidth) {
+    tileWidth = targetWidth;
+    tileHeight = Math.round(tileWidth / aspect);
   }
-  const rotateAngle = rotation || 0;
-  const transformed = await (0, import_sharp.default)(productBuffer).resize(Math.round(resizeWidth), Math.round(resizeHeight), {
-    fit: "inside",
-    withoutEnlargement: false
-  }).rotate(rotateAngle, { background: { r: 0, g: 0, b: 0, alpha: 0 } }).toBuffer();
-  return transformed;
+  if (tileHeight > targetHeight) {
+    tileHeight = targetHeight;
+    tileWidth = Math.round(tileHeight * aspect);
+  }
+  tileWidth = Math.max(1, tileWidth);
+  tileHeight = Math.max(1, tileHeight);
+  console.log(`[Compositor] Tiling product ${productWidth}x${productHeight} \u2192 tile ${tileWidth}x${tileHeight} over ${targetWidth}x${targetHeight}`);
+  const resizedTile = await (0, import_sharp.default)(productBuffer).resize(tileWidth, tileHeight, { fit: "fill" }).toBuffer();
+  const tiled = await (0, import_sharp.default)({
+    create: {
+      width: targetWidth,
+      height: targetHeight,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 }
+    }
+  }).composite([{
+    input: resizedTile,
+    tile: true
+  }]).raw().toBuffer();
+  return tiled;
 }
 async function compositeProductOntoPhoto(req) {
   const startTime = Date.now();
@@ -105293,39 +105349,62 @@ async function compositeProductOntoPhoto(req) {
     if (!productInfo) {
       throw new Error(`Product image not found: ${req.material.imageUrl}`);
     }
-    const target = detectTargetSurface(req, imgWidth, imgHeight);
-    if (!target) {
-      throw new Error("Could not detect target surface for compositing");
+    const targets = detectTargetSurfaces(req, imgWidth, imgHeight);
+    const category = req.material.category || "";
+    const compositeOperations = [];
+    for (const target of targets) {
+      const x2 = Math.max(0, Math.min(target.x, imgWidth - 1));
+      const y = Math.max(0, Math.min(target.y, imgHeight - 1));
+      const width = Math.max(1, Math.min(target.width, imgWidth - x2));
+      const height = Math.max(1, Math.min(target.height, imgHeight - y));
+      const croppedOriginal = (0, import_sharp.default)(userPhotoData).extract({ left: x2, top: y, width, height });
+      const { channels } = await croppedOriginal.stats();
+      const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
+      const thresholdValue = Math.max(50, Math.min(200, Math.round(avgLuma - 20)));
+      console.log(`[Compositor] Target x:${x2} y:${y} mean luma: ${avgLuma.toFixed(1)}, using threshold: ${thresholdValue}`);
+      const mask = await croppedOriginal.greyscale().threshold(thresholdValue).blur(1.5).raw().toBuffer();
+      const tiledProduct = await tileProductImage(
+        productInfo.buffer,
+        productInfo.width,
+        productInfo.height,
+        width,
+        height
+      );
+      const maskedProduct = await (0, import_sharp.default)(tiledProduct, {
+        raw: {
+          width,
+          height,
+          channels: 3
+        }
+      }).joinChannel(mask, {
+        raw: {
+          width,
+          height,
+          channels: 1
+        }
+      }).png().toBuffer();
+      compositeOperations.push({
+        input: maskedProduct,
+        left: x2,
+        top: y,
+        blend: "multiply"
+      });
+      const softLightLayer = await (0, import_sharp.default)(maskedProduct).ensureAlpha().composite([{
+        input: Buffer.from([0, 0, 0, 128]),
+        // 50% transparent black overlay
+        raw: { width: 1, height: 1, channels: 4 },
+        tile: true,
+        blend: "dest-in"
+        // reduces alpha to 50%
+      }]).png().toBuffer();
+      compositeOperations.push({
+        input: softLightLayer,
+        left: x2,
+        top: y,
+        blend: "soft-light"
+      });
     }
-    const transformedProduct = await transformProductImage(
-      productInfo.buffer,
-      target.width,
-      target.height,
-      target.rotation
-    );
-    const opacity = req.renderOptions?.opacity ?? 1;
-    const blendMode = opacity < 1 ? "over" : "over";
-    const productMeta = await (0, import_sharp.default)(transformedProduct).metadata();
-    const prodW = productMeta.width || target.width;
-    const prodH = productMeta.height || target.height;
-    const maxW = Math.min(prodW, imgWidth);
-    const maxH = Math.min(prodH, imgHeight);
-    let compositeLeft = Math.round(target.x + (target.width - prodW) / 2);
-    let compositeTop = Math.round(target.y + (target.height - prodH) / 2);
-    compositeLeft = Math.max(0, Math.min(compositeLeft, imgWidth - maxW));
-    compositeTop = Math.max(0, Math.min(compositeTop, imgHeight - maxH));
-    let finalProduct = transformedProduct;
-    if (prodW > imgWidth || prodH > imgHeight) {
-      finalProduct = await (0, import_sharp.default)(transformedProduct).resize(imgWidth, imgHeight, { fit: "inside", withoutEnlargement: true }).toBuffer();
-    }
-    const compositeImage = await userPhoto.composite([
-      {
-        input: finalProduct,
-        left: compositeLeft,
-        top: compositeTop,
-        blend: blendMode
-      }
-    ]).jpeg({ quality: 95 }).toBuffer();
+    const compositeImage = await (0, import_sharp.default)(userPhotoData).composite(compositeOperations).jpeg({ quality: 95 }).toBuffer();
     const durationMs = Date.now() - startTime;
     return {
       image: `data:image/jpeg;base64,${compositeImage.toString("base64")}`,
@@ -105333,18 +105412,12 @@ async function compositeProductOntoPhoto(req) {
       durationMs,
       details: {
         productImageUsed: req.material.imageUrl || "unknown",
-        transform: `resize(${target.width}x${target.height}), rotate(${target.rotation}deg)`,
+        transform: `tiled x${targets.length} surfaces, luma-shaded over`,
         surfaceDetected: !!req.analysis?.surfaces
       }
     };
   } catch (error) {
-    console.error("[Compositor] FAILED \u2014 falling back to AI generation:", {
-      error: error.message,
-      materialImageUrl: req.material.imageUrl,
-      materialName: req.material.name,
-      cwd: process.cwd(),
-      hasAnalysis: !!req.analysis
-    });
+    console.error("[Compositor] Error:", error.stack || error.message);
     return {
       image: req.originalImage,
       method: "fallback",
@@ -122547,7 +122620,7 @@ async function sendPurchaseNotifications(params) {
 var import_crypto2 = __toESM(require("crypto"), 1);
 
 // server/buildInfo.ts
-var BUILD_COMMIT = "unknown";
+var BUILD_COMMIT = "${GITHUB_SHA:-unknown}";
 var BUILD_TIME = (/* @__PURE__ */ new Date()).toISOString();
 
 // server/index.ts

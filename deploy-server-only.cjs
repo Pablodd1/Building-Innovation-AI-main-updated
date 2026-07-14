@@ -26,6 +26,13 @@ async function main() {
     await c.uploadFrom('./dist-server/app.cjs', REMOTE + '/dist-server/app.cjs');
     console.log('✅ Server bundle uploaded');
 
+    // Upload .env
+    if (fs.existsSync('.env')) {
+        console.log('Uploading .env...');
+        await c.uploadFrom('.env', REMOTE + '/.env');
+        console.log('✅ .env uploaded');
+    }
+
     // Trigger restart by touching tmp/restart.txt
     console.log('\nTriggering server restart...');
     await c.ensureDir(REMOTE + '/tmp');
