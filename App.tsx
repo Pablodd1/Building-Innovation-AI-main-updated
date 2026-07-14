@@ -1585,13 +1585,6 @@ const App: React.FC = () => {
             img.onload = () => {
                 const { width, height } = img;
                 const longest = Math.max(width, height);
-                if (longest <= maxEdge) {
-                    // Still recompress to JPEG to strip bloat from large PNGs.
-                    if (dataUrl.startsWith("data:image/jpeg") && dataUrl.length < 4_000_000) {
-                        resolve(dataUrl);
-                        return;
-                    }
-                }
                 const scale = longest > maxEdge ? maxEdge / longest : 1;
                 const w = Math.round(width * scale);
                 const h = Math.round(height * scale);

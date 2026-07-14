@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { WebcamCapture } from './WebcamCapture';
 
 // Inline SVG icons (no external dependency needed)
 const CameraIcon = () => (
@@ -20,6 +21,7 @@ export const CameraCapture: React.FC<{
 }> = ({ onImageCapture, lang }) => {
     const cameraRef = React.useRef<HTMLInputElement>(null);
     const galleryRef = React.useRef<HTMLInputElement>(null);
+    const [showWebcam, setShowWebcam] = useState(false);
 
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -39,6 +41,8 @@ export const CameraCapture: React.FC<{
             : 'Pick an existing photo from your device gallery.',
     };
 
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
     return (
         <div className="flex flex-col items-center gap-6 p-6">
             <h3 className="text-white text-lg font-semibold">
@@ -50,7 +54,7 @@ export const CameraCapture: React.FC<{
                 ref={cameraRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                {...(isMobile ? { capture: 'environment' } : {})}
                 onChange={handleFile}
                 className="hidden"
                 id="camera-input"
@@ -64,9 +68,15 @@ export const CameraCapture: React.FC<{
                 id="gallery-input"
             />
 
-            {/* Take Photo button — opens device camera */}
+            {/* Take Photo button — opens camera or webcam overlay */}
             <button
-                onClick={() => cameraRef.current?.click()}
+                onClick={() => {
+                    if (isMobile) {
+                        cameraRef.current?.click();
+                    } else {
+                        setShowWebcam(true);
+                    }
+                }}
                 className="w-full max-w-xs flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-semibold transition-colors shadow-lg shadow-blue-600/25"
             >
                 <CameraIcon />
@@ -90,6 +100,18 @@ export const CameraCapture: React.FC<{
                 {t.chooseFromGallery}
             </button>
             <p className="text-gray-400 text-xs text-center -mt-2">{t.galleryHint}</p>
+
+            {/* Webcam Overlay for Desktop/Laptop browsers */}
+            {showWebcam && (
+                <WebcamCapture
+                    onCapture={(file) => {
+                        onImageCapture(file);
+                        setShowWebcam(false);
+                    }}
+                    onClose={() => setShowWebcam(false)}
+                    lang={lang}
+                />
+            )}
         </div>
     );
 };
