@@ -3711,30 +3711,16 @@ const App: React.FC = () => {
                                                         style={{ width: `${Math.min(100, (u.generations_used / getTierLimit(u.tier || 'Free')) * 100)}%` }}
                                                     ></div>
                                                 </div>
-                                                <input 
-                                                    type="number"
-                                                    className="w-16 bg-gray-200 border border-gray-300 rounded text-[10px] p-1 mt-1"
-                                                    value={u.generations_used}
-                                                    onChange={(e) => handleUpdateUserGenerations(u.id, parseInt(e.target.value) || 0)}
-                                                />
+                                                <span className="text-xs font-semibold text-gray-700">{u.generations_used} / {getTierLimit(u.tier || 'Free')}</span>
                                                 <span className="text-[10px] text-gray-500 ml-1">gens</span>
                                             </td>
                                             <td className="p-4 text-right flex items-center justify-end gap-2">
-                                                <select 
-                                                    className="bg-gray-200 border border-gray-300 rounded text-xs p-1"
-                                                    value={u.tier}
-                                                    onChange={(e) => handleUpdateUserTier(u.id, e.target.value)}
-                                                >
-                                                    <option value="Free">Free</option>
-                                                    <option value="Pro">Pro</option>
-                                                    <option value="Enterprise">Enterprise</option>
-                                                </select>
                                                 <button
                                                     onClick={() => handleViewUserDetail(u.id)}
-                                                    className="p-1.5 bg-blue-50 hover:bg-blue-100 rounded text-blue-600 transition-colors flex items-center justify-center border border-blue-200"
-                                                    title="View Memory & Analytics"
+                                                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-600 transition-colors flex items-center justify-center border border-blue-200 text-xs font-bold shadow-sm"
+                                                    title="Manage User & View Analytics"
                                                 >
-                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                    Manage User
                                                 </button>
                                             </td>
                                         </tr>
@@ -5195,37 +5181,73 @@ const App: React.FC = () => {
                                 </div>
                                 </div>
 
-                                {/* Admin Actions — Reset Password */}
-                                <div className="bg-red-50 p-4 rounded-2xl border border-red-200">
-                                <h3 className="font-bold text-red-700 uppercase text-[10px] tracking-widest mb-3">Reset Password</h3>
-                                <div className="flex gap-2">
-                                <input
-                                type="text"
-                                placeholder="New password (min 4 chars)"
-                                className="flex-1 bg-white border border-red-200 rounded-lg p-2 text-xs text-gray-700"
-                                id={`reset-pwd-${u.id}`}
-                                />
-                                <button
-                                onClick={async () => {
-                                    const inp = document.getElementById(`reset-pwd-${u.id}`) as HTMLInputElement;
-                                    const pwd = inp?.value?.trim();
-                                    if (!pwd || pwd.length < 4) return alert('Password must be at least 4 characters');
-                                    try {
-                                        const res = await fetch(`/api/admin/users/${u.id}/reset-password`, {
-                                            method: 'POST',
-                                            headers: {'Content-Type': 'application/json'},
-                                            body: JSON.stringify({newPassword: pwd})
-                                        });
-                                        const data = await res.json();
-                                        if (data.success) { inp.value = ''; alert('Password reset successfully'); }
-                                        else alert('Failed: ' + (data.error || 'Unknown error'));
-                                    } catch (e) { alert('Error resetting password'); }
-                                }}
-                                className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors"
-                                >
-                                Reset
-                                </button>
-                                </div>
+                                {/* Admin Management Controls */}
+                                <div className="bg-gray-100 p-6 border-t border-gray-200 mt-auto">
+                                    <h3 className="font-bold text-gray-800 uppercase text-xs tracking-widest mb-4">Manage User</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        
+                                        {/* Control Tiers */}
+                                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                                            <h4 className="font-bold text-blue-700 uppercase text-[10px] tracking-widest mb-2">Subscription Tier</h4>
+                                            <select 
+                                                className="w-full bg-white border border-blue-200 rounded-lg text-xs p-2 text-gray-700 outline-none"
+                                                value={u.tier || 'Free'}
+                                                onChange={(e) => handleUpdateUserTier(u.id, e.target.value)}
+                                            >
+                                                <option value="Free">Free</option>
+                                                <option value="Pro">Pro</option>
+                                                <option value="Enterprise">Enterprise</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Control Usages */}
+                                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-200">
+                                            <h4 className="font-bold text-purple-700 uppercase text-[10px] tracking-widest mb-2">Generations Usage</h4>
+                                            <div className="flex items-center gap-2">
+                                                <input 
+                                                    type="number"
+                                                    className="flex-1 min-w-0 bg-white border border-purple-200 rounded-lg text-xs p-2 text-gray-700 outline-none"
+                                                    value={u.generations_used || 0}
+                                                    onChange={(e) => handleUpdateUserGenerations(u.id, parseInt(e.target.value) || 0)}
+                                                />
+                                                <span className="text-xs text-gray-500 font-semibold w-12">/ {getTierLimit(u.tier || 'Free')}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Reset Password */}
+                                        <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                                            <h4 className="font-bold text-red-700 uppercase text-[10px] tracking-widest mb-2">Reset Password</h4>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="New pwd (min 4)"
+                                                    className="flex-1 min-w-0 bg-white border border-red-200 rounded-lg p-2 text-xs text-gray-700 outline-none"
+                                                    id={`reset-pwd-${u.id}`}
+                                                />
+                                                <button
+                                                    onClick={async () => {
+                                                        const inp = document.getElementById(`reset-pwd-${u.id}`) as HTMLInputElement;
+                                                        const pwd = inp?.value?.trim();
+                                                        if (!pwd || pwd.length < 4) return alert('Password must be at least 4 characters');
+                                                        try {
+                                                            const res = await fetch(`/api/admin/users/${u.id}/reset-password`, {
+                                                                method: 'POST',
+                                                                headers: {'Content-Type': 'application/json'},
+                                                                body: JSON.stringify({newPassword: pwd})
+                                                            });
+                                                            const data = await res.json();
+                                                            if (data.success) { inp.value = ''; alert('Password reset successfully'); }
+                                                            else alert('Failed: ' + (data.error || 'Unknown error'));
+                                                        } catch (e) { alert('Error resetting password'); }
+                                                    }}
+                                                    className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                                                >
+                                                    Reset
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                    </div>
                                 </div>
                                 </div>
             </div>
