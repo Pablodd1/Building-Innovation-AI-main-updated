@@ -1023,7 +1023,7 @@ export async function testAIConnection(config: AIConfig): Promise<any> {
     if (ai) {
         try {
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: "gemini-3.5-flash",
                 contents: "Hello, reply with only the word 'OK'.",
             });
             results.geminiText = {
