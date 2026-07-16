@@ -215,9 +215,16 @@ const App: React.FC = () => {
     const [tiersConfig, setTiersConfig] = useState<any>(null);
     const [editableTiers, setEditableTiers] = useState<any>(null);
     const [isSavingTiers, setIsSavingTiers] = useState(false);
-    const [secureConfig, setSecureConfig] = useState<{ hasKey: boolean; hasOpenAIKey?: boolean; hasOpenRouterKey?: boolean; aiProvider?: string; hasStripeSecretKey: boolean; hasStripeWebhookSecret: boolean } | null>(null);
+    const [secureConfig, setSecureConfig] = useState<{ 
+        hasKey: boolean; hasOpenAIKey?: boolean; hasOpenRouterKey?: boolean; aiProvider?: string; 
+        hasStripeSecretKey: boolean; hasStripeWebhookSecret: boolean;
+        hasTelegramBotToken?: boolean; telegramChatId?: string; telegramDailyReportTime?: string; telegramDailyReportEnabled?: boolean;
+    } | null>(null);
     const [isSavingConfig, setIsSavingConfig] = useState(false);
-    const [configForm, setConfigForm] = useState({ aiProvider: "", apiKey: "", openaiApiKey: "", openrouterApiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
+    const [configForm, setConfigForm] = useState({ 
+        aiProvider: "", apiKey: "", openaiApiKey: "", openrouterApiKey: "", stripeSecretKey: "", stripeWebhookSecret: "",
+        telegramBotToken: "", telegramChatId: "", telegramDailyReportTime: "09:00", telegramDailyReportEnabled: false
+    });
 
     const fetchTiers = async () => {
         try {
@@ -580,6 +587,12 @@ const App: React.FC = () => {
             if (res.ok) {
                 const data = await res.json();
                 setSecureConfig(data);
+                setConfigForm(prev => ({
+                    ...prev,
+                    telegramChatId: data.telegramChatId || "",
+                    telegramDailyReportTime: data.telegramDailyReportTime || "09:00",
+                    telegramDailyReportEnabled: !!data.telegramDailyReportEnabled
+                }));
             }
         } catch (e) {
             console.error("Fetch secure config error:", e);
@@ -587,10 +600,6 @@ const App: React.FC = () => {
     };
 
     const handleSaveSecureConfig = async () => {
-        if (!configForm.apiKey && !configForm.openaiApiKey && !configForm.openrouterApiKey && !configForm.aiProvider && !configForm.stripeSecretKey && !configForm.stripeWebhookSecret) {
-            alert(lang === 'es' ? "Por favor ingresa al menos un valor para actualizar." : "Please enter at least one value to update.");
-            return;
-        }
         setIsSavingConfig(true);
         try {
             const body: any = {};
@@ -600,6 +609,11 @@ const App: React.FC = () => {
             if (configForm.aiProvider) body.aiProvider = configForm.aiProvider;
             if (configForm.stripeSecretKey) body.stripeSecretKey = configForm.stripeSecretKey;
             if (configForm.stripeWebhookSecret) body.stripeWebhookSecret = configForm.stripeWebhookSecret;
+
+            if (configForm.telegramBotToken) body.telegramBotToken = configForm.telegramBotToken;
+            body.telegramChatId = configForm.telegramChatId;
+            body.telegramDailyReportTime = configForm.telegramDailyReportTime;
+            body.telegramDailyReportEnabled = configForm.telegramDailyReportEnabled;
 
             const res = await fetch("/api/admin/config", {
                 method: "POST",
@@ -611,7 +625,15 @@ const App: React.FC = () => {
             });
             if (res.ok) {
                 alert(lang === 'es' ? "¡Configuración guardada exitosamente!" : "Configuration saved successfully!");
-                setConfigForm({ aiProvider: "", apiKey: "", openaiApiKey: "", openrouterApiKey: "", stripeSecretKey: "", stripeWebhookSecret: "" });
+                setConfigForm(prev => ({
+                    ...prev,
+                    apiKey: "",
+                    openaiApiKey: "",
+                    openrouterApiKey: "",
+                    stripeSecretKey: "",
+                    stripeWebhookSecret: "",
+                    telegramBotToken: ""
+                }));
                 fetchSecureConfig();
             } else {
                 const data = await res.json();
@@ -4083,6 +4105,179 @@ const App: React.FC = () => {
                                         lang === "es" ? "Guardar Credenciales" : "Save Credentials"
                                     )}
                                 </button>
+                            </div>
+                        </div>
+
+                        {/* Telegram Analytics Summary Dispatcher Card */}
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 space-y-6 animate-fadeIn">
+                            <div>
+                                <h3 className="text-2xl font-black text-gray-700 uppercase tracking-tighter">
+                                    {lang === "es" ? "Reportes Diarios en Telegram" : "Telegram Daily Analytics Dispatcher"}
+                                </h3>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    {lang === "es"
+                                        ? "Configura el bot de Telegram y el horario para recibir un resumen detallado de métricas (registros, renders de IA, errores, visualizaciones de catálogo) diariamente."
+                                        : "Configure your Telegram Bot token, recipient Chat ID, and execution time to receive a detailed analytics summary directly to your chat every day."}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                        Telegram Bot Token
+                                    </label>
+                                    <input
+                                        type="password"
+                                        placeholder={secureConfig?.hasTelegramBotToken ? "••••••••••••" : "bot123456:ABC-DEF..."}
+                                        value={configForm.telegramBotToken}
+                                        onChange={(e) => setConfigForm({ ...configForm, telegramBotToken: e.target.value })}
+                                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                        Telegram Chat ID
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 7838956683"
+                                        value={configForm.telegramChatId}
+                                        onChange={(e) => setConfigForm({ ...configForm, telegramChatId: e.target.value })}
+                                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">
+                                        {lang === 'es' ? "Horario de Envío (Format 24h HH:MM)" : "Daily Dispatch Time (24h format HH:MM)"}
+                                    </label>
+                                    <input
+                                        type="time"
+                                        value={configForm.telegramDailyReportTime}
+                                        onChange={(e) => setConfigForm({ ...configForm, telegramDailyReportTime: e.target.value })}
+                                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-semibold"
+                                    />
+                                </div>
+
+                                <div className="flex items-center space-x-3 pt-6">
+                                    <input
+                                        type="checkbox"
+                                        id="telegramDailyReportEnabled"
+                                        checked={configForm.telegramDailyReportEnabled}
+                                        onChange={(e) => setConfigForm({ ...configForm, telegramDailyReportEnabled: e.target.checked })}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition-all"
+                                    />
+                                    <label htmlFor="telegramDailyReportEnabled" className="text-sm font-bold text-gray-600 select-none">
+                                        {lang === 'es' ? "Activar Reporte Diario Automatizado" : "Enable Automated Daily Summary"}
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            const res = await fetch("/api/admin/test-telegram", {
+                                                headers: currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}
+                                            });
+                                            const data = await res.json();
+                                            if (data.success) {
+                                                alert(lang === 'es' ? "¡Mensaje de prueba enviado!" : "Test message sent successfully!");
+                                            } else {
+                                                alert(data.error || "Failed to send test message");
+                                            }
+                                        } catch (e) {
+                                            alert("Error sending test message");
+                                        }
+                                    }}
+                                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all"
+                                >
+                                    {lang === 'es' ? "Probar Conexión" : "Test Telegram Connection"}
+                                </button>
+                                
+                                <button
+                                    onClick={handleSaveSecureConfig}
+                                    disabled={isSavingConfig}
+                                    className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:shadow-blue-500/35 active:scale-95 transition-all flex items-center gap-2"
+                                >
+                                    {isSavingConfig ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                            </svg>
+                                            {lang === "es" ? "Guardando..." : "Saving..."}
+                                        </>
+                                    ) : (
+                                        lang === "es" ? "Guardar Configuración" : "Save Settings"
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* AI Provider Status & Circuit Breaker Card */}
+                        <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-xl shadow-gray-100/50 space-y-6 animate-fadeIn">
+                            <div>
+                                <h3 className="text-2xl font-black text-gray-700 uppercase tracking-tighter">
+                                    {lang === "es" ? "Estado de Proveedores de IA" : "AI Provider Status & Circuit Breaker"}
+                                </h3>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    {lang === "es"
+                                        ? "Verifica el estado en vivo de cada proveedor de IA. Si el circuit breaker está abierto (bloqueado por errores), reinícialo aquí para restaurar el servicio sin reiniciar el servidor."
+                                        : "View the live health of each AI provider. If a circuit breaker is open (blocked after repeated errors), reset it here to restore service without a server restart."}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {(['gemini', 'openrouter', 'openai'] as const).map((provider) => (
+                                    <div key={provider} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-5 py-4">
+                                        <div>
+                                            <div className="text-sm font-black text-gray-700 uppercase tracking-wider">{provider}</div>
+                                            <div className="text-xs text-gray-400 mt-0.5">
+                                                {provider === 'gemini' ? (lang === 'es' ? 'Generación de imágenes (Gemini 3.1)' : 'Image generation (Gemini 3.1 Flash)') :
+                                                 provider === 'openrouter' ? (lang === 'es' ? 'Análisis alternativo' : 'Alternate analysis') :
+                                                 (lang === 'es' ? 'Solo análisis de texto' : 'Text analysis only')}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    const res = await fetch('/api/admin/circuit-reset', {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Content-Type': 'application/json',
+                                                            ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {}),
+                                                        },
+                                                        body: JSON.stringify({ provider }),
+                                                    });
+                                                    const data = await res.json();
+                                                    if (data.ok) {
+                                                        alert(lang === 'es' ? `✅ Circuit breaker de "${provider}" reiniciado. El proveedor se reintentará en la próxima solicitud.` : `✅ "${provider}" circuit breaker has been reset. It will be retried on the next request.`);
+                                                    } else {
+                                                        alert(data.error || 'Failed to reset circuit breaker');
+                                                    }
+                                                } catch (e) {
+                                                    alert('Error resetting circuit breaker');
+                                                }
+                                            }}
+                                            className="ml-4 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-black rounded-xl shadow-sm transition-all active:scale-95 whitespace-nowrap"
+                                        >
+                                            {lang === 'es' ? '⚡ Reiniciar' : '⚡ Reset'}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="flex justify-end pt-2 border-t border-gray-100">
+                                <a
+                                    href="/api/health"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all"
+                                >
+                                    {lang === 'es' ? '🔍 Ver Estado Completo en Vivo' : '🔍 View Full Live Health Status'}
+                                </a>
                             </div>
                         </div>
                     </div>

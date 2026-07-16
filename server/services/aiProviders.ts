@@ -5,13 +5,12 @@
 //
 // MODEL HISTORY (for reference when updating):
 // ═══════════════════════════════════════════════════════════
-// 2024-Q4: gemini-1.5-pro          — DISCONTINUED (returns 404)
-// 2025-Q1: gemini-2.0-flash-exp    — Experimental, limited image support
-// 2025-Q3: gemini-2.5-flash        — Stable, fast analysis
-// 2025-Q4: gemini-2.5-flash-image  — NEVER EXISTED (hallucination, don't use)
-// 2026-Q2: gemini-3.5-flash        — CURRENT PRIMARY (GA May 2026, fast + smart)
-//          gemini-2.5-flash        — RETIRING Oct 16 2026 (used as fallback)
-//          gemini-2.0-flash-exp    — Still alive, only model with native image output
+// 2024-Q4: gemini-1.5-pro             — DISCONTINUED (returns 404)
+// 2025-Q1: gemini-2.0-flash-exp       — Experimental, DEPRECATED 2026-Q2
+// 2025-Q3: gemini-2.5-flash           — Stable analysis, retiring Oct 16 2026
+// 2026-Q2: gemini-3.5-flash           — CURRENT analysis primary (GA May 2026)
+// 2026-Q3: gemini-3.1-flash-image     — CURRENT image primary  ("Nano Banana 2")
+//          gemini-2.5-flash-image     — Legacy image fallback ("Nano Banana")
 //
 // BACKUP CHAIN (executed left-to-right on failure):
 //   Gemini (primary) → OpenRouter (unified) → OpenAI (fallback) → Generic Response
@@ -34,6 +33,10 @@ export interface AIConfig {
     OPENROUTER_API_KEY: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
+    TELEGRAM_BOT_TOKEN?: string;
+    TELEGRAM_CHAT_ID?: string;
+    TELEGRAM_DAILY_REPORT_TIME?: string;
+    TELEGRAM_DAILY_REPORT_ENABLED?: boolean;
 }
 
 export interface OverlayRequest {
@@ -91,8 +94,17 @@ interface CircuitState {
 }
 
 const circuitBreakers = new Map<string, CircuitState>();
-const CIRCUIT_THRESHOLD = 5;      // Open after 5 HARD failures (raised from 3 to stop flapping)
-const CIRCUIT_RESET_MS = 30000;  // Reset/half-open probe after 30s (was 60s)
+const CIRCUIT_THRESHOLD = 5;       // Open after 5 HARD failures
+const CIRCUIT_RESET_MS = 300000;   // Auto-reset after 5 minutes (gives server time to recover)
+
+/** Manually reset a provider's circuit breaker (call from admin endpoint). */
+export function resetCircuit(provider: string): void {
+    const circuit = getCircuit(provider);
+    circuit.failures = 0;
+    circuit.isOpen = false;
+    circuit.lastFailure = 0;
+    console.log(`[CircuitBreaker] ${provider} circuit manually RESET by admin`);
+}
 
 function getCircuit(provider: string): CircuitState {
     if (!circuitBreakers.has(provider)) {
@@ -280,6 +292,10 @@ export function loadConfig(): AIConfig {
         GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "",
         OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
         OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
+        TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
+        TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "",
+        TELEGRAM_DAILY_REPORT_TIME: process.env.TELEGRAM_DAILY_REPORT_TIME || "09:00",
+        TELEGRAM_DAILY_REPORT_ENABLED: process.env.TELEGRAM_DAILY_REPORT_ENABLED === "true",
     };
 
     const configPath = findConfigPath();
@@ -293,6 +309,10 @@ export function loadConfig(): AIConfig {
                 OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults.OPENROUTER_API_KEY,
                 STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
                 STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "",
+                TELEGRAM_BOT_TOKEN: file.TELEGRAM_BOT_TOKEN || defaults.TELEGRAM_BOT_TOKEN,
+                TELEGRAM_CHAT_ID: file.TELEGRAM_CHAT_ID || defaults.TELEGRAM_CHAT_ID,
+                TELEGRAM_DAILY_REPORT_TIME: file.TELEGRAM_DAILY_REPORT_TIME || defaults.TELEGRAM_DAILY_REPORT_TIME,
+                TELEGRAM_DAILY_REPORT_ENABLED: file.TELEGRAM_DAILY_REPORT_ENABLED !== undefined ? file.TELEGRAM_DAILY_REPORT_ENABLED : defaults.TELEGRAM_DAILY_REPORT_ENABLED,
             };
         } catch { /* fall through */ }
     }
@@ -500,10 +520,15 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     // NOTE: Only gemini-2.0-flash-exp supports native image OUTPUT.
     //       Newer models (3.5-flash) are vision-IN only — not used here.
     // ═══════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════
+    // IMAGE MODEL CHAIN — Updated July 2026 ("Nano Banana" family)
+    // gemini-2.0-flash-exp was deprecated and is now 404.
+    // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary — native image output" },
-        // Fallback — text-only description if image gen fails
-        { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback — retiring Oct 2026, text only" },
+        { name: "gemini-3.1-flash-image", supportsImageOutput: true, note: "Primary — Nano Banana 2, 4K native image output" },
+        { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "Fallback — Nano Banana legacy, still active" },
+        // Last resort — text description only if both image models fail
+        { name: "gemini-3.5-flash", supportsImageOutput: false, note: "Emergency fallback — vision-in only, text description" },
     ];
 
     let response;
@@ -1013,9 +1038,10 @@ export async function testAIConnection(config: AIConfig): Promise<any> {
             };
         }
 
-        // Test each Gemini image model candidates
+        // Test each Gemini image model candidate (Nano Banana family)
         const candidateImageModels = [
-            "gemini-2.0-flash-exp"
+            "gemini-3.1-flash-image",
+            "gemini-2.5-flash-image",
         ];
 
         for (const model of candidateImageModels) {

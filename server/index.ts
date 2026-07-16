@@ -9,7 +9,7 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from "@google/genai";
-import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllProviderHealth, testAIConnection, type AIConfig, type AIProvider } from "./services/aiProviders.js";
+import { loadConfig, generateOverlay, analyzeRoom, checkProviderHealth, getAllProviderHealth, testAIConnection, resetCircuit, type AIConfig, type AIProvider } from "./services/aiProviders.js";
 import { compositeProductOntoPhoto } from "./services/imageCompositor.js";
 import Stripe from 'stripe';
 import { sendPurchaseNotifications } from './emailService';
@@ -625,8 +625,70 @@ setTimeout(async () => {
     });
 }, 2000);
 
+let lastReportDate = '';
+
+// Check and dispatch daily Telegram analytics report
+async function checkAndSendDailyReport() {
+    try {
+        const config = await getConfig();
+        if (!config.TELEGRAM_DAILY_REPORT_ENABLED) return;
+
+        const reportTime = config.TELEGRAM_DAILY_REPORT_TIME || '09:00';
+        const now = new Date();
+        const currentDateStr = now.toISOString().split('T')[0];
+        
+        // Get local time HH:MM
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const currentTimeStr = `${hours}:${minutes}`;
+
+        // If time matches and we haven't sent it today
+        if (currentTimeStr === reportTime && lastReportDate !== currentDateStr) {
+            lastReportDate = currentDateStr;
+            
+            // Gather statistics
+            const report = monitor.getDailyReport();
+            const health = await monitor.getHealth();
+            let totalUsers = 0;
+            try {
+                const res = await query('SELECT COUNT(*) as count FROM users');
+                totalUsers = parseInt(res.rows[0]?.count || '0', 10) || 0;
+            } catch (e) {
+                const users = await getUsers();
+                totalUsers = users.length;
+            }
+
+            const msg = `📊 <b>Daily Analytics Summary</b>\n` +
+                        `-------------------------------\n` +
+                        `📅 <b>Date:</b> <code>${currentDateStr}</code>\n` +
+                        `⏱️ <b>Uptime:</b> <code>${Math.floor(report.uptime / 3600)}h ${Math.floor((report.uptime % 3600) / 60)}m</code>\n\n` +
+                        `📈 <b>Activity Metrics (Today):</b>\n` +
+                        `• Total Server Requests: <code>${report.usage?.totalRequests || 0}</code>\n` +
+                        `• API Operations: <code>${report.usage?.apiCalls || 0}</code>\n` +
+                        `• AI Generations: <code>${report.usage?.aiGenerations || 0}</code>\n` +
+                        `• Material Views: <code>${report.usage?.materialViews || 0}</code>\n` +
+                        `• System Errors: <code>${report.usage?.errors || 0}</code>\n\n` +
+                        `👥 <b>User Registry:</b>\n` +
+                        `• Total Registered Users: <code>${totalUsers}</code>\n\n` +
+                        `🛡️ <b>System Status:</b>\n` +
+                        `• Active AI Provider: <code>${config.AI_PROVIDER?.toUpperCase() || 'GEMINI'}</code>\n` +
+                        `• Primary Key Status: <code>${health.checks?.apiKey?.ok ? '✅ ACTIVE' : '❌ FAILED'}</code>`;
+
+            const success = await telegramAlerts.sendMessage({ text: msg, parse_mode: 'HTML' });
+            if (success) {
+                console.log(`[Telegram] Daily report successfully dispatched to chat.`);
+            } else {
+                console.warn(`[Telegram] Daily report dispatch failed.`);
+            }
+        }
+    } catch (e) {
+        console.error('[Telegram] Error in checkAndSendDailyReport:', e);
+    }
+}
+
 // Set up proactive monitoring intervals
 setInterval(() => monitor.checkAndReport(), 300000); // Check every 5 mins for AI key failure
+setInterval(() => checkAndSendDailyReport(), 60000); // Check every minute for daily summary dispatch
 
 // Helper to get config (API Keys, etc.)
 async function getConfig() {
@@ -1416,6 +1478,19 @@ app.get('/api/test-ai', async (req: Request, res: Response) => {
     } catch (e: any) {
         res.status(500).json({ error: e.message || String(e) });
     }
+});
+
+// Admin: manually reset a provider circuit breaker
+app.post('/api/admin/circuit-reset', requireAdmin, (req: Request, res: Response) => {
+    const provider = (req.body?.provider as string) || '';
+    const allowed = ['gemini', 'openai', 'openrouter', 'generic'];
+    if (!allowed.includes(provider)) {
+        res.status(400).json({ error: `Invalid provider. Must be one of: ${allowed.join(', ')}` });
+        return;
+    }
+    resetCircuit(provider);
+    console.log(`[Admin] Circuit breaker for "${provider}" reset by admin request.`);
+    res.json({ ok: true, message: `Circuit breaker for "${provider}" has been reset. It will be retried on the next request.` });
 });
 
 // ===== ADMIN HEALTH & DASHBOARD ENDPOINTS =====
@@ -3574,7 +3649,11 @@ app.get('/api/admin/config', requireAdmin, async (req: Request, res: Response) =
         hasOpenAIKey: !!config.OPENAI_API_KEY,
         hasOpenRouterKey: !!config.OPENROUTER_API_KEY,
         hasStripeSecretKey: !!config.STRIPE_SECRET_KEY,
-        hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET
+        hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET,
+        hasTelegramBotToken: !!config.TELEGRAM_BOT_TOKEN,
+        telegramChatId: config.TELEGRAM_CHAT_ID || '',
+        telegramDailyReportTime: config.TELEGRAM_DAILY_REPORT_TIME || '09:00',
+        telegramDailyReportEnabled: !!config.TELEGRAM_DAILY_REPORT_ENABLED
     });
 });
 
@@ -3622,7 +3701,10 @@ app.get('/api/debug/config-path', requireAdmin, async (req: Request, res: Respon
 
 app.post('/api/admin/config', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const { apiKey, openaiApiKey, openrouterApiKey, aiProvider, stripeSecretKey, stripeWebhookSecret } = req.body;
+        const { 
+            apiKey, openaiApiKey, openrouterApiKey, aiProvider, stripeSecretKey, stripeWebhookSecret,
+            telegramBotToken, telegramChatId, telegramDailyReportTime, telegramDailyReportEnabled
+        } = req.body;
         
         const config = await getConfig();
         if (apiKey !== undefined) config.GEMINI_API_KEY = apiKey;
@@ -3632,9 +3714,24 @@ app.post('/api/admin/config', requireAdmin, async (req: Request, res: Response) 
         if (stripeSecretKey !== undefined) config.STRIPE_SECRET_KEY = stripeSecretKey;
         if (stripeWebhookSecret !== undefined) config.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
         
+        if (telegramBotToken !== undefined) config.TELEGRAM_BOT_TOKEN = telegramBotToken;
+        if (telegramChatId !== undefined) config.TELEGRAM_CHAT_ID = telegramChatId;
+        if (telegramDailyReportTime !== undefined) config.TELEGRAM_DAILY_REPORT_TIME = telegramDailyReportTime;
+        if (telegramDailyReportEnabled !== undefined) config.TELEGRAM_DAILY_REPORT_ENABLED = telegramDailyReportEnabled;
+        
         saveToJSON(JSON_CONFIG_PATH, config);
         
-        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', `Updated AI provider (${config.AI_PROVIDER}) and server credentials`);
+        // Also re-initialize telegram alerts in-memory
+        if (config.TELEGRAM_BOT_TOKEN || config.TELEGRAM_CHAT_ID) {
+            try {
+                const { initTelegramFromConfig } = await import('./telegramAlerts');
+                await initTelegramFromConfig();
+            } catch (tgErr) {
+                console.warn('[Telegram] Re-init failed:', tgErr);
+            }
+        }
+        
+        await logAdminAction(req, (req as any).user, 'UPDATE_CONFIG', `Updated AI provider (${config.AI_PROVIDER}) and server credentials/Telegram configs`);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
