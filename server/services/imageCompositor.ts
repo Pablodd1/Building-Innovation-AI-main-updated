@@ -248,38 +248,31 @@ function detectTargetSurfaces(
 }
 
 /**
- * Resize the product image to completely cover the target surface.
- * Disables tiling so the product fills the wall as a complete panel.
+ * Resize the product image to completely fill the target surface.
+ * Uses fit:'fill' (stretches to exact dimensions) so the full product
+ * is always visible with no cropping, no tiling, no cascade.
  */
-async function scaleProductImage(
+async function scaleProductToFill(
     productBuffer: Buffer,
-    productWidth: number,
-    productHeight: number,
     targetWidth: number,
-    targetHeight: number
+    targetHeight: number,
+    opacity: number = 0.85
 ): Promise<Buffer> {
-    console.log(`[Compositor] Scaling product ${productWidth}x${productHeight} to cover ${targetWidth}x${targetHeight}`);
+    console.log(`[Compositor] Scaling product to fill ${targetWidth}x${targetHeight} at ${Math.round(opacity * 100)}% opacity`);
 
-    // Resize product to cover the target size
+    // Stretch product to exactly fill the wall zone (no cropping, no tiling)
     const scaledBuffer = await sharp(productBuffer)
-        .resize(targetWidth, targetHeight, { fit: "cover" })
+        .resize(targetWidth, targetHeight, { fit: "fill" })
+        .png()
         .toBuffer();
 
-    // Composite over a solid white 3-channel canvas to guarantee 
-    // an exact RGB raw buffer for the mask join.
-    const finalRgb = await sharp({
-        create: {
-            width: targetWidth,
-            height: targetHeight,
-            channels: 3,
-            background: { r: 255, g: 255, b: 255 }
-        }
-    })
-    .composite([{ input: scaledBuffer, blend: "over" }])
-    .raw()
-    .toBuffer();
+    // Apply opacity by adjusting the alpha channel (ensureAlpha takes 0-1 float)
+    const withAlpha = await sharp(scaledBuffer)
+        .ensureAlpha(opacity)
+        .png()
+        .toBuffer();
 
-    return finalRgb;
+    return withAlpha;
 }
 
 /**
@@ -323,90 +316,22 @@ export async function compositeProductOntoPhoto(
             const width = Math.max(1, Math.min(target.width, imgWidth - x));
             const height = Math.max(1, Math.min(target.height, imgHeight - y));
 
-            // Extract original cropped area to determine dynamic luminance threshold
-            const croppedOriginal = sharp(userPhotoData).extract({ left: x, top: y, width, height });
-            const { channels } = await croppedOriginal.stats();
-            const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
-            // Set threshold to avgLuma - 20, clamped between 50 and 200
-            const thresholdValue = Math.max(50, Math.min(200, Math.round(avgLuma - 20)));
-            console.log(`[Compositor] Target x:${x} y:${y} mean luma: ${avgLuma.toFixed(1)}, using threshold: ${thresholdValue}`);
+            console.log(`[Compositor] Rendering product on wall zone: x=${x} y=${y} w=${width} h=${height}`);
 
-            // Create smooth greyscale threshold mask (wall plaster = white, dark foreground items = black)
-            const mask = await croppedOriginal
-                .greyscale()
-                .threshold(thresholdValue)
-                .blur(1.5)
-                .raw()
-                .toBuffer();
-
-            // Calculate mask coverage to avoid applying texture to nothing in low light / low contrast environments
-            let whiteCount = 0;
-            for (let i = 0; i < mask.length; i++) {
-                if (mask[i] > 128) whiteCount++;
-            }
-            const coverage = whiteCount / mask.length;
-            console.log(`[Compositor] Mask coverage: ${(coverage * 100).toFixed(1)}%`);
-
-            if (coverage < 0.15) {
-                console.log(`[Compositor] Mask coverage too low (${(coverage * 100).toFixed(1)}%), using a fallback uniform mask.`);
-                mask.fill(255);
-            }
-
-            // Scale the product to fill the wall bounds (returns raw RGB buffer)
-            const scaledProduct = await scaleProductImage(
+            // Scale product to fill the wall zone exactly (no tiling, no cropping)
+            const productLayer = await scaleProductToFill(
                 productInfo.buffer,
-                productInfo.width,
-                productInfo.height,
                 width,
-                height
+                height,
+                req.renderOptions?.opacity ?? 0.85
             );
 
-            // Join the raw mask as the alpha channel of the raw scaled product
-            const maskedProduct = await sharp(scaledProduct, {
-                raw: {
-                    width,
-                    height,
-                    channels: 3
-                }
-            })
-            .joinChannel(mask, {
-                raw: {
-                    width,
-                    height,
-                    channels: 1
-                }
-            })
-            .png()
-            .toBuffer();
-
-            // Two-pass blend for photorealism:
-            //  Pass 1 (multiply): merges the texture color with the wall, preserving shadows
-            //  Pass 2 (soft-light): recovers brightness that multiply darkens,
-            //         giving a natural "painted on" look
+            // Composite product directly over the wall zone using normal 'over' blend
             compositeOperations.push({
-                input: maskedProduct,
+                input: productLayer,
                 left: x,
                 top: y,
-                blend: "multiply" as any
-            });
-
-            // Build a lighter (50% opacity) version of the masked product for soft-light recovery
-            const softLightLayer = await sharp(maskedProduct)
-                .ensureAlpha()
-                .composite([{
-                    input: Buffer.from([0, 0, 0, 128]),  // 50% transparent black overlay
-                    raw: { width: 1, height: 1, channels: 4 },
-                    tile: true,
-                    blend: "dest-in" as any  // reduces alpha to 50%
-                }])
-                .png()
-                .toBuffer();
-
-            compositeOperations.push({
-                input: softLightLayer,
-                left: x,
-                top: y,
-                blend: "soft-light" as any
+                blend: "over" as any
             });
         }
 
