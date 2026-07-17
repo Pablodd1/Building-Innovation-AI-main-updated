@@ -64,12 +64,7 @@ function cleanBase64(dataURI: string): { data: Buffer; mimeType: string } {
     };
 }
 
-async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffer; width: number; height: number } | null> {
-    if (!imageUrl) return null;
-
-    // Try local file paths first
-    const possiblePaths: string[] = [];
-    
+async function getProductImageBuffer(imageUrl?: string, refCode?: string): Promise<{ buffer: Buffer; width: number; height: number } | null> {
     // Resolve project root based on file location to handle Passenger/Hostinger cwd issues
     let projectRoot = process.cwd();
     try {
@@ -78,6 +73,29 @@ async function getProductImageBuffer(imageUrl?: string): Promise<{ buffer: Buffe
         }
     } catch (e) {}
 
+    // 1. Try local refCode lookup first (e.g. 14031001.webp in products/ directory)
+    if (refCode) {
+        const localPaths = [
+            path.join(projectRoot, "products", `${refCode}.webp`),
+            path.join(process.cwd(), "products", `${refCode}.webp`),
+            path.join(projectRoot, "product-webp", `${refCode}.webp`),
+            path.join(process.cwd(), "product-webp", `${refCode}.webp`),
+        ];
+        for (const p of localPaths) {
+            if (fs.existsSync(p)) {
+                console.log(`[Compositor] Found product image locally at: ${p}`);
+                const buffer = fs.readFileSync(p);
+                const metadata = await sharp(buffer).metadata();
+                return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
+            }
+        }
+    }
+
+    if (!imageUrl) return null;
+
+    // Try local file paths first
+    const possiblePaths: string[] = [];
+    
     if (imageUrl.startsWith(SELF_URL)) {
         const localPath = imageUrl.substring(SELF_URL.length);
         const cleanPath = localPath.startsWith("/") ? localPath.substring(1) : localPath;
@@ -230,45 +248,26 @@ function detectTargetSurfaces(
 }
 
 /**
- * Resize and tile the product image in a grid to fill the target surface.
- * Always uses wall-style grid tiling (per spec: walls only).
+ * Resize the product image to completely cover the target surface.
+ * Disables tiling so the product fills the wall as a complete panel.
  */
-async function tileProductImage(
+async function scaleProductImage(
     productBuffer: Buffer,
     productWidth: number,
     productHeight: number,
     targetWidth: number,
     targetHeight: number
 ): Promise<Buffer> {
-    const aspect = productWidth / productHeight;
+    console.log(`[Compositor] Scaling product ${productWidth}x${productHeight} to cover ${targetWidth}x${targetHeight}`);
 
-    // Wall panel grid: 200px base tile, preserving aspect ratio
-    let tileWidth = 200;
-    let tileHeight = Math.round(tileWidth / aspect);
-
-    // Shrink tile unit if it exceeds target dimensions
-    if (tileWidth > targetWidth) {
-        tileWidth = targetWidth;
-        tileHeight = Math.round(tileWidth / aspect);
-    }
-    if (tileHeight > targetHeight) {
-        tileHeight = targetHeight;
-        tileWidth = Math.round(tileHeight * aspect);
-    }
-
-    // Ensure tile size is at least 1x1
-    tileWidth = Math.max(1, tileWidth);
-    tileHeight = Math.max(1, tileHeight);
-
-    console.log(`[Compositor] Tiling product ${productWidth}x${productHeight} → tile ${tileWidth}x${tileHeight} over ${targetWidth}x${targetHeight}`);
-
-    // Resize product to the tile size
-    const resizedTile = await sharp(productBuffer)
-        .resize(tileWidth, tileHeight, { fit: "fill" })
+    // Resize product to cover the target size
+    const scaledBuffer = await sharp(productBuffer)
+        .resize(targetWidth, targetHeight, { fit: "cover" })
         .toBuffer();
 
-    // Tile the product over a white canvas of target width and height
-    const tiled = await sharp({
+    // Composite over a solid white 3-channel canvas to guarantee 
+    // an exact RGB raw buffer for the mask join.
+    const finalRgb = await sharp({
         create: {
             width: targetWidth,
             height: targetHeight,
@@ -276,14 +275,11 @@ async function tileProductImage(
             background: { r: 255, g: 255, b: 255 }
         }
     })
-    .composite([{
-        input: resizedTile,
-        tile: true
-    }])
+    .composite([{ input: scaledBuffer, blend: "over" }])
     .raw()
     .toBuffer();
 
-    return tiled;
+    return finalRgb;
 }
 
 /**
@@ -308,7 +304,7 @@ export async function compositeProductOntoPhoto(
         const imgHeight = userMeta.height || 600;
 
         // 2. Load product image (100% from database)
-        const productInfo = await getProductImageBuffer(req.material.imageUrl);
+        const productInfo = await getProductImageBuffer(req.material.imageUrl, req.material.refCode || req.material.id);
         if (!productInfo) {
             throw new Error(`Product image not found: ${req.material.imageUrl}`);
         }
@@ -343,8 +339,21 @@ export async function compositeProductOntoPhoto(
                 .raw()
                 .toBuffer();
 
-            // Tile the product (returns raw RGB buffer)
-            const tiledProduct = await tileProductImage(
+            // Calculate mask coverage to avoid applying texture to nothing in low light / low contrast environments
+            let whiteCount = 0;
+            for (let i = 0; i < mask.length; i++) {
+                if (mask[i] > 128) whiteCount++;
+            }
+            const coverage = whiteCount / mask.length;
+            console.log(`[Compositor] Mask coverage: ${(coverage * 100).toFixed(1)}%`);
+
+            if (coverage < 0.15) {
+                console.log(`[Compositor] Mask coverage too low (${(coverage * 100).toFixed(1)}%), using a fallback uniform mask.`);
+                mask.fill(255);
+            }
+
+            // Scale the product to fill the wall bounds (returns raw RGB buffer)
+            const scaledProduct = await scaleProductImage(
                 productInfo.buffer,
                 productInfo.width,
                 productInfo.height,
@@ -352,8 +361,8 @@ export async function compositeProductOntoPhoto(
                 height
             );
 
-            // Join the raw mask as the alpha channel of the raw tiled product
-            const maskedProduct = await sharp(tiledProduct, {
+            // Join the raw mask as the alpha channel of the raw scaled product
+            const maskedProduct = await sharp(scaledProduct, {
                 raw: {
                     width,
                     height,
@@ -415,7 +424,7 @@ export async function compositeProductOntoPhoto(
             durationMs,
             details: {
                 productImageUsed: req.material.imageUrl || "unknown",
-                transform: `tiled x${targets.length} surfaces, luma-shaded over`,
+                transform: `scaled to cover x${targets.length} surfaces, luma-shaded over`,
                 surfaceDetected: !!req.analysis?.surfaces,
             },
         };
