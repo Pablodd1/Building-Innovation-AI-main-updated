@@ -391,24 +391,81 @@ export async function compositeProductOntoPhoto(
             const width = Math.max(1, Math.min(target.width, imgWidth - x));
             const height = Math.max(1, Math.min(target.height, imgHeight - y));
 
-            console.log(`[Compositor] Rendering tiled product on wall zone: x=${x} y=${y} w=${width} h=${height}`);
+            console.log(`[Compositor] Rendering product on wall zone: x=${x} y=${y} w=${width} h=${height}`);
 
-            // Render product at realistic physical tile scale (no stretching, no cascade)
+            // --- Step 1: Build a foreground protection mask ---
+            // The mask is WHITE where we should draw the product (open wall area)
+            // and BLACK where we should leave the original (furniture, plants, objects in front of wall).
+            // We use luminance thresholding: bright pixels = wall, dark pixels = furniture/foreground.
+            const croppedWallZone = sharp(userPhotoData).extract({ left: x, top: y, width, height });
+            const { channels } = await croppedWallZone.stats();
+            const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
+            // Threshold: avgLuma - 20 ensures furniture slightly darker than wall gets masked out.
+            // Clamped 60–200 to stay meaningful across very bright or very dark rooms.
+            const thresholdValue = Math.max(60, Math.min(200, Math.round(avgLuma - 20)));
+            console.log(`[Compositor] Wall zone mean luma: ${avgLuma.toFixed(1)}, mask threshold: ${thresholdValue}`);
+
+            let mask = await croppedWallZone
+                .greyscale()
+                .threshold(thresholdValue)
+                .blur(2)   // smooth edges so the overlay doesn't have hard pixel borders
+                .raw()
+                .toBuffer();
+
+            // Low-light fallback: if mask is nearly all black (< 15% white), the room
+            // is too dark or low-contrast to distinguish wall from objects.
+            // In that case, fill the mask solid white so we render on the entire zone.
+            const whitePixels = mask.reduce((n: number, v: number) => n + (v > 128 ? 1 : 0), 0);
+            const coverage = whitePixels / mask.length;
+            console.log(`[Compositor] Mask coverage: ${(coverage * 100).toFixed(1)}%`);
+            if (coverage < 0.15) {
+                console.log(`[Compositor] Low coverage, using solid fallback mask`);
+                mask.fill(255);
+            }
+
+            // --- Step 2: Tile the product at realistic physical scale ---
             const productLayer = await renderProductTiledOnWall(
                 productInfo.buffer,
                 productInfo.width,
                 productInfo.height,
                 width,
                 height,
-                req.renderOptions?.opacity ?? 0.88
+                1.0  // full opacity — the mask controls where it appears, not opacity
             );
 
-            // Composite product onto wall zone using normal 'over' blend
+            // --- Step 3: Apply the mask as the product's alpha channel ---
+            // This cuts out the product everywhere the mask is black (furniture, objects)
+            // so only the open wall area gets the texture.
+            const maskedProduct = await sharp(productLayer)
+                .joinChannel(mask, {
+                    raw: { width, height, channels: 1 }
+                })
+                .png()
+                .toBuffer();
+
+            // --- Step 4: Multiply blend preserves room lighting through the product ---
+            // multiply: product_color × wall_color — keeps shadows, highlights, depth.
+            // This is how real material visualization tools (like Roomvo, Houzz AR) work.
             compositeOperations.push({
-                input: productLayer,
+                input: maskedProduct,
                 left: x,
                 top: y,
-                blend: "over" as any
+                blend: "multiply" as any
+            });
+
+            // --- Step 5: Soft-light recovery pass ---
+            // Multiply tends to darken bright materials. A 40% opacity soft-light pass
+            // recovers the product's true colors without losing the shadow integration.
+            const recoveryLayer = await sharp(maskedProduct)
+                .ensureAlpha(0.4)
+                .png()
+                .toBuffer();
+
+            compositeOperations.push({
+                input: recoveryLayer,
+                left: x,
+                top: y,
+                blend: "soft-light" as any
             });
         }
 
