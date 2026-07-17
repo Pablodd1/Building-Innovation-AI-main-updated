@@ -230,9 +230,11 @@ function detectTargetSurfaces(
         }
     }
 
-    // Sanity clamps
-    if (ceilingBottom >= imgHeight * 0.4) ceilingBottom = Math.round(imgHeight * 0.08);
-    if (floorTop <= imgHeight * 0.4 || floorTop > imgHeight) floorTop = Math.round(imgHeight * 0.72);
+    // Sanity clamps — be conservative to avoid painting onto ceiling structures or floor
+    // Ceiling protection: never start above 18% of image (protects recessed lights, drop-ceiling grid)
+    if (ceilingBottom < Math.round(imgHeight * 0.18)) ceilingBottom = Math.round(imgHeight * 0.18);
+    // Floor protection: never go below 68% (protects baseboards, floor plane)
+    if (floorTop > Math.round(imgHeight * 0.68) || floorTop <= Math.round(imgHeight * 0.4)) floorTop = Math.round(imgHeight * 0.68);
 
     const wallHeight = Math.max(1, floorTop - ceilingBottom);
 
@@ -248,31 +250,104 @@ function detectTargetSurfaces(
 }
 
 /**
- * Resize the product image to completely fill the target surface.
- * Uses fit:'fill' (stretches to exact dimensions) so the full product
- * is always visible with no cropping, no tiling, no cascade.
+ * Render the product at a REALISTIC physical scale by tiling it.
+ * 
+ * Instead of stretching one image across the entire wall (which makes
+ * a 30cm product look 3m wide), this calculates a tile size equivalent
+ * to roughly 25-35% of wall height, preserves the product's aspect ratio,
+ * then seamlessly repeats it across the surface — exactly like real wallpaper
+ * or panel installation.
+ *
+ * @param productBuffer  Raw image buffer of the product
+ * @param productWidth   Original product width in pixels
+ * @param productHeight  Original product height in pixels
+ * @param targetWidth    Wall zone width in pixels
+ * @param targetHeight   Wall zone height in pixels
+ * @param opacity        0-1 opacity for the overlay (default 0.88)
  */
-async function scaleProductToFill(
+async function renderProductTiledOnWall(
     productBuffer: Buffer,
+    productWidth: number,
+    productHeight: number,
     targetWidth: number,
     targetHeight: number,
-    opacity: number = 0.85
+    opacity: number = 0.88
 ): Promise<Buffer> {
-    console.log(`[Compositor] Scaling product to fill ${targetWidth}x${targetHeight} at ${Math.round(opacity * 100)}% opacity`);
+    const aspect = productWidth / productHeight;
 
-    // Stretch product to exactly fill the wall zone (no cropping, no tiling)
-    const scaledBuffer = await sharp(productBuffer)
-        .resize(targetWidth, targetHeight, { fit: "fill" })
+    // --- Realistic tile sizing ---
+    // Strategy: calculate both height-driven and width-driven tile sizes, then pick
+    // the one that gives the most visually realistic result.
+    //
+    // For a typical foam board / wall panel product:
+    //   - Target ~3-4 tiles wide (so tileW ≈ wall_width / 3)
+    //   - Target ~2-3 tiles tall (so tileH ≈ wall_height / 2)
+    //   - Pick whichever gives larger tiles (better quality, fewer repetitions)
+    //
+    // This ensures portrait images (tall/narrow products) don't produce tiny tiles.
+
+    // Width-driven: 1/3 of wall width per tile
+    const tileW_byWidth = Math.round(targetWidth / 3);
+    const tileH_byWidth = Math.round(tileW_byWidth / aspect);
+
+    // Height-driven: 1/2 of wall height per tile
+    const tileH_byHeight = Math.round(targetHeight / 2);
+    const tileW_byHeight = Math.round(tileH_byHeight * aspect);
+
+    // Use whichever gives the LARGER tile (more realistic, less repetition)
+    let tileW: number, tileH: number;
+    if (tileW_byWidth * tileH_byWidth >= tileW_byHeight * tileH_byHeight) {
+        tileW = tileW_byWidth;
+        tileH = tileH_byWidth;
+    } else {
+        tileW = tileW_byHeight;
+        tileH = tileH_byHeight;
+    }
+
+    // Clamp to wall bounds (tile cannot exceed the wall area)
+    tileW = Math.max(1, Math.min(tileW, targetWidth));
+    tileH = Math.max(1, Math.min(tileH, targetHeight));
+
+    console.log(`[Compositor] Tiling at realistic scale: tile=${tileW}x${tileH}px (wall=${targetWidth}x${targetHeight}) — approx ${Math.ceil(targetWidth/tileW)}x${Math.ceil(targetHeight/tileH)} grid`);
+
+    // Resize product to the tile size
+    const resizedTile = await sharp(productBuffer)
+        .resize(tileW, tileH, { fit: "fill" })
         .png()
         .toBuffer();
 
-    // Apply opacity by adjusting the alpha channel (ensureAlpha takes 0-1 float)
-    const withAlpha = await sharp(scaledBuffer)
-        .ensureAlpha(opacity)
+    // Tile seamlessly across the full wall zone
+    const tiledFull = await sharp({
+        create: {
+            width: targetWidth,
+            height: targetHeight,
+            channels: 4,
+            background: { r: 255, g: 255, b: 255, alpha: 0 }
+        }
+    })
+    .composite([{ input: resizedTile, tile: true, blend: "over" }])
+    .png()
+    .toBuffer();
+
+    // Apply desired opacity
+    // Sharp's ensureAlpha(alpha) sets the INITIAL alpha channel value (0-1)
+    // We achieve opacity by modulating the existing alpha with a flat alpha layer
+    const withOpacity = await sharp(tiledFull)
+        .composite([{
+            input: {
+                create: {
+                    width: targetWidth,
+                    height: targetHeight,
+                    channels: 4,
+                    background: { r: 0, g: 0, b: 0, alpha: opacity }
+                }
+            },
+            blend: "dest-in" as any
+        }])
         .png()
         .toBuffer();
 
-    return withAlpha;
+    return withOpacity;
 }
 
 /**
@@ -316,17 +391,19 @@ export async function compositeProductOntoPhoto(
             const width = Math.max(1, Math.min(target.width, imgWidth - x));
             const height = Math.max(1, Math.min(target.height, imgHeight - y));
 
-            console.log(`[Compositor] Rendering product on wall zone: x=${x} y=${y} w=${width} h=${height}`);
+            console.log(`[Compositor] Rendering tiled product on wall zone: x=${x} y=${y} w=${width} h=${height}`);
 
-            // Scale product to fill the wall zone exactly (no tiling, no cropping)
-            const productLayer = await scaleProductToFill(
+            // Render product at realistic physical tile scale (no stretching, no cascade)
+            const productLayer = await renderProductTiledOnWall(
                 productInfo.buffer,
+                productInfo.width,
+                productInfo.height,
                 width,
                 height,
-                req.renderOptions?.opacity ?? 0.85
+                req.renderOptions?.opacity ?? 0.88
             );
 
-            // Composite product directly over the wall zone using normal 'over' blend
+            // Composite product onto wall zone using normal 'over' blend
             compositeOperations.push({
                 input: productLayer,
                 left: x,
