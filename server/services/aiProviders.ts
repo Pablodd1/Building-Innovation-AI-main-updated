@@ -452,11 +452,11 @@ Return your response in this EXACT JSON format:
 }
 
 CRITICAL surface detection rules:
-1. Return ONLY surfaces of type "wall". Also return "ceiling" and "floor" surfaces ONLY so the compositor knows where the wall STARTS and ENDS vertically — but these are NOT rendered onto.
-2. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall even if there are shelves, picture frames, wall decor, clocks, or furniture in front of it. Do NOT return tiny empty strips — return the LARGEST possible wall rectangle.
-3. If you see multiple distinct walls (e.g., left wall, back wall, right wall), return each as a SEPARATE surface entry with its own bounding box.
-4. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions. Be as accurate as possible — these bounding boxes drive the product rendering.
-5. For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000.`;
+1. Return surfaces of type "wall", "ceiling", and "floor". 
+2. Also detect and return bounding boxes for any obstacles on or in front of the walls: "window", "door", "television", "cabinet", "fireplace", "light_fixture", or "furniture" so the rendering engine can mask them out and avoid painting over them.
+3. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall.
+4. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions.
+5. For dimensions: estimate the room's width and height in CENTIMETERS, and calculate areaM2 as (width * height) / 10000.`;
 
 function parseAnalysisResponse(rawText: string, model: string, provider: AIProvider, durationMs: number): AnalysisResult {
     try {

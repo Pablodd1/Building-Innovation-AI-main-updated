@@ -412,6 +412,37 @@ export async function compositeProductOntoPhoto(
                 .raw()
                 .toBuffer();
 
+            // --- Step 1b: Mask out detected obstacles (TV, Cabinets, Windows, Doors, Furniture, Lights) ---
+            if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
+                const nonWallSurfaces = req.analysis.surfaces.filter(
+                    (s: any) => s.type !== "wall" && s.bounds
+                );
+                for (const s of nonWallSurfaces) {
+                    const sx = Math.round(s.bounds.x * imgWidth);
+                    const sy = Math.round(s.bounds.y * imgHeight);
+                    const sw = Math.round(s.bounds.width * imgWidth);
+                    const sh = Math.round(s.bounds.height * imgHeight);
+
+                    // Compute intersection with the current target wall zone (x, y, width, height)
+                    const left = Math.max(x, sx);
+                    const top = Math.max(y, sy);
+                    const right = Math.min(x + width, sx + sw);
+                    const bottom = Math.min(y + height, sy + sh);
+
+                    if (right > left && bottom > top) {
+                        console.log(`[Compositor] Masking out obstacle (${s.type}) at relative x:${left - x} y:${top - y} w:${right - left} h:${bottom - top}`);
+                        for (let row = top; row < bottom; row++) {
+                            const maskY = row - y;
+                            const rowStart = maskY * width;
+                            for (let col = left; col < right; col++) {
+                                const maskX = col - x;
+                                mask[rowStart + maskX] = 0; // Set mask to black (transparent)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Low-light fallback: if mask is nearly all black (< 15% white), the room
             // is too dark or low-contrast to distinguish wall from objects.
             // In that case, fill the mask solid white so we render on the entire zone.
