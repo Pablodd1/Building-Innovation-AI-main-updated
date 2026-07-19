@@ -505,14 +505,19 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     const productRef = await getImageBase64(req.material?.imageUrl);
     const hasProductImage = !!productRef;
 
-    const contents: any = {
-        parts: [{ inlineData: { data: base64Data, mimeType } }],
-    };
+    const parts: any[] = [{ inlineData: { data: base64Data, mimeType } }];
     if (hasProductImage) {
-        contents.parts.push({ text: "Product Reference Image:" });
-        contents.parts.push({ inlineData: { data: productRef!.data, mimeType: productRef!.mimeType } });
+        parts.push({ text: "Product Reference Image:" });
+        parts.push({ inlineData: { data: productRef!.data, mimeType: productRef!.mimeType } });
     }
-    contents.parts.push({ text: finalPrompt });
+    parts.push({ text: finalPrompt });
+
+    const contents = [
+        {
+            role: "user",
+            parts
+        }
+    ];
 
     // ═══════════════════════════════════════════════════════════
     // GEMINI IMAGE MODEL FALLBACK CHAIN — Updated June 2026
@@ -627,12 +632,18 @@ async function analyzeRoomGemini(req: AnalysisRequest, config: AIConfig): Promis
         try {
             const response = await ai.models.generateContent({
                 model: modelInfo.name,
-                contents: {
-                    parts: [
-                        { inlineData: { data: base64Data, mimeType } },
-                        { text: ANALYSIS_PROMPT },
-                    ],
-                },
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { inlineData: { data: base64Data, mimeType } },
+                            { text: ANALYSIS_PROMPT },
+                        ],
+                    }
+                ],
+                config: {
+                    responseMimeType: "application/json"
+                }
             });
 
             const rawText = response.text || "{\"text\":\"Could not analyze the room.\"}";
@@ -769,7 +780,7 @@ async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Pr
                         ],
                     },
                 ],
-                max_tokens: 500,
+                max_tokens: 3000,
             });
 
             const rawText = response.choices[0]?.message?.content || "{\"text\":\"Could not analyze.\"}";
@@ -819,7 +830,7 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
                     ],
                 },
             ],
-            max_tokens: 500,
+            max_tokens: 3000,
         });
 
         const rawText = completion.choices[0]?.message?.content || "{\"text\":\"Could not analyze.\"}";

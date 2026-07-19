@@ -1677,6 +1677,16 @@ const App: React.FC = () => {
             }
         }
 
+        if (generationState.isAnalyzing) {
+            setGenerationState((prev) => ({
+                ...prev,
+                error: lang === "es" 
+                    ? "El análisis de la habitación está en curso. Por favor, espera unos segundos a que termine para aplicar la perspectiva correcta." 
+                    : "Room analysis is in progress. Please wait a few seconds for it to complete to apply correct perspective mapping.",
+            }));
+            return;
+        }
+
         setGenerationState((prev) => ({
             ...prev,
             isGenerating: true,
@@ -4488,9 +4498,9 @@ const App: React.FC = () => {
                                         variant="ghost"
                                         onClick={handleRoomAnalysis}
                                         disabled={generationState.isAnalyzing}
-                                        className="text-[9px] uppercase tracking-widest border border-dashed border-gray-300 hover:border-blue-500 hover:text-blue-400 px-2 py-1 shrink-0"
+                                        className={`text-[9px] uppercase tracking-widest border border-dashed px-2 py-1 shrink-0 transition-all ${generationState.analysis ? "border-green-500 text-green-600 bg-green-50 hover:bg-green-100 hover:border-green-600" : "border-gray-300 hover:border-blue-500 hover:text-blue-400 text-gray-500"}`}
                                     >
-                                        {generationState.isAnalyzing ? '...' : 'AI Análisis'}
+                                        {generationState.isAnalyzing ? '...' : generationState.analysis ? (lang === 'es' ? '✓ Analizado' : '✓ Analyzed') : 'AI Análisis'}
                                     </Button>
                                 </div>
                             </div>

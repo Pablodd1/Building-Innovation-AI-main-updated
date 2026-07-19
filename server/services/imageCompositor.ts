@@ -380,6 +380,22 @@ export async function compositeProductOntoPhoto(
         // 3. Detect where to place the product
         const targets = detectTargetSurfaces(req, imgWidth, imgHeight);
 
+        // If no room analysis was provided or it returned no surfaces, fallback to AI generator
+        const hasAnalysis = !!(req.analysis?.surfaces && req.analysis.surfaces.length > 0);
+        if (!hasAnalysis) {
+            console.log(`[Compositor] No valid room analysis surfaces found. Falling back to AI generator.`);
+            return {
+                image: req.originalImage,
+                method: "fallback",
+                durationMs: Date.now() - startTime,
+                details: {
+                    productImageUsed: req.material.imageUrl || "unknown",
+                    transform: "none",
+                    surfaceDetected: false,
+                },
+            };
+        }
+
         // 4. Build composite operations for all targets
         const category = req.material.category || "";
         const compositeOperations = [];
