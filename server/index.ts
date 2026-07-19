@@ -1037,7 +1037,7 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
 const allowedOrigins = ['https://buildingapp.us', 'https://www.buildingapp.us', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost', 'https://localhost', 'capacitor://localhost', 'ionic://localhost'];
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/i.test(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
