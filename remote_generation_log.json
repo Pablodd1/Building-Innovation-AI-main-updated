@@ -1,0 +1,29 @@
+[
+  {
+    "timestamp": "2026-07-16T18:08:09.768Z",
+    "materialName": "White Marble",
+    "category": "Flooring",
+    "success": false,
+    "durationMs": 0,
+    "model": "error",
+    "error": "AI Generation Temporarily Unavailable: All providers failed or were unavailable."
+  },
+  {
+    "timestamp": "2026-07-16T18:08:35.955Z",
+    "materialName": "Dark Oak Wood",
+    "category": "Flooring",
+    "success": true,
+    "durationMs": 6888,
+    "model": "gemini/gemini-3.1-flash-image"
+  },
+  {
+    "timestamp": "2026-07-16T19:00:48.221Z",
+    "userId": 1,
+    "materialId": "14181301",
+    "materialName": "FOAM BOARD ARENISCA PLATA (JS4176-189) - LINEA AURORA BOREAL",
+    "category": "LAMINAS",
+    "success": true,
+    "durationMs": 1984,
+    "model": "sharp/compositor"
+  }
+]

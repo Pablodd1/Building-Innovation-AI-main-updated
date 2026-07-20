@@ -1040,7 +1040,8 @@ app.use(cors({
         if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/i.test(origin)) {
             callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS'));
+            console.error('[CORS Blocked] Origin:', origin);
+            callback(new Error(`Not allowed by CORS: ${origin}`));
         }
     },
     credentials: true

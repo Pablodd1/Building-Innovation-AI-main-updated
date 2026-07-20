@@ -1,0 +1,62 @@
+[
+  {
+    "timestamp": "2026-07-20T00:07:08.199Z",
+    "userId": 1,
+    "action": "LOGIN",
+    "details": {
+      "email": "admin@buildingapp.us",
+      "tier": "Enterprise",
+      "method": "json_fallback"
+    }
+  },
+  {
+    "timestamp": "2026-07-20T00:10:03.712Z",
+    "userId": 1,
+    "action": "RENDER",
+    "details": {
+      "materialId": "14031001",
+      "materialName": "LAMINA PVC BLANCO BRILLANTE H-01-I",
+      "category": "CIELO RASO PVC",
+      "provider": "compositor",
+      "model": "sharp",
+      "durationMs": 142,
+      "success": true
+    }
+  },
+  {
+    "timestamp": "2026-07-20T00:14:24.664Z",
+    "action": "RENDER",
+    "details": {
+      "materialName": "Test Hardwood",
+      "category": "flooring",
+      "provider": "gemini",
+      "model": "google/gemini-2.5-flash",
+      "durationMs": 1066,
+      "success": true
+    }
+  },
+  {
+    "timestamp": "2026-07-20T00:15:07.485Z",
+    "action": "RENDER",
+    "details": {
+      "materialName": "Test",
+      "category": "flooring",
+      "provider": "gemini",
+      "model": "google/gemini-2.5-flash",
+      "durationMs": 1892,
+      "success": true
+    }
+  },
+  {
+    "timestamp": "2026-07-20T00:15:18.586Z",
+    "action": "RENDER",
+    "details": {
+      "materialName": "Test",
+      "category": "flooring",
+      "provider": "gemini",
+      "model": "google/gemini-2.5-flash",
+      "durationMs": 1019,
+      "success": true
+    }
+  }
+]

@@ -104434,7 +104434,14 @@ var import_fs2 = __toESM(require("fs"), 1);
 var import_path61 = __toESM(require("path"), 1);
 var circuitBreakers = /* @__PURE__ */ new Map();
 var CIRCUIT_THRESHOLD = 5;
-var CIRCUIT_RESET_MS = 3e4;
+var CIRCUIT_RESET_MS = 3e5;
+function resetCircuit(provider) {
+  const circuit = getCircuit(provider);
+  circuit.failures = 0;
+  circuit.isOpen = false;
+  circuit.lastFailure = 0;
+  console.log(`[CircuitBreaker] ${provider} circuit manually RESET by admin`);
+}
 function getCircuit(provider) {
   if (!circuitBreakers.has(provider)) {
     circuitBreakers.set(provider, { failures: 0, lastFailure: 0, isOpen: false });
@@ -104575,7 +104582,11 @@ function loadConfig() {
     AI_PROVIDER: "gemini",
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "",
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || ""
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
+    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "",
+    TELEGRAM_DAILY_REPORT_TIME: process.env.TELEGRAM_DAILY_REPORT_TIME || "09:00",
+    TELEGRAM_DAILY_REPORT_ENABLED: process.env.TELEGRAM_DAILY_REPORT_ENABLED === "true"
   };
   const configPath = findConfigPath();
   if (configPath) {
@@ -104587,7 +104598,11 @@ function loadConfig() {
         OPENAI_API_KEY: file.OPENAI_API_KEY || defaults3.OPENAI_API_KEY,
         OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults3.OPENROUTER_API_KEY,
         STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
-        STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || ""
+        STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "",
+        TELEGRAM_BOT_TOKEN: file.TELEGRAM_BOT_TOKEN || defaults3.TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID: file.TELEGRAM_CHAT_ID || defaults3.TELEGRAM_CHAT_ID,
+        TELEGRAM_DAILY_REPORT_TIME: file.TELEGRAM_DAILY_REPORT_TIME || defaults3.TELEGRAM_DAILY_REPORT_TIME,
+        TELEGRAM_DAILY_REPORT_ENABLED: file.TELEGRAM_DAILY_REPORT_ENABLED !== void 0 ? file.TELEGRAM_DAILY_REPORT_ENABLED : defaults3.TELEGRAM_DAILY_REPORT_ENABLED
       };
     } catch {
     }
@@ -104674,7 +104689,7 @@ Your PRIMARY task is to detect WALL PANELS with pixel-accurate bounding boxes. T
 
 Return your response in this EXACT JSON format:
 {
-  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested wall materials.",
+  "text": "Brief professional analysis (max 80 words)",
   "dimensions": {
     "width": 350,
     "height": 280,
@@ -104693,11 +104708,12 @@ Return your response in this EXACT JSON format:
 }
 
 CRITICAL surface detection rules:
-1. Return ONLY surfaces of type "wall". Also return "ceiling" and "floor" surfaces ONLY so the compositor knows where the wall STARTS and ENDS vertically \u2014 but these are NOT rendered onto.
-2. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall even if there are shelves, picture frames, wall decor, clocks, or furniture in front of it. Do NOT return tiny empty strips \u2014 return the LARGEST possible wall rectangle.
-3. If you see multiple distinct walls (e.g., left wall, back wall, right wall), return each as a SEPARATE surface entry with its own bounding box.
-4. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions. Be as accurate as possible \u2014 these bounding boxes drive the product rendering.
-5. For dimensions: estimate the room's width and height in CENTIMETERS (e.g., 350 = 3.5m), and calculate areaM2 as (width * height) / 10000.`;
+1. Return surfaces of type "wall", "ceiling", and "floor". 
+2. You MUST detect and return bounding boxes for ANY obstacles on or in front of the walls: "window", "door", "television", "cabinet", "shelf", "picture_frame", "fireplace", "light_fixture", or "furniture".
+3. PAY EXTREME ATTENTION to wall-mounted cabinets (even if they are white on a white wall), picture frames, and wall decorations. If you miss them, they will be ruined by being painted over!
+4. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall.
+5. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions.
+6. For dimensions: estimate the room's width and height in CENTIMETERS, and calculate areaM2 as (width * height) / 10000.`;
 function parseAnalysisResponse(rawText, model, provider, durationMs) {
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
@@ -104725,18 +104741,22 @@ async function generateOverlayGemini(req, config, startTime) {
   const { prompt: finalPrompt } = buildOverlayPrompt(req);
   const productRef = await getImageBase64(req.material?.imageUrl);
   const hasProductImage = !!productRef;
-  const contents = {
-    parts: [{ inlineData: { data: base64Data, mimeType } }]
-  };
+  const parts = [{ inlineData: { data: base64Data, mimeType } }];
   if (hasProductImage) {
-    contents.parts.push({ text: "Product Reference Image:" });
-    contents.parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
+    parts.push({ text: "Product Reference Image:" });
+    parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
   }
-  contents.parts.push({ text: finalPrompt });
+  parts.push({ text: finalPrompt });
+  const contents = [
+    {
+      role: "user",
+      parts
+    }
+  ];
   const IMAGE_MODELS = [
-    { name: "gemini-2.0-flash-exp", supportsImageOutput: true, note: "Primary \u2014 native image output" },
-    // Fallback — text-only description if image gen fails
-    { name: "gemini-2.5-flash", supportsImageOutput: false, note: "Fallback \u2014 retiring Oct 2026, text only" }
+    { name: "imagen-3.0-generate-002", isImagen: true, supportsImageOutput: true, note: "Imagen 3 generation model" },
+    // Last resort — text description only if image model fails
+    { name: "gemini-2.5-flash", isImagen: false, supportsImageOutput: false, note: "Emergency fallback \u2014 vision-in only, text description" }
   ];
   let response;
   let usedModel = IMAGE_MODELS[0].name;
@@ -104744,16 +104764,44 @@ async function generateOverlayGemini(req, config, startTime) {
   for (const modelInfo of IMAGE_MODELS) {
     try {
       logInfo(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
-      const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
-      logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities })}`);
-      response = await ai.models.generateContent({
-        model: modelInfo.name,
-        contents,
-        config: { responseModalities: modalities }
-      });
+      if (modelInfo.isImagen) {
+        logInfo(`[AI] Calling generateImages for ${modelInfo.name}`);
+        const imgResponse = await ai.models.generateImages({
+          model: modelInfo.name,
+          prompt: finalPrompt,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: "image/jpeg",
+            aspectRatio: "4:3"
+          }
+        });
+        const base64Bytes = imgResponse.generatedImages?.[0]?.image?.imageBytes;
+        if (!base64Bytes) {
+          throw new Error("No image returned from Imagen.");
+        }
+        response = {
+          candidates: [{
+            content: {
+              parts: [{
+                inlineData: {
+                  data: base64Bytes,
+                  mimeType: "image/jpeg"
+                }
+              }]
+            }
+          }]
+        };
+      } else {
+        const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
+        logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities })}`);
+        response = await ai.models.generateContent({
+          model: modelInfo.name,
+          contents,
+          config: { responseModalities: modalities }
+        });
+      }
       usedModel = modelInfo.name;
       logInfo(`[AI] \u2705 Gemini success with model: ${modelInfo.name}`);
-      logInfo(`[AI] Gemini raw response from ${modelInfo.name}: ${JSON.stringify(response)}`);
       recordSuccess("gemini");
       break;
     } catch (error) {
@@ -104773,7 +104821,7 @@ async function generateOverlayGemini(req, config, startTime) {
           response = await ai.models.generateContent({
             model: modelInfo.name,
             contents,
-            config: { responseModalities: ["TEXT", "IMAGE"] }
+            config: { responseModalities: ["TEXT"] }
           });
           usedModel = modelInfo.name;
           recordSuccess("gemini");
@@ -104811,11 +104859,17 @@ async function analyzeRoomGemini(req, config) {
     try {
       const response = await ai.models.generateContent({
         model: modelInfo.name,
-        contents: {
-          parts: [
-            { inlineData: { data: base64Data, mimeType } },
-            { text: ANALYSIS_PROMPT }
-          ]
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { data: base64Data, mimeType } },
+              { text: ANALYSIS_PROMPT }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json"
         }
       });
       const rawText = response.text || '{"text":"Could not analyze the room."}';
@@ -104924,7 +104978,7 @@ async function analyzeRoomOpenRouter(req, config) {
             ]
           }
         ],
-        max_tokens: 500
+        max_tokens: 3e3
       });
       const rawText = response.choices[0]?.message?.content || '{"text":"Could not analyze."}';
       recordSuccess("openrouter");
@@ -104964,7 +105018,7 @@ async function analyzeRoomOpenAI(req, config) {
           ]
         }
       ],
-      max_tokens: 500
+      max_tokens: 3e3
     });
     const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze."}';
     recordSuccess("openai");
@@ -105105,7 +105159,7 @@ async function testAIConnection(config) {
   if (ai) {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash",
         contents: "Hello, reply with only the word 'OK'."
       });
       results.geminiText = {
@@ -105120,7 +105174,8 @@ async function testAIConnection(config) {
       };
     }
     const candidateImageModels = [
-      "gemini-2.0-flash-exp"
+      "gemini-3.1-flash-image",
+      "gemini-2.5-flash-image"
     ];
     for (const model of candidateImageModels) {
       try {
@@ -105182,9 +105237,23 @@ function cleanBase642(dataURI) {
     data: Buffer.from(match[2], "base64")
   };
 }
-async function getProductImageBuffer(imageUrl) {
-  if (!imageUrl) return null;
-  const possiblePaths = [];
+async function cropProductTexture(buffer) {
+  try {
+    const metadata = await (0, import_sharp.default)(buffer).metadata();
+    const width = metadata.width || 500;
+    const height = metadata.height || 500;
+    const cropW = Math.round(width * 0.2);
+    const cropH = Math.round(height * 0.8);
+    const cropX = Math.round((width - cropW) / 2);
+    const cropY = Math.round((height - cropH) / 2);
+    const croppedBuffer = await (0, import_sharp.default)(buffer).extract({ left: cropX, top: cropY, width: cropW, height: cropH }).png().toBuffer();
+    return { buffer: croppedBuffer, width: cropW, height: cropH };
+  } catch (e2) {
+    console.error("[Compositor] Error cropping product texture:", e2.message);
+    return null;
+  }
+}
+async function getProductImageBuffer(imageUrl, refCode) {
   let projectRoot = process.cwd();
   try {
     if (typeof __dirname !== "undefined") {
@@ -105192,6 +105261,23 @@ async function getProductImageBuffer(imageUrl) {
     }
   } catch (e2) {
   }
+  if (refCode) {
+    const localPaths = [
+      path4.join(projectRoot, "products", `${refCode}.webp`),
+      path4.join(process.cwd(), "products", `${refCode}.webp`),
+      path4.join(projectRoot, "product-webp", `${refCode}.webp`),
+      path4.join(process.cwd(), "product-webp", `${refCode}.webp`)
+    ];
+    for (const p of localPaths) {
+      if (fs4.existsSync(p)) {
+        console.log(`[Compositor] Found product image locally at: ${p}`);
+        const buffer = fs4.readFileSync(p);
+        return await cropProductTexture(buffer);
+      }
+    }
+  }
+  if (!imageUrl) return null;
+  const possiblePaths = [];
   if (imageUrl.startsWith(SELF_URL2)) {
     const localPath = imageUrl.substring(SELF_URL2.length);
     const cleanPath = localPath.startsWith("/") ? localPath.substring(1) : localPath;
@@ -105228,8 +105314,7 @@ async function getProductImageBuffer(imageUrl) {
   for (const p of possiblePaths) {
     if (fs4.existsSync(p)) {
       const buffer = fs4.readFileSync(p);
-      const metadata = await (0, import_sharp.default)(buffer).metadata();
-      return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
+      return await cropProductTexture(buffer);
     }
   }
   if (imageUrl.startsWith("http")) {
@@ -105247,8 +105332,7 @@ async function getProductImageBuffer(imageUrl) {
         return null;
       }
       const buffer = Buffer.from(await response.arrayBuffer());
-      const metadata = await (0, import_sharp.default)(buffer).metadata();
-      return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
+      return await cropProductTexture(buffer);
     } catch (e2) {
       console.error("[imageCompositor] Fetch error:", e2.message);
       return null;
@@ -105296,8 +105380,8 @@ function detectTargetSurfaces(req, imgWidth, imgHeight) {
       );
     }
   }
-  if (ceilingBottom >= imgHeight * 0.4) ceilingBottom = Math.round(imgHeight * 0.08);
-  if (floorTop <= imgHeight * 0.4 || floorTop > imgHeight) floorTop = Math.round(imgHeight * 0.72);
+  if (ceilingBottom < Math.round(imgHeight * 0.18)) ceilingBottom = Math.round(imgHeight * 0.18);
+  if (floorTop > Math.round(imgHeight * 0.68) || floorTop <= Math.round(imgHeight * 0.4)) floorTop = Math.round(imgHeight * 0.68);
   const wallHeight = Math.max(1, floorTop - ceilingBottom);
   console.log(`[Compositor] Inferred wall zone: y=${ceilingBottom}\u2192${floorTop} (${wallHeight}px)`);
   return [{
@@ -105308,34 +105392,40 @@ function detectTargetSurfaces(req, imgWidth, imgHeight) {
     rotation: 0
   }];
 }
-async function tileProductImage(productBuffer, productWidth, productHeight, targetWidth, targetHeight) {
+async function renderProductTiledOnWall(productBuffer, productWidth, productHeight, targetWidth, targetHeight, opacity = 0.88) {
   const aspect = productWidth / productHeight;
-  let tileWidth = 200;
-  let tileHeight = Math.round(tileWidth / aspect);
-  if (tileWidth > targetWidth) {
-    tileWidth = targetWidth;
-    tileHeight = Math.round(tileWidth / aspect);
+  let tileW = targetWidth;
+  let tileH = targetHeight;
+  tileH = targetHeight;
+  tileW = Math.round(tileH * aspect);
+  if (tileW > targetWidth) {
+    tileW = targetWidth;
+    tileH = Math.round(tileW / aspect);
   }
-  if (tileHeight > targetHeight) {
-    tileHeight = targetHeight;
-    tileWidth = Math.round(tileHeight * aspect);
-  }
-  tileWidth = Math.max(1, tileWidth);
-  tileHeight = Math.max(1, tileHeight);
-  console.log(`[Compositor] Tiling product ${productWidth}x${productHeight} \u2192 tile ${tileWidth}x${tileHeight} over ${targetWidth}x${targetHeight}`);
-  const resizedTile = await (0, import_sharp.default)(productBuffer).resize(tileWidth, tileHeight, { fit: "fill" }).toBuffer();
-  const tiled = await (0, import_sharp.default)({
+  tileW = Math.max(1, tileW);
+  tileH = Math.max(1, tileH);
+  console.log(`[Compositor] Tiling at realistic scale: tile=${tileW}x${tileH}px (wall=${targetWidth}x${targetHeight}) \u2014 approx ${Math.ceil(targetWidth / tileW)}x${Math.ceil(targetHeight / tileH)} grid`);
+  const resizedTile = await (0, import_sharp.default)(productBuffer).resize(tileW, tileH, { fit: "fill" }).png().toBuffer();
+  const tiledFull = await (0, import_sharp.default)({
     create: {
       width: targetWidth,
       height: targetHeight,
-      channels: 3,
-      background: { r: 255, g: 255, b: 255 }
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 0 }
     }
-  }).composite([{
-    input: resizedTile,
-    tile: true
-  }]).raw().toBuffer();
-  return tiled;
+  }).composite([{ input: resizedTile, tile: true, blend: "over" }]).png().toBuffer();
+  const withOpacity = await (0, import_sharp.default)(tiledFull).composite([{
+    input: {
+      create: {
+        width: targetWidth,
+        height: targetHeight,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: opacity }
+      }
+    },
+    blend: "dest-in"
+  }]).png().toBuffer();
+  return withOpacity;
 }
 async function compositeProductOntoPhoto(req) {
   const startTime = Date.now();
@@ -105345,11 +105435,25 @@ async function compositeProductOntoPhoto(req) {
     const userMeta = await userPhoto.metadata();
     const imgWidth = userMeta.width || 800;
     const imgHeight = userMeta.height || 600;
-    const productInfo = await getProductImageBuffer(req.material.imageUrl);
+    const productInfo = await getProductImageBuffer(req.material.imageUrl, req.material.refCode || req.material.id);
     if (!productInfo) {
       throw new Error(`Product image not found: ${req.material.imageUrl}`);
     }
     const targets = detectTargetSurfaces(req, imgWidth, imgHeight);
+    const hasAnalysis = !!(req.analysis?.surfaces && req.analysis.surfaces.length > 0);
+    if (!hasAnalysis) {
+      console.log(`[Compositor] No valid room analysis surfaces found. Falling back to AI generator.`);
+      return {
+        image: req.originalImage,
+        method: "fallback",
+        durationMs: Date.now() - startTime,
+        details: {
+          productImageUsed: req.material.imageUrl || "unknown",
+          transform: "none",
+          surfaceDetected: false
+        }
+      };
+    }
     const category = req.material.category || "";
     const compositeOperations = [];
     for (const target of targets) {
@@ -105357,51 +105461,66 @@ async function compositeProductOntoPhoto(req) {
       const y = Math.max(0, Math.min(target.y, imgHeight - 1));
       const width = Math.max(1, Math.min(target.width, imgWidth - x2));
       const height = Math.max(1, Math.min(target.height, imgHeight - y));
-      const croppedOriginal = (0, import_sharp.default)(userPhotoData).extract({ left: x2, top: y, width, height });
-      const { channels } = await croppedOriginal.stats();
+      console.log(`[Compositor] Rendering product on wall zone: x=${x2} y=${y} w=${width} h=${height}`);
+      const croppedWallZone = (0, import_sharp.default)(userPhotoData).extract({ left: x2, top: y, width, height });
+      const { channels } = await croppedWallZone.stats();
       const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
-      const thresholdValue = Math.max(50, Math.min(200, Math.round(avgLuma - 20)));
-      console.log(`[Compositor] Target x:${x2} y:${y} mean luma: ${avgLuma.toFixed(1)}, using threshold: ${thresholdValue}`);
-      const mask = await croppedOriginal.greyscale().threshold(thresholdValue).blur(1.5).raw().toBuffer();
-      const tiledProduct = await tileProductImage(
+      let mask = Buffer.alloc(width * height, 255);
+      if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
+        const nonWallSurfaces = req.analysis.surfaces.filter(
+          (s2) => s2.type !== "wall" && s2.bounds
+        );
+        for (const s2 of nonWallSurfaces) {
+          const sx = Math.round(s2.bounds.x * imgWidth);
+          const sy = Math.round(s2.bounds.y * imgHeight);
+          const sw = Math.round(s2.bounds.width * imgWidth);
+          const sh = Math.round(s2.bounds.height * imgHeight);
+          const left = Math.max(x2, sx);
+          const top = Math.max(y, sy);
+          const right = Math.min(x2 + width, sx + sw);
+          const bottom = Math.min(y + height, sy + sh);
+          if (right > left && bottom > top) {
+            console.log(`[Compositor] Masking out obstacle (${s2.type}) at relative x:${left - x2} y:${top - y} w:${right - left} h:${bottom - top}`);
+            for (let row = top; row < bottom; row++) {
+              const maskY = row - y;
+              const rowStart = maskY * width;
+              for (let col = left; col < right; col++) {
+                const maskX = col - x2;
+                mask[rowStart + maskX] = 0;
+              }
+            }
+          }
+        }
+      }
+      const productLayer = await renderProductTiledOnWall(
         productInfo.buffer,
         productInfo.width,
         productInfo.height,
         width,
-        height
+        height,
+        1
+        // full opacity
       );
-      const maskedProduct = await (0, import_sharp.default)(tiledProduct, {
-        raw: {
-          width,
-          height,
-          channels: 3
-        }
-      }).joinChannel(mask, {
-        raw: {
-          width,
-          height,
-          channels: 1
-        }
+      const maskedProduct = await (0, import_sharp.default)(productLayer).joinChannel(mask, {
+        raw: { width, height, channels: 1 }
+      }).png().toBuffer();
+      const safeAvgLuma = Math.max(30, avgLuma);
+      const lightingScale = 255 / safeAvgLuma;
+      const lightingMap = await croppedWallZone.greyscale().linear(lightingScale, 0).blur(1).png().toBuffer();
+      const maskedLightingMap = await (0, import_sharp.default)(lightingMap).joinChannel(mask, {
+        raw: { width, height, channels: 1 }
       }).png().toBuffer();
       compositeOperations.push({
         input: maskedProduct,
         left: x2,
         top: y,
-        blend: "multiply"
+        blend: "over"
       });
-      const softLightLayer = await (0, import_sharp.default)(maskedProduct).ensureAlpha().composite([{
-        input: Buffer.from([0, 0, 0, 128]),
-        // 50% transparent black overlay
-        raw: { width: 1, height: 1, channels: 4 },
-        tile: true,
-        blend: "dest-in"
-        // reduces alpha to 50%
-      }]).png().toBuffer();
       compositeOperations.push({
-        input: softLightLayer,
+        input: maskedLightingMap,
         left: x2,
         top: y,
-        blend: "soft-light"
+        blend: "multiply"
       });
     }
     const compositeImage = await (0, import_sharp.default)(userPhotoData).composite(compositeOperations).jpeg({ quality: 95 }).toBuffer();
@@ -105412,7 +105531,7 @@ async function compositeProductOntoPhoto(req) {
       durationMs,
       details: {
         productImageUsed: req.material.imageUrl || "unknown",
-        transform: `tiled x${targets.length} surfaces, luma-shaded over`,
+        transform: `scaled to cover x${targets.length} surfaces, luma-shaded over`,
         surfaceDetected: !!req.analysis?.surfaces
       }
     };
@@ -123219,7 +123338,60 @@ try {
       serverBundle: health.checks.serverBundle.ok ? "\u2705" : "\u274C"
     });
   }, 2e3);
+  let lastReportDate = "";
+  async function checkAndSendDailyReport() {
+    try {
+      const config = await getConfig();
+      if (!config.TELEGRAM_DAILY_REPORT_ENABLED) return;
+      const reportTime = config.TELEGRAM_DAILY_REPORT_TIME || "09:00";
+      const now = /* @__PURE__ */ new Date();
+      const currentDateStr = now.toISOString().split("T")[0];
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      const currentTimeStr = `${hours}:${minutes}`;
+      if (currentTimeStr === reportTime && lastReportDate !== currentDateStr) {
+        lastReportDate = currentDateStr;
+        const report = monitor.getDailyReport();
+        const health = await monitor.getHealth();
+        let totalUsers = 0;
+        try {
+          const res = await query("SELECT COUNT(*) as count FROM users");
+          totalUsers = parseInt(res.rows[0]?.count || "0", 10) || 0;
+        } catch (e2) {
+          const users = await getUsers();
+          totalUsers = users.length;
+        }
+        const msg = `\u{1F4CA} <b>Daily Analytics Summary</b>
+-------------------------------
+\u{1F4C5} <b>Date:</b> <code>${currentDateStr}</code>
+\u23F1\uFE0F <b>Uptime:</b> <code>${Math.floor(report.uptime / 3600)}h ${Math.floor(report.uptime % 3600 / 60)}m</code>
+
+\u{1F4C8} <b>Activity Metrics (Today):</b>
+\u2022 Total Server Requests: <code>${report.usage?.totalRequests || 0}</code>
+\u2022 API Operations: <code>${report.usage?.apiCalls || 0}</code>
+\u2022 AI Generations: <code>${report.usage?.aiGenerations || 0}</code>
+\u2022 Material Views: <code>${report.usage?.materialViews || 0}</code>
+\u2022 System Errors: <code>${report.usage?.errors || 0}</code>
+
+\u{1F465} <b>User Registry:</b>
+\u2022 Total Registered Users: <code>${totalUsers}</code>
+
+\u{1F6E1}\uFE0F <b>System Status:</b>
+\u2022 Active AI Provider: <code>${config.AI_PROVIDER?.toUpperCase() || "GEMINI"}</code>
+\u2022 Primary Key Status: <code>${health.checks?.apiKey?.ok ? "\u2705 ACTIVE" : "\u274C FAILED"}</code>`;
+        const success = await telegramAlerts.sendMessage({ text: msg, parse_mode: "HTML" });
+        if (success) {
+          console.log(`[Telegram] Daily report successfully dispatched to chat.`);
+        } else {
+          console.warn(`[Telegram] Daily report dispatch failed.`);
+        }
+      }
+    } catch (e2) {
+      console.error("[Telegram] Error in checkAndSendDailyReport:", e2);
+    }
+  }
   setInterval(() => monitor.checkAndReport(), 3e5);
+  setInterval(() => checkAndSendDailyReport(), 6e4);
   async function getConfig() {
     return loadConfig();
   }
@@ -123440,10 +123612,11 @@ Auto-downgraded to Free.`
   const allowedOrigins = ["https://buildingapp.us", "https://www.buildingapp.us", "http://localhost:5173", "http://localhost:3000", "http://localhost", "https://localhost", "capacitor://localhost", "ionic://localhost"];
   app.use((0, import_cors.default)({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/i.test(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("Not allowed by CORS"));
+        console.error("[CORS Blocked] Origin:", origin);
+        callback(new Error(`Not allowed by CORS: ${origin}`));
       }
     },
     credentials: true
@@ -123790,6 +123963,17 @@ Auto-downgraded to Free.`
     } catch (e2) {
       res.status(500).json({ error: e2.message || String(e2) });
     }
+  });
+  app.post("/api/admin/circuit-reset", requireAdmin, (req, res) => {
+    const provider = req.body?.provider || "";
+    const allowed = ["gemini", "openai", "openrouter", "generic"];
+    if (!allowed.includes(provider)) {
+      res.status(400).json({ error: `Invalid provider. Must be one of: ${allowed.join(", ")}` });
+      return;
+    }
+    resetCircuit(provider);
+    console.log(`[Admin] Circuit breaker for "${provider}" reset by admin request.`);
+    res.json({ ok: true, message: `Circuit breaker for "${provider}" has been reset. It will be retried on the next request.` });
   });
   app.get("/api/admin/health", requireAdmin, async (req, res) => {
     try {
@@ -125583,7 +125767,11 @@ Context: ${context || "N/A"}`
       hasOpenAIKey: !!config.OPENAI_API_KEY,
       hasOpenRouterKey: !!config.OPENROUTER_API_KEY,
       hasStripeSecretKey: !!config.STRIPE_SECRET_KEY,
-      hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET
+      hasStripeWebhookSecret: !!config.STRIPE_WEBHOOK_SECRET,
+      hasTelegramBotToken: !!config.TELEGRAM_BOT_TOKEN,
+      telegramChatId: config.TELEGRAM_CHAT_ID || "",
+      telegramDailyReportTime: config.TELEGRAM_DAILY_REPORT_TIME || "09:00",
+      telegramDailyReportEnabled: !!config.TELEGRAM_DAILY_REPORT_ENABLED
     });
   });
   app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
@@ -125626,7 +125814,18 @@ Context: ${context || "N/A"}`
   });
   app.post("/api/admin/config", requireAdmin, async (req, res) => {
     try {
-      const { apiKey, openaiApiKey, openrouterApiKey, aiProvider, stripeSecretKey, stripeWebhookSecret } = req.body;
+      const {
+        apiKey,
+        openaiApiKey,
+        openrouterApiKey,
+        aiProvider,
+        stripeSecretKey,
+        stripeWebhookSecret,
+        telegramBotToken,
+        telegramChatId,
+        telegramDailyReportTime,
+        telegramDailyReportEnabled
+      } = req.body;
       const config = await getConfig();
       if (apiKey !== void 0) config.GEMINI_API_KEY = apiKey;
       if (openaiApiKey !== void 0) config.OPENAI_API_KEY = openaiApiKey;
@@ -125634,8 +125833,20 @@ Context: ${context || "N/A"}`
       if (aiProvider !== void 0) config.AI_PROVIDER = aiProvider;
       if (stripeSecretKey !== void 0) config.STRIPE_SECRET_KEY = stripeSecretKey;
       if (stripeWebhookSecret !== void 0) config.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
+      if (telegramBotToken !== void 0) config.TELEGRAM_BOT_TOKEN = telegramBotToken;
+      if (telegramChatId !== void 0) config.TELEGRAM_CHAT_ID = telegramChatId;
+      if (telegramDailyReportTime !== void 0) config.TELEGRAM_DAILY_REPORT_TIME = telegramDailyReportTime;
+      if (telegramDailyReportEnabled !== void 0) config.TELEGRAM_DAILY_REPORT_ENABLED = telegramDailyReportEnabled;
       saveToJSON(JSON_CONFIG_PATH, config);
-      await logAdminAction(req, req.user, "UPDATE_CONFIG", `Updated AI provider (${config.AI_PROVIDER}) and server credentials`);
+      if (config.TELEGRAM_BOT_TOKEN || config.TELEGRAM_CHAT_ID) {
+        try {
+          const { initTelegramFromConfig: initTelegramFromConfig2 } = await Promise.resolve().then(() => (init_telegramAlerts(), telegramAlerts_exports));
+          await initTelegramFromConfig2();
+        } catch (tgErr) {
+          console.warn("[Telegram] Re-init failed:", tgErr);
+        }
+      }
+      await logAdminAction(req, req.user, "UPDATE_CONFIG", `Updated AI provider (${config.AI_PROVIDER}) and server credentials/Telegram configs`);
       res.json({ success: true });
     } catch (e2) {
       res.status(500).json({ error: e2.message });

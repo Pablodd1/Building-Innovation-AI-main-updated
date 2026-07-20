@@ -1,0 +1,82 @@
+[
+  {
+    "timestamp": "2026-07-20T00:10:03.711Z",
+    "userId": 1,
+    "materialId": "14031001",
+    "materialName": "LAMINA PVC BLANCO BRILLANTE H-01-I",
+    "category": "CIELO RASO PVC",
+    "success": true,
+    "durationMs": 142,
+    "model": "sharp/compositor"
+  },
+  {
+    "timestamp": "2026-07-20T00:14:24.664Z",
+    "materialName": "Test Hardwood",
+    "category": "flooring",
+    "success": true,
+    "durationMs": 1066,
+    "model": "gemini/google/gemini-2.5-flash"
+  },
+  {
+    "timestamp": "2026-07-20T00:15:07.484Z",
+    "materialName": "Test",
+    "category": "flooring",
+    "success": true,
+    "durationMs": 1892,
+    "model": "gemini/google/gemini-2.5-flash"
+  },
+  {
+    "timestamp": "2026-07-20T00:15:18.586Z",
+    "materialName": "Test",
+    "category": "flooring",
+    "success": true,
+    "durationMs": 1019,
+    "model": "gemini/google/gemini-2.5-flash"
+  },
+  {
+    "timestamp": "2026-07-20T00:24:38.379Z",
+    "materialName": "Test Hardwood",
+    "category": "flooring",
+    "success": true,
+    "durationMs": 2080,
+    "model": "gemini/google/gemini-2.5-flash"
+  },
+  {
+    "timestamp": "2026-07-20T00:25:17.263Z",
+    "materialId": "14031001",
+    "materialName": "Test Wall Panel",
+    "category": "PAREDES",
+    "success": true,
+    "durationMs": 173,
+    "model": "sharp/compositor"
+  },
+  {
+    "timestamp": "2026-07-20T13:37:10.716Z",
+    "userId": 1,
+    "materialId": "14181104",
+    "materialName": "FOAM BOARD BURDEO - LINEA ZEN",
+    "category": "LAMINAS",
+    "success": true,
+    "durationMs": 327,
+    "model": "sharp/compositor"
+  },
+  {
+    "timestamp": "2026-07-20T13:37:47.898Z",
+    "userId": 1,
+    "materialId": "14181104",
+    "materialName": "FOAM BOARD BURDEO - LINEA ZEN",
+    "category": "LAMINAS",
+    "success": true,
+    "durationMs": 434,
+    "model": "sharp/compositor"
+  },
+  {
+    "timestamp": "2026-07-20T13:42:09.943Z",
+    "materialId": "14181104",
+    "materialName": "FOAM BOARD BURDEO - LINEA ZEN",
+    "category": "LAMINAS",
+    "success": true,
+    "durationMs": 151,
+    "model": "sharp/compositor"
+  }
+]

@@ -9,3 +9,4 @@ dist-server/
 data/config.json
 .env*.local
 data/config.json
+.env*

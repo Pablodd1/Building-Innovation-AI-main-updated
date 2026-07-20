@@ -433,7 +433,7 @@ Your PRIMARY task is to detect WALL PANELS with pixel-accurate bounding boxes. T
 
 Return your response in this EXACT JSON format:
 {
-  "text": "Brief professional analysis (max 80 words) covering: 1) Design Style, 2) Lighting, 3) Suggested wall materials.",
+  "text": "Brief professional analysis (max 80 words)",
   "dimensions": {
     "width": 350,
     "height": 280,
@@ -453,10 +453,11 @@ Return your response in this EXACT JSON format:
 
 CRITICAL surface detection rules:
 1. Return surfaces of type "wall", "ceiling", and "floor". 
-2. Also detect and return bounding boxes for any obstacles on or in front of the walls: "window", "door", "television", "cabinet", "fireplace", "light_fixture", or "furniture" so the rendering engine can mask them out and avoid painting over them.
-3. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall.
-4. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions.
-5. For dimensions: estimate the room's width and height in CENTIMETERS, and calculate areaM2 as (width * height) / 10000.`;
+2. You MUST detect and return bounding boxes for ANY obstacles on or in front of the walls: "window", "door", "television", "cabinet", "shelf", "picture_frame", "fireplace", "light_fixture", or "furniture".
+3. PAY EXTREME ATTENTION to wall-mounted cabinets (even if they are white on a white wall), picture frames, and wall decorations. If you miss them, they will be ruined by being painted over!
+4. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall.
+5. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions.
+6. For dimensions: estimate the room's width and height in CENTIMETERS, and calculate areaM2 as (width * height) / 10000.`;
 
 function parseAnalysisResponse(rawText: string, model: string, provider: AIProvider, durationMs: number): AnalysisResult {
     try {
@@ -530,10 +531,9 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     // gemini-2.0-flash-exp was deprecated and is now 404.
     // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        { name: "gemini-3.1-flash-image", supportsImageOutput: true, note: "Primary — Nano Banana 2, 4K native image output" },
-        { name: "gemini-2.5-flash-image", supportsImageOutput: true, note: "Fallback — Nano Banana legacy, still active" },
-        // Last resort — text description only if both image models fail
-        { name: "gemini-3.5-flash", supportsImageOutput: false, note: "Emergency fallback — vision-in only, text description" },
+        { name: "imagen-3.0-generate-002", isImagen: true, supportsImageOutput: true, note: "Imagen 3 generation model" },
+        // Last resort — text description only if image model fails
+        { name: "gemini-2.5-flash", isImagen: false, supportsImageOutput: false, note: "Emergency fallback — vision-in only, text description" },
     ];
 
     let response;
@@ -543,18 +543,47 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     for (const modelInfo of IMAGE_MODELS) {
         try {
             logInfo(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
-            // Determine modalities: image output only for models that support it
-            const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
-            // Log request payload (truncated for brevity)
-            logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities })}`);
-            response = await ai.models.generateContent({
-                model: modelInfo.name,
-                contents,
-                config: { responseModalities: modalities },
-            });
+            
+            if (modelInfo.isImagen) {
+                logInfo(`[AI] Calling generateImages for ${modelInfo.name}`);
+                const imgResponse = await ai.models.generateImages({
+                    model: modelInfo.name,
+                    prompt: finalPrompt,
+                    config: {
+                        numberOfImages: 1,
+                        outputMimeType: "image/jpeg",
+                        aspectRatio: "4:3"
+                    }
+                });
+                const base64Bytes = imgResponse.generatedImages?.[0]?.image?.imageBytes;
+                if (!base64Bytes) {
+                    throw new Error("No image returned from Imagen.");
+                }
+                response = {
+                    candidates: [{
+                        content: {
+                            parts: [{
+                                inlineData: {
+                                    data: base64Bytes,
+                                    mimeType: "image/jpeg"
+                                }
+                            }]
+                        }
+                    }]
+                };
+            } else {
+                // Determine modalities: image output only for models that support it
+                const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
+                // Log request payload (truncated for brevity)
+                logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities })}`);
+                response = await ai.models.generateContent({
+                    model: modelInfo.name,
+                    contents,
+                    config: { responseModalities: modalities },
+                });
+            }
             usedModel = modelInfo.name;
             logInfo(`[AI] ✅ Gemini success with model: ${modelInfo.name}`);
-            logInfo(`[AI] Gemini raw response from ${modelInfo.name}: ${JSON.stringify(response)}`);
             recordSuccess("gemini");
             break;
         } catch (error: any) {
@@ -584,7 +613,7 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
                     response = await ai.models.generateContent({
                         model: modelInfo.name,
                         contents,
-                        config: { responseModalities: ["TEXT", "IMAGE"] },
+                        config: { responseModalities: ["TEXT"] },
                     });
                     usedModel = modelInfo.name;
                     recordSuccess("gemini");

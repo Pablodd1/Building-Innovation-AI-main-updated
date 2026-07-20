@@ -64,6 +64,30 @@ function cleanBase64(dataURI: string): { data: Buffer; mimeType: string } {
     };
 }
 
+async function cropProductTexture(buffer: Buffer): Promise<{ buffer: Buffer; width: number; height: number } | null> {
+    try {
+        const metadata = await sharp(buffer).metadata();
+        const width = metadata.width || 500;
+        const height = metadata.height || 500;
+
+        // Crop center 20% width and 80% height to extract the clean texture strip
+        const cropW = Math.round(width * 0.20);
+        const cropH = Math.round(height * 0.80);
+        const cropX = Math.round((width - cropW) / 2);
+        const cropY = Math.round((height - cropH) / 2);
+
+        const croppedBuffer = await sharp(buffer)
+            .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+            .png()
+            .toBuffer();
+
+        return { buffer: croppedBuffer, width: cropW, height: cropH };
+    } catch (e: any) {
+        console.error("[Compositor] Error cropping product texture:", e.message);
+        return null;
+    }
+}
+
 async function getProductImageBuffer(imageUrl?: string, refCode?: string): Promise<{ buffer: Buffer; width: number; height: number } | null> {
     // Resolve project root based on file location to handle Passenger/Hostinger cwd issues
     let projectRoot = process.cwd();
@@ -85,8 +109,7 @@ async function getProductImageBuffer(imageUrl?: string, refCode?: string): Promi
             if (fs.existsSync(p)) {
                 console.log(`[Compositor] Found product image locally at: ${p}`);
                 const buffer = fs.readFileSync(p);
-                const metadata = await sharp(buffer).metadata();
-                return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
+                return await cropProductTexture(buffer);
             }
         }
     }
@@ -133,8 +156,7 @@ async function getProductImageBuffer(imageUrl?: string, refCode?: string): Promi
     for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
             const buffer = fs.readFileSync(p);
-            const metadata = await sharp(buffer).metadata();
-            return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
+            return await cropProductTexture(buffer);
         }
     }
 
@@ -157,8 +179,7 @@ async function getProductImageBuffer(imageUrl?: string, refCode?: string): Promi
             }
             
             const buffer = Buffer.from(await response.arrayBuffer());
-            const metadata = await sharp(buffer).metadata();
-            return { buffer, width: metadata.width || 500, height: metadata.height || 500 };
+            return await cropProductTexture(buffer);
         } catch (e: any) {
             console.error('[imageCompositor] Fetch error:', e.message);
             return null;
@@ -275,38 +296,25 @@ async function renderProductTiledOnWall(
 ): Promise<Buffer> {
     const aspect = productWidth / productHeight;
 
-    // --- Realistic tile sizing ---
-    // Strategy: calculate both height-driven and width-driven tile sizes, then pick
-    // the one that gives the most visually realistic result.
-    //
-    // For a typical foam board / wall panel product:
-    //   - Target ~3-4 tiles wide (so tileW ≈ wall_width / 3)
-    //   - Target ~2-3 tiles tall (so tileH ≈ wall_height / 2)
-    //   - Pick whichever gives larger tiles (better quality, fewer repetitions)
-    //
-    // This ensures portrait images (tall/narrow products) don't produce tiny tiles.
-
-    // Width-driven: 1/3 of wall width per tile
-    const tileW_byWidth = Math.round(targetWidth / 3);
-    const tileH_byWidth = Math.round(tileW_byWidth / aspect);
-
-    // Height-driven: 1/2 of wall height per tile
-    const tileH_byHeight = Math.round(targetHeight / 2);
-    const tileW_byHeight = Math.round(tileH_byHeight * aspect);
-
-    // Use whichever gives the LARGER tile (more realistic, less repetition)
-    let tileW: number, tileH: number;
-    if (tileW_byWidth * tileH_byWidth >= tileW_byHeight * tileH_byHeight) {
-        tileW = tileW_byWidth;
-        tileH = tileH_byWidth;
-    } else {
-        tileW = tileW_byHeight;
-        tileH = tileH_byHeight;
+    // Ensure we maintain the exact aspect ratio of the product texture
+    let tileW = targetWidth;
+    let tileH = targetHeight;
+    
+    // Default: scale the texture so it spans the full height of the wall target.
+    // This is perfect for vertical wall panels, wallpaper, and slats.
+    tileH = targetHeight;
+    tileW = Math.round(tileH * aspect);
+    
+    // If the resulting tile is wider than the wall (e.g. horizontal siding or floors),
+    // scale it so it spans the full width of the wall instead.
+    if (tileW > targetWidth) {
+        tileW = targetWidth;
+        tileH = Math.round(tileW / aspect);
     }
-
-    // Clamp to wall bounds (tile cannot exceed the wall area)
-    tileW = Math.max(1, Math.min(tileW, targetWidth));
-    tileH = Math.max(1, Math.min(tileH, targetHeight));
+    
+    // Ensure minimum size of 1px
+    tileW = Math.max(1, tileW);
+    tileH = Math.max(1, tileH);
 
     console.log(`[Compositor] Tiling at realistic scale: tile=${tileW}x${tileH}px (wall=${targetWidth}x${targetHeight}) — approx ${Math.ceil(targetWidth/tileW)}x${Math.ceil(targetHeight/tileH)} grid`);
 
@@ -409,26 +417,14 @@ export async function compositeProductOntoPhoto(
 
             console.log(`[Compositor] Rendering product on wall zone: x=${x} y=${y} w=${width} h=${height}`);
 
-            // --- Step 1: Build a foreground protection mask ---
-            // The mask is WHITE where we should draw the product (open wall area)
-            // and BLACK where we should leave the original (furniture, plants, objects in front of wall).
-            // We use luminance thresholding: bright pixels = wall, dark pixels = furniture/foreground.
+            // --- Step 1: Extract wall area lighting metrics ---
             const croppedWallZone = sharp(userPhotoData).extract({ left: x, top: y, width, height });
             const { channels } = await croppedWallZone.stats();
             const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
-            // Threshold: avgLuma - 20 ensures furniture slightly darker than wall gets masked out.
-            // Clamped 60–200 to stay meaningful across very bright or very dark rooms.
-            const thresholdValue = Math.max(60, Math.min(200, Math.round(avgLuma - 20)));
-            console.log(`[Compositor] Wall zone mean luma: ${avgLuma.toFixed(1)}, mask threshold: ${thresholdValue}`);
 
-            let mask = await croppedWallZone
-                .greyscale()
-                .threshold(thresholdValue)
-                .blur(2)   // smooth edges so the overlay doesn't have hard pixel borders
-                .raw()
-                .toBuffer();
+            // --- Step 1b: Build a vector-accurate mask using AI-detected obstacles ---
+            let mask = Buffer.alloc(width * height, 255); // Solid white by default (draw everywhere)
 
-            // --- Step 1b: Mask out detected obstacles (TV, Cabinets, Windows, Doors, Furniture, Lights) ---
             if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
                 const nonWallSurfaces = req.analysis.surfaces.filter(
                     (s: any) => s.type !== "wall" && s.bounds
@@ -452,22 +448,11 @@ export async function compositeProductOntoPhoto(
                             const rowStart = maskY * width;
                             for (let col = left; col < right; col++) {
                                 const maskX = col - x;
-                                mask[rowStart + maskX] = 0; // Set mask to black (transparent)
+                                mask[rowStart + maskX] = 0; // Black out obstacle
                             }
                         }
                     }
                 }
-            }
-
-            // Low-light fallback: if mask is nearly all black (< 15% white), the room
-            // is too dark or low-contrast to distinguish wall from objects.
-            // In that case, fill the mask solid white so we render on the entire zone.
-            const whitePixels = mask.reduce((n: number, v: number) => n + (v > 128 ? 1 : 0), 0);
-            const coverage = whitePixels / mask.length;
-            console.log(`[Compositor] Mask coverage: ${(coverage * 100).toFixed(1)}%`);
-            if (coverage < 0.15) {
-                console.log(`[Compositor] Low coverage, using solid fallback mask`);
-                mask.fill(255);
             }
 
             // --- Step 2: Tile the product at realistic physical scale ---
@@ -477,12 +462,10 @@ export async function compositeProductOntoPhoto(
                 productInfo.height,
                 width,
                 height,
-                1.0  // full opacity — the mask controls where it appears, not opacity
+                1.0  // full opacity
             );
 
             // --- Step 3: Apply the mask as the product's alpha channel ---
-            // This cuts out the product everywhere the mask is black (furniture, objects)
-            // so only the open wall area gets the texture.
             const maskedProduct = await sharp(productLayer)
                 .joinChannel(mask, {
                     raw: { width, height, channels: 1 }
@@ -490,29 +473,36 @@ export async function compositeProductOntoPhoto(
                 .png()
                 .toBuffer();
 
-            // --- Step 4: Multiply blend preserves room lighting through the product ---
-            // multiply: product_color × wall_color — keeps shadows, highlights, depth.
-            // This is how real material visualization tools (like Roomvo, Houzz AR) work.
+            // --- Step 4: Generate the lighting shadow/highlight map ---
+            const safeAvgLuma = Math.max(30, avgLuma);
+            const lightingScale = 255 / safeAvgLuma;
+            const lightingMap = await croppedWallZone
+                .greyscale()
+                .linear(lightingScale, 0)
+                .blur(1) // slightly smooth shadow transitions
+                .png()
+                .toBuffer();
+
+            const maskedLightingMap = await sharp(lightingMap)
+                .joinChannel(mask, {
+                    raw: { width, height, channels: 1 }
+                })
+                .png()
+                .toBuffer();
+
+            // --- Step 5: Composite product with Over blend, and Lighting with Multiply blend ---
             compositeOperations.push({
                 input: maskedProduct,
                 left: x,
                 top: y,
-                blend: "multiply" as any
+                blend: "over" as any
             });
 
-            // --- Step 5: Soft-light recovery pass ---
-            // Multiply tends to darken bright materials. A 40% opacity soft-light pass
-            // recovers the product's true colors without losing the shadow integration.
-            const recoveryLayer = await sharp(maskedProduct)
-                .ensureAlpha(0.4)
-                .png()
-                .toBuffer();
-
             compositeOperations.push({
-                input: recoveryLayer,
+                input: maskedLightingMap,
                 left: x,
                 top: y,
-                blend: "soft-light" as any
+                blend: "multiply" as any
             });
         }
 

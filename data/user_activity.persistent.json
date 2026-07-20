@@ -1,1 +1,41 @@
-[]
+[
+  {
+    "timestamp": "2026-07-19T18:07:49.319Z",
+    "action": "RENDER",
+    "details": {
+      "materialId": "floor-oak-natural",
+      "materialName": "Natural Oak Planks",
+      "category": "flooring",
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-image",
+      "durationMs": 12040,
+      "success": true
+    }
+  },
+  {
+    "timestamp": "2026-07-19T18:09:13.950Z",
+    "action": "RENDER",
+    "details": {
+      "materialId": "floor-oak-natural",
+      "materialName": "Natural Oak Planks",
+      "category": "flooring",
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-image",
+      "durationMs": 9757,
+      "success": true
+    }
+  },
+  {
+    "timestamp": "2026-07-19T18:09:34.624Z",
+    "action": "RENDER",
+    "details": {
+      "materialId": "14181107",
+      "materialName": "FOAM BOARD GOTAS DE AGUA NEGRO",
+      "category": "LAMINAS",
+      "provider": "compositor",
+      "model": "sharp",
+      "durationMs": 197,
+      "success": true
+    }
+  }
+]

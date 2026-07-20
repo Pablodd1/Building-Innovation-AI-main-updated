@@ -1,0 +1,36 @@
+[
+  {
+    "timestamp": "2026-07-20T00:10:03.711Z",
+    "userId": 1,
+    "materialId": "14031001",
+    "materialName": "LAMINA PVC BLANCO BRILLANTE H-01-I",
+    "category": "CIELO RASO PVC",
+    "success": true,
+    "durationMs": 142,
+    "model": "sharp/compositor"
+  },
+  {
+    "timestamp": "2026-07-20T00:14:24.664Z",
+    "materialName": "Test Hardwood",
+    "category": "flooring",
+    "success": true,
+    "durationMs": 1066,
+    "model": "gemini/google/gemini-2.5-flash"
+  },
+  {
+    "timestamp": "2026-07-20T00:15:07.484Z",
+    "materialName": "Test",
+    "category": "flooring",
+    "success": true,
+    "durationMs": 1892,
+    "model": "gemini/google/gemini-2.5-flash"
+  },
+  {
+    "timestamp": "2026-07-20T00:15:18.586Z",
+    "materialName": "Test",
+    "category": "flooring",
+    "success": true,
+    "durationMs": 1019,
+    "model": "gemini/google/gemini-2.5-flash"
+  }
+]

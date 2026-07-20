@@ -27,9 +27,10 @@ async function runTest() {
 
     console.log("3. Sending to /api/ai/generate-overlay...");
     const material = {
-        name: "Test Hardwood",
-        category: "flooring",
-        imageUrl: "https://buildingapp.us/product-webp/LL-10051187_rs.webp"
+        name: "FOAM BOARD BURDEO - LINEA ZEN",
+        category: "LAMINAS",
+        imageUrl: "https://buildingapp.us/product-webp/14181104.webp",
+        refCode: "14181104"
     };
     
     const generateRes = await fetch(`${BASE_URL}/api/ai/generate-overlay`, {
