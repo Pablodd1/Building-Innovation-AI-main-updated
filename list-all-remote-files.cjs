@@ -14,7 +14,7 @@ async function main() {
     await c.access(FTP_CONFIG);
     console.log('Connected.');
 
-    const directories = ['/nodejs/product-webp'];
+    const directories = ['/nodejs/dist-server/logs'];
     for (const dir of directories) {
         try {
             console.log(`\n--- LISTING: ${dir} ---`);

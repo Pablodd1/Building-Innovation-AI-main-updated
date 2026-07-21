@@ -20,26 +20,40 @@ export const generateRoomAnalysis = async (
     userId?: number,
     lang: string = "en"
 ): Promise<RoomAnalysisResult> => {
-    const res = await fetch("/api/ai/analyze-room", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imageBase64, userId, lang }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout
 
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Server error" }));
-        throw new Error(err.error || err.message || "Analysis failed");
+    try {
+        const res = await fetch("/api/ai/analyze-room", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: imageBase64, userId, lang }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Server error" }));
+            throw new Error(err.error || err.message || "Analysis failed");
+        }
+
+        const data = await res.json();
+        return {
+            text: data.analysis || "Could not analyze the room.",
+            dimensions: data.dimensions,
+            surfaces: data.surfaces,
+            style: data.style,
+            lighting: data.lighting,
+            suggestedMaterials: data.suggestedMaterials,
+        };
+    } catch (error: any) {
+        clearTimeout(timeout);
+        if (error.name === "AbortError") {
+            throw new Error("Analysis timed out after 45s.");
+        }
+        throw error;
     }
-
-    const data = await res.json();
-    return {
-        text: data.analysis || "Could not analyze the room.",
-        dimensions: data.dimensions,
-        surfaces: data.surfaces,
-        style: data.style,
-        lighting: data.lighting,
-        suggestedMaterials: data.suggestedMaterials,
-    };
 };
 
 // --- Material Overlay Generation ---

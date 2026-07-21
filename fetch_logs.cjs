@@ -15,7 +15,7 @@ async function fetchLogs() {
         });
         
         console.log("Connected! Downloading logs...");
-        await client.downloadTo("generation_log_live.json", "/nodejs/data/generation_log.persistent.json");
+        await client.downloadTo("ai_live.log", "/nodejs/dist-server/logs/ai.log");
         console.log("Downloaded successfully.");
     } catch (e) {
         console.error(e);
