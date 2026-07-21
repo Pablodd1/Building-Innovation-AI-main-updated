@@ -104685,7 +104685,7 @@ STRICT RENDERING RULES:
 }
 var ANALYSIS_PROMPT = `You are a Senior Architectural Interior Analyst. Analyze this photo of an interior/exterior space.
 
-Your PRIMARY task is to detect WALL PANELS with pixel-accurate bounding boxes. The product texture will be mapped exclusively to walls \u2014 floors, decks, and ceilings must be IGNORED for rendering.
+Your PRIMARY task is to detect WALL PANELS with pixel-accurate surface bounds and 4-point perspective polygon corners. The product texture will be mapped exclusively to walls \u2014 floors, decks, and ceilings must be IGNORED for rendering.
 
 Return your response in this EXACT JSON format:
 {
@@ -104702,6 +104702,7 @@ Return your response in this EXACT JSON format:
     {
       "type": "wall",
       "bounds": { "x": 0.05, "y": 0.1, "width": 0.9, "height": 0.55 },
+      "polygon": [[0.05, 0.12], [0.95, 0.10], [0.95, 0.65], [0.05, 0.60]],
       "confidence": 0.95
     }
   ]
@@ -104709,10 +104710,10 @@ Return your response in this EXACT JSON format:
 
 CRITICAL surface detection rules:
 1. Return surfaces of type "wall", "ceiling", and "floor". 
-2. You MUST detect and return bounding boxes for ANY obstacles on or in front of the walls: "window", "door", "television", "cabinet", "shelf", "picture_frame", "fireplace", "light_fixture", or "furniture".
-3. PAY EXTREME ATTENTION to wall-mounted cabinets (even if they are white on a white wall), picture frames, and wall decorations. If you miss them, they will be ruined by being painted over!
-4. For walls: Detect the ENTIRE structural wall surface from left-to-right and top-to-bottom. Include the full bounding box of the structural wall.
-5. Coordinates are normalized values (0.0 to 1.0) relative to the image dimensions.
+2. For "wall" surfaces, ALWAYS provide both bounding box ("bounds") AND 4-corner perspective polygon coordinates ("polygon": [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]) representing the top-left, top-right, bottom-right, and bottom-left corners in 3D perspective.
+3. You MUST detect and return bounding boxes/polygons for ANY obstacles on or in front of the walls: "window", "door", "television", "cabinet", "shelf", "picture_frame", "fireplace", "light_fixture", or "furniture".
+4. PAY EXTREME ATTENTION to wall-mounted cabinets (even if white on a white wall), picture frames, and wall decorations.
+5. Coordinates are normalized values (0.0 to 1.0) relative to image dimensions.
 6. For dimensions: estimate the room's width and height in CENTIMETERS, and calculate areaM2 as (width * height) / 10000.`;
 function parseAnalysisResponse(rawText, model, provider, durationMs) {
   try {
@@ -105352,7 +105353,8 @@ function detectTargetSurfaces(req, imgWidth, imgHeight) {
         y: Math.round(s2.bounds.y * imgHeight),
         width: Math.round(s2.bounds.width * imgWidth),
         height: Math.round(s2.bounds.height * imgHeight),
-        rotation: s2.rotation || 0
+        rotation: s2.rotation || 0,
+        polygon: Array.isArray(s2.polygon) ? s2.polygon : void 0
       }));
     }
   }
@@ -105465,7 +105467,23 @@ async function compositeProductOntoPhoto(req) {
       const croppedWallZone = (0, import_sharp.default)(userPhotoData).extract({ left: x2, top: y, width, height });
       const { channels } = await croppedWallZone.stats();
       const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
-      let mask = Buffer.alloc(width * height, 255);
+      let mask;
+      if (target.polygon && target.polygon.length >= 3) {
+        try {
+          const pointsSvg = target.polygon.map(([px, py]) => `${Math.round(px * imgWidth - x2)},${Math.round(py * imgHeight - y)}`).join(" ");
+          const svgBuffer = Buffer.from(
+            `<svg width="${width}" height="${height}"><polygon points="${pointsSvg}" fill="white"/></svg>`
+          );
+          const pngMask = await (0, import_sharp.default)(svgBuffer).extractChannel("green").raw().toBuffer();
+          mask = Buffer.from(pngMask);
+          console.log(`[Compositor] Created SVG polygon mask for angled wall with ${target.polygon.length} corners`);
+        } catch (e2) {
+          console.warn(`[Compositor] Could not render polygon mask, defaulting to bounding box:`, e2.message);
+          mask = Buffer.alloc(width * height, 255);
+        }
+      } else {
+        mask = Buffer.alloc(width * height, 255);
+      }
       if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
         const nonWallSurfaces = req.analysis.surfaces.filter(
           (s2) => s2.type !== "wall" && s2.bounds

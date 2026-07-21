@@ -39,6 +39,7 @@ export interface CompositingRequest {
 export interface DetectedSurface {
     type: "wall" | "floor" | "ceiling" | "countertop" | "other";
     bounds: { x: number; y: number; width: number; height: number };
+    polygon?: Array<[number, number]>;
     confidence: number;
 }
 
@@ -204,7 +205,7 @@ function detectTargetSurfaces(
     req: CompositingRequest,
     imgWidth: number,
     imgHeight: number
-): Array<{ x: number; y: number; width: number; height: number; rotation: number }> {
+): Array<{ x: number; y: number; width: number; height: number; rotation: number; polygon?: Array<[number, number]> }> {
 
     // --- Option 1: Use AI-detected wall surfaces directly ---
     if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
@@ -219,6 +220,7 @@ function detectTargetSurfaces(
                 width: Math.round(s.bounds.width * imgWidth),
                 height: Math.round(s.bounds.height * imgHeight),
                 rotation: s.rotation || 0,
+                polygon: Array.isArray(s.polygon) ? s.polygon : undefined,
             }));
         }
     }
@@ -416,8 +418,27 @@ export async function compositeProductOntoPhoto(
             const { channels } = await croppedWallZone.stats();
             const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
 
-            // --- Step 1b: Build a vector-accurate mask using AI-detected obstacles ---
-            let mask = Buffer.alloc(width * height, 255); // Solid white by default (draw everywhere)
+            // --- Step 1b: Build a vector-accurate mask using AI-detected polygon and obstacles ---
+            let mask: Buffer;
+
+            if (target.polygon && target.polygon.length >= 3) {
+                try {
+                    const pointsSvg = target.polygon
+                        .map(([px, py]) => `${Math.round(px * imgWidth - x)},${Math.round(py * imgHeight - y)}`)
+                        .join(" ");
+                    const svgBuffer = Buffer.from(
+                        `<svg width="${width}" height="${height}"><polygon points="${pointsSvg}" fill="white"/></svg>`
+                    );
+                    const pngMask = await sharp(svgBuffer).extractChannel("green").raw().toBuffer();
+                    mask = Buffer.from(pngMask);
+                    console.log(`[Compositor] Created SVG polygon mask for angled wall with ${target.polygon.length} corners`);
+                } catch (e: any) {
+                    console.warn(`[Compositor] Could not render polygon mask, defaulting to bounding box:`, e.message);
+                    mask = Buffer.alloc(width * height, 255);
+                }
+            } else {
+                mask = Buffer.alloc(width * height, 255); // Solid white box mask by default
+            }
 
             if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
                 const nonWallSurfaces = req.analysis.surfaces.filter(
