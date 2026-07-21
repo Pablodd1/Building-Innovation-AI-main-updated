@@ -8,7 +8,7 @@ const path = require('path');
 const FTP_CONFIG = {
     host: '157.173.208.16',
     user: 'u496083892.buildingapp.us',
-    password: process.env.FTP_PASSWORD || 's~NT@9qK$W0jVE]4',
+    password: process.env.FTP_PASSWORD || '',
     secure: true,
     secureOptions: { rejectUnauthorized: false }
 };

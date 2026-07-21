@@ -5,7 +5,7 @@ const fs = require('fs');
 const FTP_CONFIG = {
     host: '157.173.208.16',
     user: 'u496083892.buildingapp.us',
-    password: process.env.FTP_PASSWORD || 's~NT@9qK$W0jVE]4',
+    password: process.env.FTP_PASSWORD || '',
     secure: true,
     secureOptions: { rejectUnauthorized: false }
 };
@@ -13,6 +13,14 @@ const FTP_CONFIG = {
 const REMOTE = '/nodejs';
 
 async function main() {
+    if (!FTP_CONFIG.password) {
+        console.error('❌ FTP_PASSWORD env var is required.');
+        console.error('   Set it for this shell session only:');
+        console.error('       export FTP_PASSWORD=\'your-password\'   # Git Bash / Linux / macOS');
+        console.error('       set FTP_PASSWORD=your-password          # Windows cmd');
+        console.error('   Do NOT put it in this file — it would leak to git.');
+        process.exit(1);
+    }
     const c = new Client();
     c.ftp.verbose = false;
 

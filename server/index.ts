@@ -538,7 +538,10 @@ class SystemMonitor {
 
       // Default: Gemini
       if (!geminiKey) return { ok: false, message: 'GEMINI_API_KEY not found in config or env' };
-      if (!geminiKey.startsWith('AIza') && !geminiKey.startsWith('AQ.')) return { ok: false, message: 'Gemini API key format invalid (should start with AIza or AQ.)' };
+      // Lenient format check — Google key formats vary (AI Studio 'AIzaSy...',
+      // Vertex/Cloud service account 'AQ....', plus future formats). Length is
+      // the only safe sanity signal; the real test is the live API call.
+      if (geminiKey.length < 20) return { ok: false, message: 'Gemini API key too short (likely a paste error)' };
       return { ok: true, message: `Gemini key valid (active provider: ${provider})` };
     } catch (e: any) {
       return { ok: false, message: `Config error: ${e.message}` };

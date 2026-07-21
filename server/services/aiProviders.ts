@@ -6,11 +6,18 @@
 // MODEL HISTORY (for reference when updating):
 // ═══════════════════════════════════════════════════════════
 // 2024-Q4: gemini-1.5-pro             — DISCONTINUED (returns 404)
-// 2025-Q1: gemini-2.0-flash-exp       — Experimental, DEPRECATED 2026-Q2
-// 2025-Q3: gemini-2.5-flash           — Stable analysis, retiring Oct 16 2026
-// 2026-Q2: gemini-3.5-flash           — CURRENT analysis primary (GA May 2026)
-// 2026-Q3: gemini-3.1-flash-image     — CURRENT image primary  ("Nano Banana 2")
+// 2025-Q1: gemini-2.0-flash-exp       — Shut down June 1, 2026
+// 2025-Q3: gemini-2.5-flash           — Shut down June 17, 2026
+// 2026-Q1: gemini-3.1-flash-image-preview / gemini-3-pro-image-preview
+//          — Shut down June 25, 2026 (DO NOT use the -preview suffix)
+// 2026-Q2: gemini-3.5-flash           — CURRENT analysis primary (GA)
+// 2026-Q3: gemini-3.1-flash-image     — CURRENT image primary  ("Nano Banana 2", GA)
 //          gemini-2.5-flash-image     — Legacy image fallback ("Nano Banana")
+//          imagen-3.0-generate-002    — Paid-tier image fallback
+//
+// Verify currency any time Gemini breaks:
+//   curl "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY"
+//   or check https://ai.google.dev/gemini-api/docs/changelog
 //
 // BACKUP CHAIN (executed left-to-right on failure):
 //   Gemini (primary) → OpenRouter (unified) → OpenAI (fallback) → Generic Response
@@ -530,10 +537,20 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     // IMAGE MODEL CHAIN — Updated July 2026 ("Nano Banana" family)
     // gemini-2.0-flash-exp was deprecated and is now 404.
     // ═══════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════
+    // IMAGE MODEL CHAIN — Updated July 2026
+    // Google shut down gemini-3.1-flash-image-preview and
+    // gemini-3-pro-image-preview on June 25, 2026, and gemini-2.0-flash
+    // on June 1, 2026 (see https://ai.google.dev/gemini-api/docs/changelog).
+    // Current valid image-output models:
+    //   - gemini-3.1-flash-image  ("Nano Banana 2", GA — primary)
+    //   - gemini-2.5-flash-image  ("Nano Banana", legacy — fallback)
+    //   - imagen-3.0-generate-002 (paid tier — last resort)
+    // ═══════════════════════════════════════════════════════════
     const IMAGE_MODELS = [
-        { name: "imagen-3.0-generate-002", isImagen: true, supportsImageOutput: true, note: "Imagen 3 generation model" },
-        // Last resort — text description only if image model fails
-        { name: "gemini-2.5-flash", isImagen: false, supportsImageOutput: false, note: "Emergency fallback — vision-in only, text description" },
+        { name: "gemini-3.1-flash-image", isImagen: false, supportsImageOutput: true, note: "Nano Banana 2 — primary image output" },
+        { name: "gemini-2.5-flash-image", isImagen: false, supportsImageOutput: true, note: "Nano Banana — legacy fallback" },
+        { name: "imagen-3.0-generate-002", isImagen: true, supportsImageOutput: true, note: "Imagen 3 — paid-tier last resort" },
     ];
 
     let response;
@@ -648,11 +665,13 @@ async function analyzeRoomGemini(req: AnalysisRequest, config: AIConfig): Promis
     const base64Data = cleanBase64(req.image);
     const mimeType = getMimeType(req.image);
 
-    // Analysis model fallback chain — updated June 2026
+    // Analysis model fallback chain — updated July 2026.
+    // gemini-2.5-flash was shut down June 17, 2026 and gemini-2.0-flash-exp
+    // June 1, 2026, so they are no longer useful as fallbacks. Use the
+    // current GA model with a stable variant as backup.
     const ANALYSIS_MODELS = [
-        { name: "gemini-3.5-flash", note: "Primary — GA May 2026, fastest + smartest" },
-        { name: "gemini-2.5-flash", note: "Fallback — retiring Oct 2026, still active" },
-        { name: "gemini-2.0-flash-exp", note: "Last resort — experimental but alive" },
+        { name: "gemini-3.5-flash", note: "Primary — GA, fastest + smartest" },
+        { name: "gemini-3-flash", note: "Fallback — stable previous generation" },
     ];
 
     let lastError: any = null;
@@ -826,9 +845,107 @@ async function analyzeRoomOpenRouter(req: AnalysisRequest, config: AIConfig): Pr
 }
 
 // =============================================================
-// OPENAI PROVIDER — Fallback (text analysis only)
-// Note: OpenAI Chat API doesn't support image output natively
+// OPENAI PROVIDER — Analysis (GPT-4o vision) + Image generation (gpt-image)
 // =============================================================
+
+/**
+ * Generate a material overlay using OpenAI's GPT Image family.
+ *
+ * Important API details (verified July 2026):
+ *   - The GPT Image models (gpt-image-2 / gpt-image-1.5 / gpt-image-1 / gpt-image-1-mini)
+ *     ALWAYS return base64 image data. The `response_format` parameter is
+ *     ignored and not accepted — passing it triggers a 400.
+ *   - Use /v1/images/edits when we have a reference image to modify (our case:
+ *     we want to repaint the user's photo with the chosen material). /v1/images/generations
+ *     is text-to-image only and would ignore the user's photo entirely.
+ *
+ * Because GPT Image edits can return very large base64 payloads (often >1 MB),
+ * we cap input image size upstream (the route already limits photos to 5 MB).
+ */
+async function generateOverlayOpenAI(req: OverlayRequest, config: AIConfig, startTime: number): Promise<GenerationResult> {
+    if (!config.OPENAI_API_KEY) {
+        throw new Error("OpenAI API key not configured");
+    }
+    if (isCircuitOpen("openai")) {
+        throw new Error("OpenAI circuit breaker is open");
+    }
+
+    const ai = getOpenAISDK(config.OPENAI_API_KEY);
+    const { prompt: finalPrompt } = buildOverlayPrompt(req);
+
+    // GPT Image edit endpoint requires multipart form fields. The OpenAI Node
+    // SDK expects the `image` parameter as a FileCreateNodePart (built via
+    // OpenAI.toFile), NOT a raw Buffer — passing a Buffer produces
+    // "400 Invalid type for 'image[0]': expected a file, but got a string".
+    const rawImage = req.originalImage ?? (req as any).image;
+    const base64Data = cleanBase64(rawImage);
+    const imageBuffer = Buffer.from(base64Data.data);
+    const inputMime = base64Data.mimeType;
+    const ext = inputMime === "image/png" ? "png" : inputMime === "image/webp" ? "webp" : "jpg";
+    const filename = `room.${ext}`;
+
+    // Build the file part the SDK requires. toFile accepts (buffer, name, opts).
+    const imagePart = await OpenAI.toFile(imageBuffer, filename, { type: inputMime });
+
+    // Optionally include the product reference image as a second source image.
+    // GPT Image edit accepts an array of file parts under `image`.
+    const productRef = await getImageBase64(req.material?.imageUrl);
+    const imageInput = productRef
+        ? [
+            imagePart,
+            await OpenAI.toFile(Buffer.from(productRef.data), `product.${productRef.mimeType === "image/png" ? "png" : "jpg"}`, { type: productRef.mimeType }),
+        ]
+        : imagePart;
+
+    // Chain newest → cheapest. gpt-image-2 is current as of April 2026.
+    const IMAGE_MODELS = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
+    let lastError: any = null;
+
+    for (const model of IMAGE_MODELS) {
+        try {
+            logInfo(`[AI] Trying OpenAI image model: ${model}...`);
+            const response = await ai.images.edit({
+                model,
+                prompt: finalPrompt,
+                image: imageInput as any,
+                size: "1024x1024",
+            });
+
+            const b64 = (response as any).data?.[0]?.b64_json;
+            const url = (response as any).data?.[0]?.url;
+            if (!b64 && !url) {
+                throw new Error("OpenAI returned no image data");
+            }
+            const image = b64 ? `data:image/png;base64,${b64}` : url;
+            recordSuccess("openai");
+            logInfo(`[AI] ✅ OpenAI success with model: ${model}`);
+            return { image, model, durationMs: Date.now() - startTime, provider: "openai" };
+        } catch (error: any) {
+            lastError = error;
+            const msg = error?.message || String(error);
+            const status = error?.status || error?.code;
+            const isModelError = msg.includes("model_not_found") ||
+                                 msg.includes("does not exist") ||
+                                 status === 404 ||
+                                 msg.includes("Invalid model");
+            const isLast = model === IMAGE_MODELS[IMAGE_MODELS.length - 1];
+            if (isModelError && !isLast) {
+                console.warn(`[AI] ⚠️ OpenAI model ${model} unavailable, trying next: ${msg}`);
+                continue;
+            }
+            // 429/5xx → record failure (transient won't trip breaker) and try next
+            recordFailure("openai", error);
+            if (!isLast) {
+                console.warn(`[AI] ⚠️ OpenAI model ${model} failed (${msg}), trying next...`);
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    recordFailure("openai", lastError);
+    throw lastError || new Error("All OpenAI image models failed");
+}
 
 async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promise<AnalysisResult> {
     if (!config.OPENAI_API_KEY) {
@@ -843,32 +960,57 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
     const mimeType = getMimeType(req.image);
     const base64Data = cleanBase64(req.image);
 
-    try {
-        const model = "gpt-4o-mini";
-        const completion = await ai.chat.completions.create({
-            model,
-            messages: [
-                {
-                    role: "user",
-                    content: [
-                        {
-                            type: "image_url",
-                            image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" },
-                        },
-                        { type: "text", text: ANALYSIS_PROMPT },
-                    ],
-                },
-            ],
-            max_tokens: 3000,
-        });
+    // Try GPT-4o first (best vision), fall back to gpt-4o-mini (cheaper/faster).
+    // Override the chain via OPENAI_VISION_MODEL env if a newer model lands.
+    const ANALYSIS_MODELS = process.env.OPENAI_VISION_MODEL
+        ? [process.env.OPENAI_VISION_MODEL]
+        : ["gpt-4o", "gpt-4o-mini"];
 
-        const rawText = completion.choices[0]?.message?.content || "{\"text\":\"Could not analyze.\"}";
-        recordSuccess("openai");
-        return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
-    } catch (error: any) {
-        recordFailure("openai", error);
-        throw error;
+    let lastError: any = null;
+    for (const model of ANALYSIS_MODELS) {
+        try {
+            const completion = await ai.chat.completions.create({
+                model,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "image_url",
+                                image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" },
+                            },
+                            { type: "text", text: ANALYSIS_PROMPT },
+                        ],
+                    },
+                ],
+                max_tokens: 3000,
+                response_format: { type: "json_object" },
+            } as any);
+
+            const rawText = completion.choices[0]?.message?.content || "{\"text\":\"Could not analyze.\"}";
+            recordSuccess("openai");
+            return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
+        } catch (error: any) {
+            lastError = error;
+            const msg = error?.message || String(error);
+            const isLast = model === ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
+            // Quota/auth errors should break out immediately rather than waste
+            // a second call on the cheaper model.
+            const status = error?.status || error?.code;
+            if (status === 401 || status === 403 || msg.includes("API key")) {
+                recordFailure("openai", error);
+                throw error;
+            }
+            if (!isLast) {
+                console.warn(`[AI] ⚠️ OpenAI vision model ${model} failed, trying next: ${msg}`);
+                continue;
+            }
+            recordFailure("openai", error);
+            throw error;
+        }
     }
+
+    throw lastError || new Error("All OpenAI analysis models failed");
 }
 
 // =============================================================
@@ -884,8 +1026,8 @@ export async function generateOverlay(
     const errors: string[] = [];
 
     // Provider priority chain for IMAGE GENERATION
-    // Gemini is best (native image output), OpenRouter is second (unified), generic is last
-    const providerChain: AIProvider[] = [preferredProvider, "openrouter", "generic"]
+    // Gemini (native image output) → OpenAI (gpt-image) → OpenRouter (unified) → generic
+    const providerChain: AIProvider[] = [preferredProvider, "openai", "openrouter", "generic"]
         .filter((p, i, arr) => arr.indexOf(p) === i); // dedupe
 
     console.log(`[AI] Starting image generation with provider chain: ${providerChain.join(" → ")}`);
@@ -900,6 +1042,13 @@ export async function generateOverlay(
                     }
                     return await generateOverlayGemini(req, config, start);
 
+                case "openai":
+                    if (!config.OPENAI_API_KEY) {
+                        errors.push("OpenAI: No API key configured");
+                        continue;
+                    }
+                    return await generateOverlayOpenAI(req, config, start);
+
                 case "openrouter":
                     if (!config.OPENROUTER_API_KEY) {
                         errors.push("OpenRouter: No API key configured");
@@ -909,10 +1058,6 @@ export async function generateOverlay(
 
                 case "generic":
                     return await generateGenericOverlay(req);
-
-                case "openai":
-                    errors.push("OpenAI: Chat API does not support image output");
-                    continue;
 
                 default:
                     errors.push(`${provider}: Unknown provider`);
@@ -1022,9 +1167,14 @@ export async function checkProviderHealth(
         return { ok: false, message: `Circuit breaker open (${circuit.failures} failures)`, circuitOpen: true };
     }
 
-    // Format validation
-    if (provider === "openai" && !apiKey.startsWith("sk-")) {
-        return { ok: false, message: "OpenAI key format invalid (should start with sk-)", circuitOpen: false };
+    // Format validation — intentionally lenient. Provider key formats change
+    // over time (e.g. OpenAI project keys `sk-proj-...`, Gemini Vertex/Cloud
+    // service-account keys start with `AQ.` instead of `AIzaSy...`). Rejecting
+    // a key on a prefix guess masks the real failure, which is whatever the
+    // provider returns on the actual API call. The only hard signal we trust
+    // is the live API response — see testAIConnection().
+    if (provider === "openai" && apiKey.length < 20) {
+        return { ok: false, message: "OpenAI key too short", circuitOpen: false };
     }
     if (provider === "gemini" && apiKey.length < 20) {
         return { ok: false, message: "Gemini key too short", circuitOpen: false };
@@ -1051,8 +1201,10 @@ export async function testAIConnection(config: AIConfig): Promise<any> {
         openrouter: {},
         env: {
             GEMINI_API_KEY_len: config.GEMINI_API_KEY ? config.GEMINI_API_KEY.length : 0,
+            OPENAI_API_KEY_len: config.OPENAI_API_KEY ? config.OPENAI_API_KEY.length : 0,
             OPENROUTER_API_KEY_len: config.OPENROUTER_API_KEY ? config.OPENROUTER_API_KEY.length : 0,
             GEMINI_API_KEY_masked: config.GEMINI_API_KEY ? `${config.GEMINI_API_KEY.slice(0, 5)}...${config.GEMINI_API_KEY.slice(-4)}` : "missing",
+            OPENAI_API_KEY_masked: config.OPENAI_API_KEY ? `${config.OPENAI_API_KEY.slice(0, 5)}...${config.OPENAI_API_KEY.slice(-4)}` : "missing",
             OPENROUTER_API_KEY_masked: config.OPENROUTER_API_KEY ? `${config.OPENROUTER_API_KEY.slice(0, 5)}...${config.OPENROUTER_API_KEY.slice(-4)}` : "missing",
         }
     };
@@ -1125,6 +1277,64 @@ export async function testAIConnection(config: AIConfig): Promise<any> {
         };
     } catch (e: any) {
         results.openrouter = {
+            success: false,
+            error: e.message || String(e),
+            status: e.status || e.code,
+        };
+    }
+
+    // 3. Test OpenAI (vision + image availability)
+    results.openai = {};
+    results.openaiImageModels = {};
+    try {
+        if (!config.OPENAI_API_KEY) {
+            throw new Error("No OpenAI API key configured");
+        }
+        const oai = getOpenAISDK(config.OPENAI_API_KEY);
+        const completion = await oai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: "Reply with only the word OK." }],
+            max_tokens: 10,
+        });
+        results.openai = {
+            success: true,
+            response: completion.choices[0]?.message?.content?.trim() || "(empty)",
+        };
+
+        // Verify each candidate image model is reachable. We use a cheap edit
+        // call (1 image, small) so this still costs a few cents per model.
+        // Skip if OPENAI_SKIP_IMAGE_PROBE=1 to save cost on routine health checks.
+        if (process.env.OPENAI_SKIP_IMAGE_PROBE !== "1") {
+            const probeModels = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
+            for (const m of probeModels) {
+                try {
+                    // 1x1 transparent PNG — minimal valid image input.
+                    // Must wrap with OpenAI.toFile or the SDK rejects it.
+                    const probePng = Buffer.from(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+                        "base64"
+                    );
+                    const probeFile = await OpenAI.toFile(probePng, "probe.png", { type: "image/png" });
+                    const r = await oai.images.edit({
+                        model: m,
+                        prompt: "noop probe, do nothing",
+                        image: probeFile,
+                        size: "1024x1024",
+                    });
+                    results.openaiImageModels[m] = {
+                        success: !!(r.data?.[0]?.b64_json || r.data?.[0]?.url),
+                    };
+                } catch (e: any) {
+                    results.openaiImageModels[m] = {
+                        success: false,
+                        error: e.message || String(e),
+                        status: e.status || e.code,
+                    };
+                }
+            }
+        }
+    } catch (e: any) {
+        results.openai = {
             success: false,
             error: e.message || String(e),
             status: e.status || e.code,

@@ -385,24 +385,18 @@ export async function compositeProductOntoPhoto(
             throw new Error(`Product image not found: ${req.material.imageUrl}`);
         }
 
-        // 3. Detect where to place the product
+        // 3. Detect where to place the product.
+        // IMPORTANT: detectTargetSurfaces ALWAYS returns at least one target —
+        // either AI-detected wall surfaces, an inferred wall zone from
+        // ceiling/floor bounds, or a sensible default (top 18% → 68% of image).
+        // So we proceed with compositing regardless of whether AI analysis
+        // succeeded. Surrendering to the AI generator here was the cause of
+        // the "product doesn't appear on the wall" regression: every time
+        // Gemini went down, the compositor bailed out instead of using its
+        // built-in wall-zone fallback, and the route then failed completely.
         const targets = detectTargetSurfaces(req, imgWidth, imgHeight);
-
-        // If no room analysis was provided or it returned no surfaces, fallback to AI generator
         const hasAnalysis = !!(req.analysis?.surfaces && req.analysis.surfaces.length > 0);
-        if (!hasAnalysis) {
-            console.log(`[Compositor] No valid room analysis surfaces found. Falling back to AI generator.`);
-            return {
-                image: req.originalImage,
-                method: "fallback",
-                durationMs: Date.now() - startTime,
-                details: {
-                    productImageUsed: req.material.imageUrl || "unknown",
-                    transform: "none",
-                    surfaceDetected: false,
-                },
-            };
-        }
+        console.log(`[Compositor] Compositing onto ${targets.length} target(s) (AI analysis: ${hasAnalysis ? "yes" : "no, using inferred wall zone"})`);
 
         // 4. Build composite operations for all targets
         const category = req.material.category || "";
