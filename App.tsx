@@ -2338,6 +2338,8 @@ const App: React.FC = () => {
                             <img
                                 src="https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Espacio_Int_ipvzyz.jpg"
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                fetchpriority="high"
+                                alt="Interior space visualization"
                             />
                         </div>
                         <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
@@ -2355,6 +2357,8 @@ const App: React.FC = () => {
                             <img
                                 src="https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Espacio_Ext_t4ic8u.jpg"
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                loading="lazy"
+                                alt="Exterior space visualization"
                             />
                         </div>
                         <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
