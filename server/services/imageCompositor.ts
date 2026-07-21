@@ -480,11 +480,29 @@ export async function compositeProductOntoPhoto(
                 1.0  // full opacity
             );
 
-            // --- Step 3: Apply the mask as the product's alpha channel ---
+            // --- Step 3: Apply the obstacle mask as the product's alpha ---
+            // The productLayer from renderProductTiledOnWall is already RGBA.
+            // To cut out obstacles, we composite the obstacle mask (white =
+            // visible, black = obstacle/transparent) ON TOP of the tile using
+            // the "dest-in" blend: dest-in keeps destination pixels only
+            // where the source mask is opaque. So where the mask is black
+            // (obstacle), the tile becomes transparent.
+            //
+            // We tried joinChannel earlier but it either appended a 5th
+            // channel (no-op) or, after flatten, baked white into the RGB
+            // before masking. composite(dest-in) is the canonical way to
+            // apply an alpha mask in sharp and avoids both pitfalls.
+            const maskImage = await sharp(mask, {
+                raw: { width, height, channels: 1 }
+            })
+                .toColorspace("b-w")
+                .png()
+                .toBuffer();
             const maskedProduct = await sharp(productLayer)
-                .joinChannel(mask, {
-                    raw: { width, height, channels: 1 }
-                })
+                .composite([{
+                    input: maskImage,
+                    blend: "dest-in" as any
+                }])
                 .png()
                 .toBuffer();
 
@@ -498,10 +516,14 @@ export async function compositeProductOntoPhoto(
                 .png()
                 .toBuffer();
 
+            // Apply the same obstacle mask to the lighting map so we don't
+            // darken furniture shadows with multiply blend.
             const maskedLightingMap = await sharp(lightingMap)
-                .joinChannel(mask, {
-                    raw: { width, height, channels: 1 }
-                })
+                .ensureAlpha()
+                .composite([{
+                    input: maskImage,
+                    blend: "dest-in" as any
+                }])
                 .png()
                 .toBuffer();
 
