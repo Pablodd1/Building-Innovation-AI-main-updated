@@ -62,6 +62,19 @@ export interface OverlayRequest {
     renderOptions?: {
         lighting?: "SUNSET" | "NIGHT_LUXURY" | "NATURAL";
     };
+    /** When "inpaint", OpenAI images.edit is called with a wall-region mask
+     *  derived from `analysis.surfaces` for higher-fidelity, perspective-correct
+     *  renders. When undefined/"compositor", the existing full-image edit path
+     *  (or sharp compositor, decided by the route) is used. */
+    mode?: "compositor" | "inpaint";
+    /** Room analysis from /api/ai/analyze-room. Required when mode === "inpaint"
+     *  — the wall/obstacle surfaces drive the mask. */
+    analysis?: {
+        surfaces?: any[];
+        dimensions?: { width: number; height: number; areaM2: number };
+        style?: string;
+        lighting?: string;
+    };
 }
 
 export interface AnalysisRequest {
@@ -872,31 +885,79 @@ async function generateOverlayOpenAI(req: OverlayRequest, config: AIConfig, star
     }
 
     const ai = getOpenAISDK(config.OPENAI_API_KEY);
-    const { prompt: finalPrompt } = buildOverlayPrompt(req);
 
     // GPT Image edit endpoint requires multipart form fields. The OpenAI Node
     // SDK expects the `image` parameter as a FileCreateNodePart (built via
     // OpenAI.toFile), NOT a raw Buffer — passing a Buffer produces
     // "400 Invalid type for 'image[0]': expected a file, but got a string".
+    //
+    // BUGFIX: cleanBase64 returns a STRING (raw base64), not an object.
+    // Earlier code read .data and .mimeType off it — both undefined — so
+    // Buffer.from(undefined) produced an empty/corrupt image. Use the
+    // dedicated getMimeType helper for the mime and base64-decode the string.
     const rawImage = req.originalImage ?? (req as any).image;
-    const base64Data = cleanBase64(rawImage);
-    const imageBuffer = Buffer.from(base64Data.data);
-    const inputMime = base64Data.mimeType;
+    const inputMime = getMimeType(rawImage);
+    const imageBuffer = Buffer.from(cleanBase64(rawImage), "base64");
     const ext = inputMime === "image/png" ? "png" : inputMime === "image/webp" ? "webp" : "jpg";
     const filename = `room.${ext}`;
-
-    // Build the file part the SDK requires. toFile accepts (buffer, name, opts).
     const imagePart = await OpenAI.toFile(imageBuffer, filename, { type: inputMime });
 
-    // Optionally include the product reference image as a second source image.
-    // GPT Image edit accepts an array of file parts under `image`.
-    const productRef = await getImageBase64(req.material?.imageUrl);
-    const imageInput = productRef
-        ? [
-            imagePart,
-            await OpenAI.toFile(Buffer.from(productRef.data), `product.${productRef.mimeType === "image/png" ? "png" : "jpg"}`, { type: productRef.mimeType }),
-        ]
-        : imagePart;
+    // INPAINT MODE: when mode === "inpaint" and we have room analysis with
+    // wall surfaces, build an OpenAI-style alpha mask (transparent = edit
+    // here, opaque = preserve) and pass it to images.edit. The mask tells
+    // the model exactly where to apply the material — walls only — so it
+    // can't paint over furniture, floors, or ceilings.
+    //
+    // IMPORTANT: when a mask is supplied, OpenAI applies it to the FIRST
+    // image only. So we DON'T pass the product reference as a second image
+    // in inpaint mode (it would conflict). The material is described via
+    // the prompt instead — buildOverlayPrompt already does this well.
+    const useInpaint = req.mode === "inpaint" && !!req.analysis?.surfaces?.length;
+    let maskPart: any = null;
+    if (useInpaint) {
+        try {
+            const { buildOpenAIWallMask } = await import("./imageCompositor.js");
+            const maskBuffer = await buildOpenAIWallMask(imageBuffer, req.analysis, req.analysis?.surfaces);
+            if (maskBuffer) {
+                maskPart = await OpenAI.toFile(maskBuffer, "mask.png", { type: "image/png" });
+                logInfo(`[AI] Built OpenAI inpaint mask (${maskBuffer.length} bytes)`);
+            } else {
+                logInfo(`[AI] Inpaint mask builder returned null — falling back to no-mask edit`);
+            }
+        } catch (e: any) {
+            logInfo(`[AI] Could not build inpaint mask (${e.message}) — falling back to no-mask edit`);
+        }
+    }
+
+    // Choose prompt: in inpaint mode, explicitly tell the model to respect
+    // the mask (edit ONLY transparent regions) and to preserve everything else.
+    let finalPrompt: string;
+    if (useInpaint && maskPart) {
+        const basePrompt = buildOverlayPrompt(req).prompt;
+        finalPrompt = `${basePrompt}
+
+CRITICAL MASK INSTRUCTIONS:
+- Edit ONLY the transparent regions of the mask (the wall areas). These are where you must apply the new material.
+- Preserve the opaque regions of the mask (furniture, floor, ceiling, windows, doors) PIXEL-PERFECT — do not alter them in any way.
+- Match the existing room's lighting, shadows, and 3D perspective exactly on the new material.`;
+    } else {
+        finalPrompt = buildOverlayPrompt(req).prompt;
+    }
+
+    // Build the image input. In inpaint mode: single room photo (mask applies
+    // to first image). In default mode: room photo + optional product ref.
+    let imageInput: any;
+    if (useInpaint && maskPart) {
+        imageInput = imagePart;
+    } else {
+        const productRef = await getImageBase64(req.material?.imageUrl);
+        imageInput = productRef
+            ? [
+                imagePart,
+                await OpenAI.toFile(Buffer.from(productRef.data, "base64"), `product.${productRef.mimeType === "image/png" ? "png" : "jpg"}`, { type: productRef.mimeType }),
+            ]
+            : imagePart;
+    }
 
     // Chain newest → cheapest. gpt-image-2 is current as of April 2026.
     const IMAGE_MODELS = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
@@ -904,13 +965,23 @@ async function generateOverlayOpenAI(req: OverlayRequest, config: AIConfig, star
 
     for (const model of IMAGE_MODELS) {
         try {
-            logInfo(`[AI] Trying OpenAI image model: ${model}...`);
-            const response = await ai.images.edit({
+            logInfo(`[AI] Trying OpenAI image model: ${model} (inpaint: ${useInpaint && !!maskPart ? "yes" : "no"})...`);
+            // Build the edit params. When we have an inpaint mask, pass it
+            // so the model edits ONLY the transparent (alpha=0) regions.
+            // Otherwise edit without a mask (whole-image reinterpretation).
+            const editParams: any = {
                 model,
                 prompt: finalPrompt,
-                image: imageInput as any,
+                image: imageInput,
                 size: "1024x1024",
-            });
+            };
+            if (maskPart) {
+                editParams.mask = maskPart;
+                // input_fidelity=high makes gpt-image-1/1.5 preserve unmasked
+                // regions more faithfully. Safe default; ignored by gpt-image-2/mini.
+                editParams.input_fidelity = "high";
+            }
+            const response = await ai.images.edit(editParams);
 
             const b64 = (response as any).data?.[0]?.b64_json;
             const url = (response as any).data?.[0]?.url;

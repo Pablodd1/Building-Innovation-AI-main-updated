@@ -65,10 +65,14 @@ export const generateMaterialOverlay = async (
     renderOptions?: RenderOptions,
     lang?: string,
     userId?: number,
-    analysis?: any
+    analysis?: any,
+    mode?: "compositor" | "inpaint"
 ): Promise<string> => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+    // Inpaint mode calls OpenAI gpt-image which can take 30-60s — extend the
+    // timeout accordingly so we don't abort mid-render. Compositor stays fast.
+    const timeoutMs = mode === "inpaint" ? 120000 : 60000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
         const res = await fetch("/api/ai/generate-overlay", {
@@ -82,6 +86,7 @@ export const generateMaterialOverlay = async (
                 lang,
                 userId,
                 analysis,
+                mode,
             }),
             signal: controller.signal,
         });
@@ -99,7 +104,8 @@ export const generateMaterialOverlay = async (
     } catch (error: any) {
         clearTimeout(timeout);
         if (error.name === "AbortError") {
-            throw new Error("Generation timed out after 60s. Try a smaller image or different product.");
+            const waitMsg = mode === "inpaint" ? "2 minutes" : "60 seconds";
+            throw new Error(`Render timed out after ${waitMsg}. Try a smaller image or use Generate View instead.`);
         }
         throw error;
     }

@@ -576,3 +576,149 @@ export async function compositeProductOntoPhoto(
         };
     }
 }
+
+/**
+ * Build an OpenAI-compatible inpainting mask from room analysis surfaces.
+ *
+ * OpenAI's images.edit mask convention (opposite of the compositor's internal
+ * mask): transparent pixels (alpha = 0) = "edit / inpaint here", opaque pixels
+ * (alpha = 255) = "preserve". We want the model to inpaint ONLY the wall
+ * regions and preserve everything else (furniture, floor, ceiling, obstacles).
+ *
+ * Strategy (reuses the same surface-filtering logic as the compositor):
+ *   1. Read the image dimensions from the actual photo buffer (the analysis
+ *      bounds are normalized 0.0-1.0 and need to be scaled to real pixels).
+ *   2. Allocate a single-channel buffer the size of the image, init to 0
+ *      (nothing is editable yet — fully opaque mask).
+ *   3. For each "wall" surface (confidence > 0.4), set its bounding-box
+ *      pixels to 255 (editable). If the wall has a 4-corner polygon, use it
+ *      instead of the bbox for accurate angled-wall coverage.
+ *   4. For each NON-wall surface (obstacles), clear its bbox back to 0 so
+ *      cabinets/furniture/TVs/windows are preserved even if they overlap a
+ *      wall's bbox.
+ *   5. Convert that buffer to an RGBA PNG where alpha = (255 - maskValue).
+ *      Mask 255 (wall, editable) → alpha 0 (transparent, edit). Mask 0
+ *      (preserve) → alpha 255 (opaque, keep). Done via the dest-out blend
+ *      against an opaque canvas — same idiom the compositor uses, just
+ *      inverted intent.
+ *
+ * Returns null if there are no usable wall surfaces, so the caller can fall
+ * back to a no-mask edit.
+ */
+export async function buildOpenAIWallMask(
+    imageBuffer: Buffer,
+    analysis: { surfaces?: any[] } | undefined,
+    surfaces: any[] | undefined
+): Promise<Buffer | null> {
+    const allSurfaces = surfaces ?? analysis?.surfaces;
+    if (!allSurfaces || !Array.isArray(allSurfaces) || allSurfaces.length === 0) {
+        return null;
+    }
+
+    // Get the real pixel dimensions of the user's photo
+    const meta = await sharp(imageBuffer).metadata();
+    const imgWidth = meta.width || 800;
+    const imgHeight = meta.height || 600;
+
+    const wallSurfaces = allSurfaces.filter(
+        (s: any) => s.type === "wall" && (s.confidence ?? 0) > 0.4
+    );
+    if (wallSurfaces.length === 0) {
+        return null;
+    }
+
+    // 1-channel mask buffer: 255 = wall (editable), 0 = preserve.
+    const mask = Buffer.alloc(imgWidth * imgHeight, 0);
+
+    const fillRect = (mx: number, my: number, mw: number, mh: number, value: number) => {
+        const x0 = Math.max(0, Math.min(mx, imgWidth - 1));
+        const y0 = Math.max(0, Math.min(my, imgHeight - 1));
+        const x1 = Math.max(0, Math.min(mx + mw, imgWidth));
+        const y1 = Math.max(0, Math.min(my + mh, imgHeight));
+        for (let y = y0; y < y1; y++) {
+            const rowStart = y * imgWidth;
+            for (let x = x0; x < x1; x++) {
+                mask[rowStart + x] = value;
+            }
+        }
+    };
+
+    // Mark wall regions as editable (255). Prefer polygon if present.
+    for (const w of wallSurfaces) {
+        if (Array.isArray(w.polygon) && w.polygon.length >= 3) {
+            // Rasterize the polygon via SVG → extract a single channel → OR into mask.
+            try {
+                const pts = w.polygon
+                    .map(([px, py]: [number, number]) =>
+                        `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`)
+                    .join(" ");
+                const svg = Buffer.from(
+                    `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
+                );
+                const polyChannel = await sharp(svg).extractChannel("green").raw().toBuffer();
+                for (let i = 0; i < mask.length; i++) {
+                    if (polyChannel[i] > 127) mask[i] = 255;
+                }
+            } catch {
+                // polygon rasterization failed — fall back to the wall's bbox
+                if (w.bounds) {
+                    fillRect(
+                        Math.round(w.bounds.x * imgWidth),
+                        Math.round(w.bounds.y * imgHeight),
+                        Math.round(w.bounds.width * imgWidth),
+                        Math.round(w.bounds.height * imgHeight),
+                        255
+                    );
+                }
+            }
+        } else if (w.bounds) {
+            fillRect(
+                Math.round(w.bounds.x * imgWidth),
+                Math.round(w.bounds.y * imgHeight),
+                Math.round(w.bounds.width * imgWidth),
+                Math.round(w.bounds.height * imgHeight),
+                255
+            );
+        }
+    }
+
+    // Cut out obstacles (anything that isn't a wall) so furniture/cabinets/
+    // windows/TVs are preserved even when they sit in front of a wall.
+    const obstacles = allSurfaces.filter(
+        (s: any) => s.type !== "wall" && s.bounds
+    );
+    for (const s of obstacles) {
+        fillRect(
+            Math.round(s.bounds.x * imgWidth),
+            Math.round(s.bounds.y * imgHeight),
+            Math.round(s.bounds.width * imgWidth),
+            Math.round(s.bounds.height * imgHeight),
+            0
+        );
+    }
+
+    // Convert to an OpenAI-style RGBA PNG: alpha=0 where mask=255 (wall, edit),
+    // alpha=255 where mask=0 (preserve). We build the RGBA buffer directly
+    // pixel-by-pixel rather than using dest-out, because dest-out's behavior
+    // with a single-channel greyscale input is unreliable (sharp treats a
+    // no-alpha input as fully opaque, which removes everything). Direct
+    // construction is unambiguous and easy to verify.
+    const rgba = Buffer.alloc(imgWidth * imgHeight * 4);
+    for (let i = 0; i < mask.length; i++) {
+        rgba[i * 4 + 0] = 0;       // R
+        rgba[i * 4 + 1] = 0;       // G
+        rgba[i * 4 + 2] = 0;       // B
+        // mask=255 (wall, editable) → alpha=0 (transparent, inpaint here)
+        // mask=0   (preserve)       → alpha=255 (opaque, keep)
+        rgba[i * 4 + 3] = 255 - mask[i];
+    }
+
+    const rgbaMask = await sharp(rgba, {
+        raw: { width: imgWidth, height: imgHeight, channels: 4 }
+    })
+        .png()
+        .toBuffer();
+
+    console.log(`[OpenAIMask] Built ${imgWidth}x${imgHeight} mask: ${wallSurfaces.length} walls, ${obstacles.length} obstacles preserved`);
+    return rgbaMask;
+}

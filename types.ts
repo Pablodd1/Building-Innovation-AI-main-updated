@@ -73,6 +73,7 @@ export interface RoomAnalysisResult {
 export interface GenerationState {
   isGenerating: boolean;
   isAnalyzing: boolean; // Subtle loading state for text analysis
+  isRealisticGenerating: boolean; // Separate flag for the slower OpenAI inpaint path
   error: string | null;
   resultImage: string | null; // Base64
   resultVideo: string | null; // URL

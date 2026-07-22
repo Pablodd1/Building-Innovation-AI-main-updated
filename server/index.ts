@@ -2022,7 +2022,7 @@ const getServerApiKey = (): string => {
 // POST /api/ai/generate-overlay — Multi-provider AI image generation
 app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
     try {
-        const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider, analysis } = req.body;
+        const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider, analysis, mode } = req.body;
 
         // Input validation: image must be a valid data URL and under 5MB
         if (!originalImage || typeof originalImage !== 'string') {
@@ -2062,12 +2062,80 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             });
         }
         if (provider === "gemini" && !config.GEMINI_API_KEY) {
-            return res.status(500).json({ 
-                error: "Gemini API Key not configured. Please contact administrator or switch provider." 
+            return res.status(500).json({
+                error: "Gemini API Key not configured. Please contact administrator or switch provider."
             });
         }
 
-        // Generate via server-side compositing for 100% fidelity
+        // INPAINT MODE: skip the sharp compositor entirely and go straight to
+        // OpenAI gpt-image with a wall-region mask. The compositor is the wrong
+        // tool here — it can tile a texture but can't realistically relight,
+        // preserve perspective, or handle complex wall shapes. OpenAI handles
+        // all of that natively when given a mask.
+        if (mode === "inpaint") {
+            if (!config.OPENAI_API_KEY) {
+                return res.status(500).json({
+                    error: "OpenAI API Key not configured. Realistic Render requires an OpenAI key."
+                });
+            }
+            if (!analysis?.surfaces || analysis.surfaces.length === 0) {
+                return res.status(400).json({
+                    error: "Room analysis is required for Realistic Render. Wait for analysis to complete, then try again."
+                });
+            }
+            try {
+                const result = await generateOverlay({
+                    originalImage: cleanedImage,
+                    material,
+                    userInstruction: userInstruction || "",
+                    renderOptions,
+                    mode: "inpaint",
+                    analysis,
+                } as any, "openai", config);
+
+                pushGenerationLog({
+                    timestamp: new Date().toISOString(),
+                    userId,
+                    materialId: material?.id || material?.refCode,
+                    materialName: material?.name,
+                    category: material?.category,
+                    success: true,
+                    durationMs: result.durationMs,
+                    model: `openai/${result.model}`,
+                });
+                logUserActivity({
+                    userId,
+                    action: 'RENDER',
+                    details: {
+                        materialId: material?.id || material?.refCode,
+                        materialName: material?.name,
+                        category: material?.category,
+                        provider: "openai",
+                        model: result.model,
+                        mode: "inpaint",
+                        durationMs: result.durationMs,
+                        success: true,
+                    },
+                });
+                return res.json({ success: true, image: result.image, provider: "openai", model: result.model, mode: "inpaint" });
+            } catch (error: any) {
+                pushGenerationLog({
+                    timestamp: new Date().toISOString(),
+                    userId,
+                    materialId: material?.id || material?.refCode,
+                    materialName: material?.name,
+                    category: material?.category,
+                    success: false,
+                    durationMs: 0,
+                    model: "openai-inpaint-error",
+                    error: getErrorMessage(error),
+                });
+                console.error("Inpaint render failed:", error);
+                return res.status(500).json({ error: getErrorMessage(error) });
+            }
+        }
+
+        // DEFAULT MODE (compositor, then AI fallback)
         const compositeResult = await compositeProductOntoPhoto({
             originalImage: cleanedImage,
             material,

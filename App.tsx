@@ -285,6 +285,7 @@ const App: React.FC = () => {
     const [generationState, setGenerationState] = useState<GenerationState>({
         isGenerating: false,
         isAnalyzing: false,
+        isRealisticGenerating: false,
         error: null,
         resultImage: null,
         resultVideo: null,
@@ -1783,6 +1784,136 @@ const App: React.FC = () => {
                     setShowSubscriptionModal(true);
                 }
             }
+        }
+    };
+
+    // REALISTIC RENDER — uses OpenAI gpt-image inpainting with a wall-region
+    // mask for higher-quality, perspective-correct, furniture-preserving output.
+    // Slower (~15-60s) and costs money per render, but visually superior to
+    // the sharp compositor. Requires room analysis to be complete (the analysis
+    // surfaces are what we build the mask from).
+    const handleRealisticRender = async () => {
+        if (!originalImage) {
+            setGenerationState((prev) => ({
+                ...prev,
+                error: lang === "es" ? "Por favor sube o toma una foto primero." : "Please upload or take a photo first.",
+            }));
+            return;
+        }
+        if (!selectedMaterial) {
+            setGenerationState((prev) => ({
+                ...prev,
+                error: lang === "es" ? "Por favor selecciona un material primero." : "Please select a material first.",
+            }));
+            return;
+        }
+        if (!generationState.analysis) {
+            setGenerationState((prev) => ({
+                ...prev,
+                error: lang === "es"
+                    ? "Necesitas analizar la habitación primero. Toca 'AI Análisis' y espera."
+                    : "You need to analyze the room first. Tap 'AI Análisis' and wait for it to complete.",
+            }));
+            return;
+        }
+
+        // Pre-check quota
+        if (currentUser && currentUser.role !== 'admin') {
+            const limit = getTierLimit(currentUser.tier || 'Free');
+            if ((currentUser.generations_used || 0) >= limit) {
+                setShowSubscriptionModal(true);
+                return;
+            }
+        }
+
+        // Don't allow both renders at once
+        if (generationState.isGenerating) {
+            setGenerationState((prev) => ({
+                ...prev,
+                error: lang === "es"
+                    ? "Ya hay una renderización en curso. Espera a que termine."
+                    : "A render is already in progress. Please wait for it to finish.",
+            }));
+            return;
+        }
+
+        setGenerationState((prev) => ({
+            ...prev,
+            isRealisticGenerating: true,
+            error: null,
+        }));
+
+        try {
+            const generatedImage = await generateMaterialOverlay(
+                originalImage,
+                selectedMaterial,
+                customPrompt,
+                renderOptions,
+                lang,
+                currentUser?.id,
+                generationState.analysis,
+                "inpaint"  // <-- the new mode
+            );
+
+            const newHistoryItem: HistoryItem = {
+                resultImage: generatedImage,
+                resultVideo: null,
+                analysis: null,
+                prompt: customPrompt,
+                material: selectedMaterial,
+            };
+
+            const newHistory = [
+                ...history.slice(0, historyIndex + 1),
+                newHistoryItem,
+            ];
+            setHistory(newHistory);
+            setHistoryIndex(newHistory.length - 1);
+            setGenerationState((prev) => ({
+                ...prev,
+                isRealisticGenerating: false,
+                resultImage: generatedImage,
+            }));
+
+            // Refresh user quota immediately
+            if (currentUser) {
+                setCurrentUser({
+                    ...currentUser,
+                    generations_used: (currentUser.generations_used || 0) + 1
+                });
+
+                fetch(`/api/users/${currentUser.id}/memory`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        historyItem: { ...newHistoryItem, timestamp: new Date().toISOString() },
+                        behaviorEvent: {
+                            type: 'SUCCESS_REALISTIC_GENERATION',
+                            timestamp: new Date().toISOString(),
+                            details: { materialId: selectedMaterial?.id, materialName: selectedMaterial?.name }
+                        }
+                    })
+                }).catch(() => {});
+            }
+        } catch (error: any) {
+            const errorMsg = error.message || "Unknown error";
+            console.error("Realistic render failed:", errorMsg);
+
+            fetch('/api/log-error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: errorMsg, context: 'handleRealisticRender', userId: currentUser?.id })
+            }).catch(() => {});
+
+            const userFriendlyError = errorMsg.includes("Server error")
+                ? (lang === 'es' ? "El servicio de renderizado no está disponible temporalmente." : "Rendering service is temporarily unavailable.")
+                : errorMsg;
+
+            setGenerationState((prev) => ({
+                ...prev,
+                isRealisticGenerating: false,
+                error: (lang === 'es' ? 'Error en render realista: ' : 'Realistic render error: ') + userFriendlyError
+            }));
         }
     };
 
@@ -4548,14 +4679,37 @@ const App: React.FC = () => {
                                 </div>
                             </div>
 
+                            {/* Error banner spans full width above the buttons */}
+                            {generationState.error && (
+                                <div className="col-span-2 p-2 mb-1 bg-red-50 border border-red-200 rounded-lg text-red-700 text-[10px] text-center">{generationState.error}</div>
+                            )}
+
+                            {/* Realistic Render — full width, AI inpainting (slower, higher quality) */}
+                            <div className="col-span-2">
+                                <Button
+                                    onClick={handleRealisticRender}
+                                    isLoading={generationState.isRealisticGenerating}
+                                    disabled={!originalImage || !selectedMaterial || !generationState.analysis || generationState.isGenerating}
+                                    variant="primary"
+                                    className="w-full py-2.5 text-[11px] uppercase tracking-widest font-bold shadow-lg shadow-purple-900/20 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 flex items-center justify-center gap-1.5"
+                                    title={!generationState.analysis ? t.editor.realisticRenderRequiresAnalysis : t.editor.realisticRenderHint}
+                                >
+                                    <span className="text-sm">✨</span>
+                                    {t.editor.realisticRender}
+                                </Button>
+                                <div className="text-[9px] text-slate-400 text-center mt-1 leading-tight">
+                                    {generationState.analysis
+                                        ? t.editor.realisticRenderHint
+                                        : t.editor.realisticRenderRequiresAnalysis}
+                                </div>
+                            </div>
+
                             {/* Generate — left col */}
                             <div className="col-span-1">
-                                {generationState.error && (
-                                    <div className="p-2 mb-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-[10px] text-center">{generationState.error}</div>
-                                )}
                                 <Button
                                     onClick={handleGenerate}
                                     isLoading={generationState.isGenerating}
+                                    disabled={generationState.isRealisticGenerating}
                                     className="w-full py-3 text-xs uppercase tracking-widest font-black shadow-lg shadow-blue-900/20"
                                 >
                                     {generationState.resultImage ? t.editor.regenerate : t.editor.generate}
