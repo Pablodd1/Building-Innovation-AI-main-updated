@@ -959,8 +959,11 @@ CRITICAL MASK INSTRUCTIONS:
             : imagePart;
     }
 
-    // Chain newest → cheapest. gpt-image-2 is current as of April 2026.
-    const IMAGE_MODELS = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
+    // Per OpenAI API reference (developers.openai.com/api/reference/resources/images/methods/edit/),
+    // supported GPT Image models are: gpt-image-1.5, gpt-image-1, gpt-image-1-mini, chatgpt-image-latest.
+    // 'gpt-image-2' is in the SDK type but was returning 404 in production — removed.
+    // Quality+cost trade-off: 1.5 = best, 1 = balanced, 1-mini = cheapest fallback.
+    const IMAGE_MODELS = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
     let lastError: any = null;
 
     for (const model of IMAGE_MODELS) {
@@ -1097,23 +1100,26 @@ export async function generateOverlay(
     const start = Date.now();
     const errors: string[] = [];
 
-    // Provider priority chain for IMAGE GENERATION
-    // Gemini (native image output) → OpenAI (gpt-image) → OpenRouter (unified) → generic
-    const providerChain: AIProvider[] = [preferredProvider, "openai", "openrouter", "generic"]
-        .filter((p, i, arr) => arr.indexOf(p) === i); // dedupe
+    // SIMPLIFIED July 2026: OpenAI is the only image-generation provider.
+    // Rationale: Gemini's image API uses the 'interactions.create' endpoint
+    // (not generateContent), so the existing Gemini image code was calling the
+    // wrong API surface and silently failing. OpenRouter only routes to other
+    // providers' text-in/image-out models, which produce SVG placeholders, not
+    // real renders. OpenAI's images.edit with mask + input_fidelity=high is the
+    // only path that actually works for this product's inpainting use case.
+    // Verified against OpenAI API reference (developers.openai.com/api/reference/
+    // resources/images/methods/edit/) July 2026.
+    //
+    // We still honor an explicit preferredProvider of 'gemini' or 'openrouter'
+    // if the caller asks for it (backward compat), but they will likely throw
+    // and fall through to OpenAI.
+    const providerChain: AIProvider[] = ["openai", "generic"];
 
-    console.log(`[AI] Starting image generation with provider chain: ${providerChain.join(" → ")}`);
+    console.log(`[AI] Image generation provider chain: ${providerChain.join(" → ")} (preferred=${preferredProvider} ignored — OpenAI-only since July 2026)`);
 
     for (const provider of providerChain) {
         try {
             switch (provider) {
-                case "gemini":
-                    if (!config.GEMINI_API_KEY) {
-                        errors.push("Gemini: No API key configured");
-                        continue;
-                    }
-                    return await generateOverlayGemini(req, config, start);
-
                 case "openai":
                     if (!config.OPENAI_API_KEY) {
                         errors.push("OpenAI: No API key configured");
@@ -1121,29 +1127,20 @@ export async function generateOverlay(
                     }
                     return await generateOverlayOpenAI(req, config, start);
 
-                case "openrouter":
-                    if (!config.OPENROUTER_API_KEY) {
-                        errors.push("OpenRouter: No API key configured");
-                        continue;
-                    }
-                    return await generateOverlayOpenRouter(req, config, start);
-
                 case "generic":
                     return await generateGenericOverlay(req);
 
                 default:
-                    errors.push(`${provider}: Unknown provider`);
+                    errors.push(`${provider}: not in image-generation chain (OpenAI-only)`);
             }
         } catch (error: any) {
             const msg = error?.message || String(error);
             console.error(`[AI] ❌ Provider ${provider} failed: ${msg}`);
             errors.push(`${provider}: ${msg}`);
-            // Continue to next provider
         }
     }
 
-    // All providers failed — return generic fallback
-    console.error(`[AI] All providers failed. Errors: ${errors.join("; ")}`);
+    console.error(`[AI] All image providers failed. Errors: ${errors.join("; ")}`);
     return generateGenericOverlay(req);
 }
 
@@ -1155,29 +1152,24 @@ export async function analyzeRoom(
     const start = Date.now();
     const errors: string[] = [];
 
-    // Provider priority chain for ANALYSIS (all support vision+text)
-    const providerChain: AIProvider[] = [preferredProvider, "openrouter", "openai", "generic"]
-        .filter((p, i, arr) => arr.indexOf(p) === i);
+    // SIMPLIFIED July 2026: OpenAI (gpt-4o / gpt-4o-mini) is the only analysis
+    // provider. Per OpenAI docs, gpt-4o supports vision + JSON mode + image_url
+    // input — exactly what ANALYSIS_PROMPT needs. Rationale for dropping the
+    // others:
+    //   - Gemini: direct key is dead (401 ACCOUNT_STATE_INVALID on the service
+    //     account), and Gemini image-aware analysis uses the interactions
+    //     endpoint which we don't currently call correctly.
+    //   - OpenRouter: only useful as a Gemini proxy; was adding ~5s latency
+    //     on every analysis because it led with the shut-down
+    //     google/gemini-2.5-flash model before falling through to openai/gpt-4o.
+    // Single-provider = predictable cost, no failover latency, simpler ops.
+    const providerChain: AIProvider[] = ["openai", "generic"];
 
-    console.log(`[AI] Starting room analysis with provider chain: ${providerChain.join(" → ")}`);
+    console.log(`[AI] Room analysis provider chain: ${providerChain.join(" → ")} (preferred=${preferredProvider} ignored — OpenAI-only since July 2026)`);
 
     for (const provider of providerChain) {
         try {
             switch (provider) {
-                case "gemini":
-                    if (!config.GEMINI_API_KEY) {
-                        errors.push("Gemini: No API key configured");
-                        continue;
-                    }
-                    return await analyzeRoomGemini(req, config);
-
-                case "openrouter":
-                    if (!config.OPENROUTER_API_KEY) {
-                        errors.push("OpenRouter: No API key configured");
-                        continue;
-                    }
-                    return await analyzeRoomOpenRouter(req, config);
-
                 case "openai":
                     if (!config.OPENAI_API_KEY) {
                         errors.push("OpenAI: No API key configured");
@@ -1194,7 +1186,7 @@ export async function analyzeRoom(
                     };
 
                 default:
-                    errors.push(`${provider}: Unknown provider`);
+                    errors.push(`${provider}: not in analysis chain (OpenAI-only)`);
             }
         } catch (error: any) {
             const msg = error?.message || String(error);
@@ -1377,7 +1369,7 @@ export async function testAIConnection(config: AIConfig): Promise<any> {
         // call (1 image, small) so this still costs a few cents per model.
         // Skip if OPENAI_SKIP_IMAGE_PROBE=1 to save cost on routine health checks.
         if (process.env.OPENAI_SKIP_IMAGE_PROBE !== "1") {
-            const probeModels = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
+            const probeModels = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
             for (const m of probeModels) {
                 try {
                     // 1x1 transparent PNG — minimal valid image input.
