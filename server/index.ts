@@ -2020,9 +2020,14 @@ const getServerApiKey = (): string => {
 };
 
 // POST /api/ai/generate-overlay — Multi-provider AI image generation
-app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
+// SECURITY: requireAuth enforced — this endpoint bills OpenAI/Gemini per call.
+// The authenticated user's id is taken from req.user (set by requireAuth),
+// NOT from the request body, so clients cannot spoof another user's quota.
+app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Response) => {
     try {
-        const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider, analysis, mode } = req.body;
+        const authenticatedUserId = (req as any).user?.id;
+        const { originalImage, material, userInstruction, renderOptions, lang, provider: userProvider, analysis, mode } = req.body;
+        const userId = authenticatedUserId;
 
         // Input validation: image must be a valid data URL and under 5MB
         if (!originalImage || typeof originalImage !== 'string') {
@@ -2040,13 +2045,20 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
             return res.status(413).json({ error: 'Image too large. Max 5MB.' });
         }
         
-        // Check quota
+        // Check quota — userId is guaranteed set by requireAuth
         if (userId) {
             const quota = await checkAndIncrementQuota(userId);
             if (!quota.allowed) {
-                return res.status(403).json({ 
-                    error: "Quota exceeded", 
-                    message: `You have used ${quota.used}/${quota.limit} generations. Please upgrade your tier.` 
+                // Distinguish "limit reached" from "service failure" so the
+                // frontend can show the right UX (upgrade modal vs retry).
+                if (quota.error && quota.used === undefined) {
+                    return res.status(503).json({
+                        error: quota.error
+                    });
+                }
+                return res.status(403).json({
+                    error: "Quota exceeded",
+                    message: `You have used ${quota.used}/${quota.limit} generations. Please upgrade your tier.`
                 });
             }
         }
@@ -2237,9 +2249,13 @@ app.post("/api/ai/generate-overlay", async (req: Request, res: Response) => {
 });
 
 // POST /api/ai/analyze-room — Multi-provider room analysis
-app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
+// SECURITY: requireAuth enforced — this endpoint bills the AI provider per call.
+// Authenticated userId comes from req.user, not the request body.
+app.post("/api/ai/analyze-room", requireAuth, async (req: Request, res: Response) => {
     try {
-        const { image, userId, lang, provider: userProvider } = req.body;
+        const authenticatedUserId = (req as any).user?.id;
+        const { image, lang, provider: userProvider } = req.body;
+        const userId = authenticatedUserId;
 
         // Input validation: image must be a valid data URL and under 5MB
         if (!image || typeof image !== 'string') {
@@ -2267,6 +2283,9 @@ app.post("/api/ai/analyze-room", async (req: Request, res: Response) => {
         if (userId) {
             const quota = await checkAndIncrementQuota(userId);
             if (!quota.allowed) {
+                if (quota.error && quota.used === undefined) {
+                    return res.status(503).json({ error: quota.error });
+                }
                 return res.status(403).json({ error: "Quota exceeded" });
             }
         }
@@ -3229,10 +3248,22 @@ app.get('/api/me/tier', requireAuth, async (req: Request, res: Response) => {
 });
 
 // Memory endpoint: Get memory per user
-app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
+// SECURITY: requireAuth + owner check. Memory contains the user's room photos
+// (base64 in lastState.originalImage) and behavior log — must not leak across
+// accounts. Admins read other users' memory through the separate
+// /api/admin/users/:id/detail route (requireAdmin-protected), not this one.
+app.get('/api/users/:id/memory', requireAuth, async (req: Request, res: Response) => {
     try {
+        const authenticatedUserId = (req as any).user?.id;
+        const authenticatedRole = (req as any).user?.role;
         const { id } = req.params;
         const userId = parseInt(id as string);
+
+        // Owner check — only the user themselves may read their memory.
+        // Admins use the /api/admin/users/:id/detail route instead.
+        if (authenticatedRole !== 'admin' && userId !== authenticatedUserId) {
+            return res.status(403).json({ error: 'Forbidden: you can only access your own memory.' });
+        }
 
         let memory = { lastState: {}, history: [], behaviors: {} };
         
@@ -3269,10 +3300,17 @@ app.get('/api/users/:id/memory', async (req: Request, res: Response) => {
 });
 
 // Memory endpoint: Save or append memory per user
-app.post('/api/users/:id/memory', express.json(), async (req: Request, res: Response) => {
+// SECURITY: requireAuth + owner check (same rationale as GET above).
+app.post('/api/users/:id/memory', requireAuth, express.json(), async (req: Request, res: Response) => {
     try {
+        const authenticatedUserId = (req as any).user?.id;
+        const authenticatedRole = (req as any).user?.role;
         const { id } = req.params;
         const userId = parseInt(id as string);
+
+        if (authenticatedRole !== 'admin' && userId !== authenticatedUserId) {
+            return res.status(403).json({ error: 'Forbidden: you can only write your own memory.' });
+        }
         const { lastState, historyItem, behaviorEvent } = req.body;
 
         // Fetch existing memory
@@ -3584,24 +3622,27 @@ app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) =>
 // ===== AI GENERATION PROXY (Quota Enforced) =====
 
 async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolean; limit?: number; used?: number; error?: string }> {
-    try {
-        // Special case for Super Admin
-        if (userId === 999) return { allowed: true };
+    // SECURITY: No magic-id bypasses. No "allow if user not found" — that was a
+    // quota-bypass vector. After P0.1, userId always comes from requireAuth
+    // (req.user.id), so it's guaranteed to be a real authenticated user.
+    // Admins get unlimited quota via their tier (LUXURY/Enterprise limit is
+    // 999999), not via a hardcoded id shortcut.
 
+    try {
         const result = await query('SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1', [userId]);
         if (result.rows.length === 0) return { allowed: false, error: 'User not found' };
 
         let { id, email, tier, generations_used, tier_expires_at } = result.rows[0];
-        
+
         // Check and apply tier expiration downgrade before quota check
         const userForCheck = { id, email, tier, tier_expires_at };
         const wasDowngraded = await checkAndDowngradeExpiredTier(userForCheck);
         if (wasDowngraded) {
             tier = userForCheck.tier; // 'Free' after downgrade
         }
-        
+
         const tierKey = normalizeTier(tier);
-        
+
         const tiers = await getTiers();
         const tierConfig = tiers[tierKey as keyof TiersConfig] || tiers.FREE;
 
@@ -3613,12 +3654,16 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
         return { allowed: true, used: generations_used + 1, limit: tierConfig.limit };
     } catch (e: any) {
         console.warn('Quota check fallback to JSON:', e.message);
-        
-        // JSON fallback quota check
+
+        // JSON fallback quota check — only used when Postgres is unavailable.
+        // SECURITY: an unknown userId is now a hard DENY (was: allow). Combined
+        // with requireAuth on the AI routes, this means a valid authenticated
+        // user that somehow isn't in the JSON store is denied rather than
+        // silently given unlimited renders.
         try {
             const users = await getUsers();
             const user = users.find((u: any) => String(u.id) === String(userId));
-            if (!user) return { allowed: true }; // Allow if user not found to avoid blocking
+            if (!user) return { allowed: false, error: 'User not found in fallback store' };
 
             // Check expiration in JSON fallback too
             await checkAndDowngradeExpiredTier(user);
@@ -3641,7 +3686,11 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
             }
             return { allowed: true, used: used + 1, limit: tierConfig.limit };
         } catch (jsonErr) {
-            return { allowed: true };
+            // Fail closed — if we can't verify quota, we don't render. Better
+            // to refuse a paying user temporarily than to give away unlimited
+            // billed AI calls. The frontend shows the error message.
+            console.error('Quota check hard failure:', jsonErr);
+            return { allowed: false, error: 'Quota service unavailable — please try again.' };
         }
     }
 }
