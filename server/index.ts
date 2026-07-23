@@ -2063,21 +2063,15 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
             }
         }
 
-        // Load config and determine provider
+        // Load config. OpenAI is the sole AI provider since July 2026 —
+        // both orchestrators ignore preferredProvider (see aiProviders.ts).
         const config = loadConfig();
-        const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
-        
-        // Validate that the selected provider has an API key
-        if (provider === "openai" && !config.OPENAI_API_KEY) {
-            return res.status(500).json({ 
-                error: "OpenAI API Key not configured. Please contact administrator or switch provider." 
-            });
-        }
-        if (provider === "gemini" && !config.GEMINI_API_KEY) {
+        if (!config.OPENAI_API_KEY) {
             return res.status(500).json({
-                error: "Gemini API Key not configured. Please contact administrator or switch provider."
+                error: "OpenAI API Key not configured. Renders require OpenAI."
             });
         }
+        const provider = (userProvider as AIProvider) || "openai";
 
         // INPAINT MODE: skip the sharp compositor entirely and go straight to
         // OpenAI gpt-image with a wall-region mask. The compositor is the wrong
@@ -2291,14 +2285,15 @@ app.post("/api/ai/analyze-room", requireAuth, async (req: Request, res: Response
         }
 
         const config = loadConfig();
-        const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
 
-        if (provider === "openai" && !config.OPENAI_API_KEY) {
-            return res.status(500).json({ error: "OpenAI API Key not configured" });
+        // SIMPLIFIED July 2026: OpenAI is the sole analysis provider.
+        // (Both orchestrators ignore preferredProvider — see aiProviders.ts.)
+        // We still pass `provider` through for the response payload + logging,
+        // but it no longer controls which backend is called.
+        if (!config.OPENAI_API_KEY) {
+            return res.status(500).json({ error: "OpenAI API Key not configured. Analysis requires OpenAI." });
         }
-        if (provider === "gemini" && !config.GEMINI_API_KEY) {
-            return res.status(500).json({ error: "Gemini API Key not configured" });
-        }
+        const provider = (userProvider as AIProvider) || "openai";
 
         const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
 
