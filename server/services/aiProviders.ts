@@ -447,63 +447,59 @@ STRICT RENDERING RULES:
     return { prompt, isFurniture };
 }
 
-const ANALYSIS_PROMPT = `You are a Senior Architectural Interior Analyst performing a PRECISE structural survey.
+const ANALYSIS_PROMPT = `You are a precision architectural scanner. Your output drives an automated material-overlay system: every surface you return becomes a renderable region, and every obstacle you return becomes a protected mask. Errors are visible to customers.
 
-CRITICAL: You are detecting surfaces for a virtual material overlay. If you miss a wall, the customer will not see the product applied there. If you merge two walls into one, the perspective will be wrong. If you miss an obstacle, it will be painted over. Precision matters more than brevity.
+TASK: Segment the photo into structural surfaces using the same precision an interior designer would need to quote a renovation.
 
-YOUR TASK: Identify EVERY distinct wall surface in the photo. Most rooms have 2-4 visible walls (left wall, back wall, right wall, plus any alcove/side walls). Each wall MUST be a SEPARATE entry in the surfaces array.
+SCANNING METHODOLOGY (follow in order):
+1. Identify the vanishing point(s) — where do the wall edges converge? This defines the perspective geometry.
+2. Trace EACH wall plane from corner to corner. Most rooms visible in a single photo contain 2-4 wall planes:
+   - Left wall (recedes leftward toward the vanishing point)
+   - Back/center wall (faces the camera most directly)
+   - Right wall (recedes rightward toward the vanishing point)
+   - Any alcove, niche, or protruding chimney/sided wall
+3. For each wall, trace its 4 corners by following where the wall physically meets the ceiling, floor, and adjacent walls. Walls in perspective are TRAPEZOIDS — their top and bottom edges are NOT horizontal.
+4. Scan systematically for obstacles in this exact order (top to bottom, left to right): ceiling fixtures → wall-mounted items (cabinets, shelves, art, mirrors, sconces, TVs) → door frames and windows → freestanding furniture touching the wall.
 
-Return your response in this EXACT JSON format:
+RETURN EXACTLY THIS JSON SHAPE:
 {
-  "text": "Brief professional analysis (max 80 words)",
-  "dimensions": { "width": 350, "height": 280, "areaM2": 9.8 },
-  "style": "Modern Minimalist",
-  "lighting": "Natural daylight from large windows",
-  "suggestedMaterials": ["Wood paneling"],
+  "text": "≤60 word professional summary of the space",
+  "dimensions": { "width": <cm>, "height": <cm>, "areaM2": <m²> },
+  "style": "<design style>",
+  "lighting": "<light source + quality>",
+  "suggestedMaterials": ["<material 1>", "<material 2>"],
   "surfaces": [
     {
       "type": "wall",
-      "bounds": { "x": 0.0, "y": 0.08, "width": 0.45, "height": 0.62 },
-      "polygon": [[0.02, 0.10], [0.45, 0.08], [0.46, 0.70], [0.0, 0.68]],
-      "confidence": 0.95
+      "bounds": { "x": <0-1>, "y": <0-1>, "width": <0-1>, "height": <0-1> },
+      "polygon": [[<x>,<y>], [<x>,<y>], [<x>,<y>], [<x>,<y>]],
+      "confidence": <0-1>
     }
   ]
 }
 
-MANDATORY DETECTION RULES (follow ALL of them):
+POLYGON GEOMETRY (critical):
+- 4 corners in order: top-left → top-right → bottom-right → bottom-left
+- Trace the ACTUAL visible wall edges, including perspective angles
+- If a wall recedes, its far edge is shorter than its near edge (trapezoid, not rectangle)
+- Corners are normalized [0.0-1.0] where (0,0) is top-left of the image
 
-1. WALLS — detect EACH wall as a separate surface. A typical interior photo shows:
-   - Left wall (receding to the left edge, polygon will have angled corners showing perspective)
-   - Back/center wall (facing the camera, may be roughly rectangular)
-   - Right wall (receding to the right edge)
-   NEVER combine multiple walls into one surface. If you see two walls meeting at a corner, they are TWO entries.
+SURFACE TYPES — return one entry per distinct surface:
+- "wall" — each wall plane is a SEPARATE entry (never merge two walls)
+- "floor" — the visible floor surface
+- "ceiling" — the visible ceiling surface
+- Obstacles (each protected from rendering):
+  "window" | "door" | "television" | "cabinet" | "shelf" |
+  "picture_frame" | "mirror" | "fireplace" | "light_fixture" |
+  "radiator" | "furniture"
 
-2. POLYGON CORNERS — for EVERY wall, provide 4 corner coordinates that trace the ACTUAL visible shape of the wall, NOT a generic rectangle. Walls in perspective photos are trapezoids, not rectangles.
-   - Corner order: [top-left, top-right, bottom-right, bottom-left]
-   - The top edge of a wall in perspective is NOT horizontal — it angles toward the vanishing point
-   - Look at where the wall ACTUALLY meets the ceiling and floor, and trace those edges
+QUALITY GATES (self-check before returning):
+- Wall count ≥ 2 for any 3D room photo (1 wall = you merged planes, re-scan)
+- Obstacle count ≥ 3 for any furnished room (0-2 = you missed items, re-scan)
+- Each wall polygon has 4 corners that form a non-degenerate quadrilateral
+- No two surfaces have identical bounds (deduplicates merged entries)
 
-3. FLOOR and CEILING — always detect them as separate surfaces (type "floor" and "ceiling"). Even though we don't render on them, they define the wall boundaries.
-
-4. OBSTACLES — YOU MUST detect EVERY object on or in front of walls. This is non-negotiable: if you miss an obstacle, the render will paint over a customer's real furniture, TV, or artwork, which destroys trust. Before you finalize your surfaces array, scan the image systematically for EACH of these and add a surface entry for every one you see:
-   - "window" (any window, including small ones)
-   - "door" (including door frames)
-   - "television" / "monitor"
-   - "cabinet" / "shelf" / "bookcase" (wall-mounted OR freestanding against the wall)
-   - "picture_frame" / "artwork" / "mirror" (ANY wall hanging — these are easy to miss)
-   - "fireplace"
-   - "light_fixture" (wall sconces, ceiling lights that touch the wall)
-   - "furniture" (sofas, chairs, tables, beds — anything in front of the wall)
-   A typical furnished room has 4-8 obstacles. If you return 0 obstacles, you almost certainly missed some — re-scan the image.
-
-5. COORDINATES are normalized (0.0 to 1.0) relative to image dimensions.
-   - x=0 is left edge, x=1 is right edge
-   - y=0 is top edge, y=1 is bottom edge
-
-6. DIMENSIONS — estimate the room's real width and height in CENTIMETERS.
-   areaM2 = (width * height) / 10000.
-
-QUALITY CHECK before you return: (a) Count your wall surfaces — if you only have 1 wall but the photo shows a 3D room with corners, you missed walls. (b) Count your obstacles — if you have 0 obstacles in a furnished room, re-scan. (c) Verify each wall polygon has 4 corners that trace the actual visible shape, not a generic rectangle.`;
+DIMENSIONS: estimate real-world width × height in centimeters; areaM2 = (w × h) / 10000.`;
 
 function parseAnalysisResponse(rawText: string, model: string, provider: AIProvider, durationMs: number): AnalysisResult {
     try {
@@ -958,16 +954,27 @@ async function generateOverlayOpenAI(req: OverlayRequest, config: AIConfig, star
     // the mask (edit ONLY transparent regions) and to preserve everything else.
     let finalPrompt: string;
     if (useInpaint && maskPart) {
-        const basePrompt = buildOverlayPrompt(req).prompt;
-        finalPrompt = `${basePrompt}
+        // Expert-grade inpaint prompt based on AtlasCloud/OpenAI community research:
+        // - Use technical material terms (not "vibe" words) to lock the model on physical properties
+        // - Limit to 3-4 explicit change directives (overloading degrades mask fidelity)
+        // - Lock positions of preserved elements with spatial anchoring
+        // - Demand texture reconstruction in architectural-visualization language
+        const materialName = req.material?.name || "the selected material";
+        const materialCategory = req.material?.category || "panels";
+        finalPrompt = `Architectural material overlay — renovation preview render.
 
-CRITICAL MASK + PRODUCT INSTRUCTIONS:
-- The SECOND input image is the Product Reference. This is the EXACT material the customer selected and is considering purchasing. Your render is their preview of how it will look.
-- TEXTURE FIDELITY: Reproduce the product's EXACT pattern, not an approximation or reinterpretation. If the product has a geometric grid, diamond pattern, water-drop texture, wood grain, or any repeating motif — REPLICATE that specific pattern on the walls. Do NOT simplify, smooth, or reinterpret it into a generic surface.
-- COLOR ACCURACY: Match the product's exact base color (black, white, wood tone, etc.) and its finish (matte, glossy, metallic).
-- SCALE: Tile/repeat the product pattern at a realistic physical scale for the wall surface (a single product panel is typically 30cm wide — show multiple panels side by side covering the wall, not one giant stretched panel).
-- Edit ONLY the transparent regions of the mask (the wall areas). The opaque regions (furniture, floor, ceiling, windows, doors, picture frames) must remain PIXEL-PERFECT and untouched.
-- Match the existing room's lighting, shadows, and 3D perspective so the material looks physically present in the space — show subtle shading where the wall recedes, highlights where light hits, and soft shadows from furniture cast onto the new material.`;
+INPUT 1: the customer's actual room photo. The transparent regions of the mask mark the wall surfaces to be refinished.
+INPUT 2: the Product Reference image. This is the exact ${materialCategory} product the customer is considering purchasing (${materialName}).
+
+DIRECTIVES (execute exactly these 4, nothing else):
+
+1. WALL FINISH — Apply the Product Reference material to every transparent (masked) wall region. Reproduce its specific surface: exact base color, exact finish (matte / satin / gloss / metallic), and exact repeating pattern. If the product shows a geometric grid, wood grain, water-drop relief, diamond motif, or panel seam — replicate THAT pattern at a realistic tile scale (each panel ~30 cm wide, repeated side-by-side to cover the wall plane). Do not reinterpret, simplify, or average the texture into a generic surface.
+
+2. PERSPECTIVE + LIGHTING — Warp the material to follow each wall plane's 3D perspective (panels recede toward the vanishing point). Re-light the new material using the room's existing light source: preserve the direction, warmth, and intensity of the incoming light; cast soft shadows where furniture occludes the wall; add subtle highlights where light directly strikes; darken slightly in corners and under shelves.
+
+3. PRESERVE (do not touch) — Every opaque region of the mask remains pixel-identical to the original photo. This includes all furniture (sofas, chairs, tables, beds), cabinetry, television screens, picture frames, mirrors, windows, doors, light fixtures, and the floor and ceiling. Their positions, colors, textures, and shadows are locked.
+
+4. OUTPUT — A single photorealistic image that looks like a real photograph of the same room after a professional installer applied the Product Reference material to the walls. No collages, no split-screens, no labels, no watermarks.`;
     } else {
         finalPrompt = buildOverlayPrompt(req).prompt;
     }
