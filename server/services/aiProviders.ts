@@ -28,16 +28,23 @@ import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import sharp from "sharp";
 
 // ---- Types ----
 
-export type AIProvider = "gemini" | "openai" | "openrouter" | "generic";
+export type AIProvider = "gemini" | "openai" | "openrouter" | "flux" | "generic";
 
 export interface AIConfig {
     AI_PROVIDER: AIProvider;
     GEMINI_API_KEY: string;
     OPENAI_API_KEY: string;
     OPENROUTER_API_KEY: string;
+    // fal.ai key for FLUX.1 Fill inpainting (the high-fidelity renderer).
+    // When set, the inpaint path prefers FLUX over gpt-image-1.5 because
+    // FLUX composites unmasked pixels back 1:1 — furniture/pattern preservation
+    // becomes a mathematical guarantee, not a prompt hope. (gpt-image-1.5
+    // does a soft-mask full-image regeneration per OpenAI staff confirmation.)
+    FAL_API_KEY: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
     TELEGRAM_BOT_TOKEN?: string;
@@ -231,6 +238,34 @@ const getMimeType = (dataURI: string) => {
 
 const SELF_URL = process.env.SITE_URL || "https://buildingapp.us";
 
+// Magic-byte signatures for the image formats we accept. Used to detect the
+// (common) case where Google Drive returns an HTML interstitial / virus-warning
+// page instead of the actual image bytes — without this check we'd silently
+// base64-encode HTML and hand it to OpenAI as the "product image", which is a
+// leading cause of renders that look "recreated, not like the actual product".
+const IMAGE_SIGNATURES: Array<{ mime: string; head: number[] }> = [
+    { mime: "image/jpeg", head: [0xff, 0xd8, 0xff] },        // JPEG
+    { mime: "image/png",  head: [0x89, 0x50, 0x4e, 0x47] },  // PNG
+    { mime: "image/gif",  head: [0x47, 0x49, 0x46, 0x38] },  // GIF8
+    { mime: "image/webp", head: [0x52, 0x49, 0x46, 0x46] },  // "RIFF" (WEBP container)
+];
+
+function sniffImageMime(buf: Buffer): string | null {
+    if (buf.length < 12) return null;
+    for (const sig of IMAGE_SIGNATURES) {
+        let ok = true;
+        for (let i = 0; i < sig.head.length; i++) {
+            if (buf[i] !== sig.head[i]) { ok = false; break; }
+        }
+        if (ok) {
+            // RIFF container could be WAV/AVI; only call it WEBP if "WEBP" appears at offset 8.
+            if (sig.mime === "image/webp" && buf.toString("ascii", 8, 12) !== "WEBP") continue;
+            return sig.mime;
+        }
+    }
+    return null;
+}
+
 const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType: string } | null> => {
     try {
         if (!urlPath) return null;
@@ -264,11 +299,35 @@ const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType
                 }
                 console.warn(`getImageBase64: local file not found for ${urlPath}, falling back to fetch...`);
             }
-            const response = await fetch(urlPath);
+            // Send User-Agent + Drive Referer. Without these, Google Drive's
+            // uc?export=view endpoint frequently returns an HTML interstitial
+            // (virus-warning page) for non-trivially-sized images. The same
+            // workaround already exists in imageCompositor.getProductImageBuffer.
+            const isDrive = urlPath.includes("drive.google.com") || urlPath.includes("googleusercontent.com");
+            const response = await fetch(urlPath, {
+                headers: {
+                    "User-Agent": "BuildingInnovationAI/1.0 (+https://buildingapp.us)",
+                    ...(isDrive ? { "Referer": "https://drive.google.com" } : {}),
+                },
+                redirect: "follow",
+            });
             if (!response.ok) return null;
             const buffer = Buffer.from(await response.arrayBuffer());
-            const mimeType = response.headers.get("content-type") || "image/jpeg";
-            return { data: buffer.toString("base64"), mimeType };
+
+            // Belt-and-suspenders: reject HTML responses and sniff magic bytes.
+            // Content-Type alone is unreliable — Drive sometimes returns image/*
+            // headers on an HTML body. Sniffing catches both.
+            const headerMime = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+            if (headerMime === "text/html" || headerMime.startsWith("text/")) {
+                console.warn(`getImageBase64: rejecting text/html response from ${urlPath} (likely Drive interstitial)`);
+                return null;
+            }
+            const sniffed = sniffImageMime(buffer);
+            if (!sniffed) {
+                console.warn(`getImageBase64: bytes from ${urlPath} are not a recognized image (no magic byte match)`);
+                return null;
+            }
+            return { data: buffer.toString("base64"), mimeType: sniffed };
         }
         const cleanPath = urlPath.startsWith("/") ? urlPath.substring(1) : urlPath;
         const possiblePaths = [
@@ -312,6 +371,7 @@ export function loadConfig(): AIConfig {
         GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "",
         OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
         OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
+        FAL_API_KEY: process.env.FAL_API_KEY || "",
         TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
         TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "",
         TELEGRAM_DAILY_REPORT_TIME: process.env.TELEGRAM_DAILY_REPORT_TIME || "09:00",
@@ -327,6 +387,7 @@ export function loadConfig(): AIConfig {
                 GEMINI_API_KEY: file.GEMINI_API_KEY || defaults.GEMINI_API_KEY,
                 OPENAI_API_KEY: file.OPENAI_API_KEY || defaults.OPENAI_API_KEY,
                 OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults.OPENROUTER_API_KEY,
+                FAL_API_KEY: file.FAL_API_KEY || defaults.FAL_API_KEY,
                 STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
                 STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "",
                 TELEGRAM_BOT_TOKEN: file.TELEGRAM_BOT_TOKEN || defaults.TELEGRAM_BOT_TOKEN,
@@ -529,8 +590,18 @@ POLYGON GEOMETRY (this matters — rectangles are wrong for perspective walls)
 - 4 corners in clockwise order starting top-left: TL → TR → BR → BL.
 - Trace the ACTUAL visible wall edges, including perspective angles.
 - A receding wall's far edge is SHORTER than its near edge (trapezoid).
-- If the top-left and bottom-left corners have the same x value, you have not traced perspective — redo.
+- HARD RULE: a wall polygon is INVALID if TL.x == BL.x AND TR.x == BR.x (axis-aligned rectangle). Walls in real photos are NEVER perfect rectangles — perspective always angles at least one edge. If your polygon is a rectangle, you have not traced perspective, you have written a lazy bbox. Redo it.
+- The grid overlay you see (10x10 cells labeled c0-c9 across the top, r0-r9 down the left) is there to help you anchor coordinates. Use it: a corner "at column 3, row 2" is x=0.3, y=0.2.
 - All coordinates normalized [0.0-1.0], (0,0) = top-left of image.
+
+═══════════════════════════════════════════════════════════════
+GRID OVERLAY (the yellow labels on the image)
+═══════════════════════════════════════════════════════════════
+- The image you are analyzing has a 10x10 grid drawn over it for calibration.
+- Yellow "c0"-"c9" labels along the top edge = column indices (x direction).
+- Yellow "r0"-"r9" labels along the left edge = row indices (y direction).
+- When estimating a coordinate, anchor it to a grid cell: "the chair seat is centered around column 2, row 6 → x=0.25, y=0.62". This dramatically improves your precision.
+- The grid is just an aid — your final coordinates must still be normalized floats in [0,1], not cell references.
 
 ═══════════════════════════════════════════════════════════════
 SURFACE TYPES — return one entry per distinct surface
@@ -582,7 +653,7 @@ function parseAnalysisResponse(rawText: string, model: string, provider: AIProvi
         if (parsed.reasoning) {
             try {
                 const r = parsed.reasoning;
-                console.log(`[Analysis.reasoning] vanishing=${JSON.stringify(r.vanishingPoint)} walls=${(r.wallPlanes || []).length} obstacles=${(r.obstacles || []).length} ambiguous=${JSON.stringify(r.ambiguous)}`);
+                console.log(`[Analysis.reasoning] vanishing=${JSON.stringify(r.vanishingPoint)} walls=${(r.wallPlanes || []).length} observedObjects=${(r.observedObjects || []).length} ambiguous=${JSON.stringify(r.ambiguous)}`);
             } catch { /* best-effort log */ }
         }
 
@@ -1133,6 +1204,128 @@ DIRECTIVES (execute exactly these 4, nothing else):
     throw lastError || new Error("All OpenAI image models failed");
 }
 
+// =============================================================
+// FLUX.1 FILL PROVIDER (via fal.ai) — high-fidelity inpainting
+// =============================================================
+// WHY THIS EXISTS:
+// OpenAI's gpt-image-1/1.5 images.edit does NOT do pixel-level mask
+// inpainting — it does a "soft-mask with total image recreation" (confirmed
+// by OpenAI staff in community.openai.com/t/1244275). PSNR measured at 13.13
+// vs baseline 20.86 (arxiv 2505.05621). Unmasked regions get regenerated,
+// which is why furniture gets recolored and the product pattern softens.
+//
+// FLUX.1 Fill (Black Forest Labs) is a real diffusion inpainter: it
+// composites unmasked pixels back through the mask 1:1 by construction.
+// Furniture/art/TV preservation becomes a mathematical guarantee, not a
+// prompt hope. ~$0.05/render at 1024² via fal.ai, ~5-15s latency.
+//
+// We pass: the room photo at full source resolution (no downscale to 1024 —
+// FLUX accepts arbitrary sizes), the binary wall mask (white=edit), and a
+// strong material description from buildOverlayPrompt. Output is a JPEG
+// data URI like the OpenAI path returns.
+
+const FAL_FLUX_FILL_URL = "https://fal.run/fal-ai/flux-pro/v1.1/fill";
+
+async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, startTime: number): Promise<GenerationResult> {
+    if (!config.FAL_API_KEY) {
+        throw new Error("fal.ai API key not configured (FAL_API_KEY)");
+    }
+
+    const rawImage = req.originalImage ?? (req as any).image;
+    if (!rawImage) throw new Error("No image provided for FLUX render");
+
+    // Build the binary mask (white=edit, black=preserve). Falls back to null
+    // when there are no walls — caller will route to a different provider.
+    const imageBuffer = Buffer.from(cleanBase64(rawImage), "base64");
+    if (!req.analysis?.surfaces?.length) {
+        throw new Error("FLUX Fill requires analysis surfaces — none provided");
+    }
+    const { buildBinaryWallMask } = await import("./imageCompositor.js");
+    const binaryMask = await buildBinaryWallMask(imageBuffer, req.analysis, req.analysis?.surfaces);
+    if (!binaryMask) {
+        throw new Error("FLUX Fill: no wall surfaces in analysis — cannot build mask");
+    }
+
+    // Material description. Reuse the same prompt builder as the OpenAI path
+    // for consistency in voice and rules.
+    const { prompt } = buildOverlayPrompt(req);
+
+    // Send the room photo and mask as data URIs. fal.ai accepts both URLs and
+    // base64 data URIs; data URI avoids an extra upload round-trip and keeps
+    // the request self-contained. Re-encode the room as JPEG to strip any
+    // alpha channel (FLUX expects RGB) and keep payload size in check.
+    const inputMime = getMimeType(rawImage);
+    let roomJpegBuffer: Buffer;
+    try {
+        roomJpegBuffer = await sharp(imageBuffer).flatten({ background: "#ffffff" }).jpeg({ quality: 95 }).toBuffer();
+    } catch {
+        // sharp failed — fall back to the raw original.
+        roomJpegBuffer = inputMime === "image/jpeg" ? imageBuffer : imageBuffer;
+    }
+    const roomDataUri = `data:image/jpeg;base64,${roomJpegBuffer.toString("base64")}`;
+    const maskDataUri = `data:image/png;base64,${binaryMask.toString("base64")}`;
+
+    // FLUX Fill docs (https://fal.ai/models/fal-ai/flux-pro/v1.1/fill):
+    //   image:  source image (URL or data URI)
+    //   mask:   white = fill, black = keep (standard diffusion convention)
+    //   prompt: description of what should appear in the masked region
+    //   strength: 0.0-1.0, how strongly to apply the prompt (1.0 = full replace)
+    //   num_images: 1
+    //   output_format: "jpeg" | "png"
+    //   enable_safety_checker: boolean
+    const body = {
+        image: roomDataUri,
+        mask: maskDataUri,
+        prompt,
+        strength: 0.98,
+        num_images: 1,
+        output_format: "jpeg",
+        enable_safety_checker: true,
+    };
+
+    console.log(`[AI] Calling FLUX.1 Fill via fal.ai (mask size ${binaryMask.length}B, room ${roomJpegBuffer.length}B)...`);
+
+    const response = await fetch(FAL_FLUX_FILL_URL, {
+        method: "POST",
+        headers: {
+            "Authorization": `Key ${config.FAL_API_KEY}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`FLUX Fill HTTP ${response.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const data = await response.json() as any;
+    // fal.ai response shape: { images: [{ url: "https://..." }], ... }
+    // Sometimes also returns base64. Handle both.
+    const imageUrl = data?.images?.[0]?.url;
+    const imageB64 = data?.images?.[0]?.base64;
+    if (!imageUrl && !imageB64) {
+        throw new Error(`FLUX Fill: no image in response (keys=${Object.keys(data || {}).join(",")})`);
+    }
+
+    // Fetch the URL to embed as data URI (so the rest of the pipeline — which
+    // expects base64 — works unchanged).
+    let image: string;
+    if (imageB64) {
+        image = `data:image/jpeg;base64,${imageB64}`;
+    } else {
+        const imgResp = await fetch(imageUrl);
+        if (!imgResp.ok) throw new Error(`FLUX Fill: could not fetch result image (${imgResp.status})`);
+        const imgBuf = Buffer.from(await imgResp.arrayBuffer());
+        image = `data:image/jpeg;base64,${imgBuf.toString("base64")}`;
+    }
+
+    recordSuccess("flux");
+    const durationMs = Date.now() - startTime;
+    console.log(`[AI] ✅ FLUX.1 Fill success in ${durationMs}ms`);
+    return { image, model: "flux-1.1-fill-pro", durationMs, provider: "flux" };
+}
+
 async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promise<AnalysisResult> {
     if (!config.OPENAI_API_KEY) {
         throw new Error("OpenAI API key not configured");
@@ -1145,6 +1338,23 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
     const ai = getOpenAISDK(config.OPENAI_API_KEY);
     const mimeType = getMimeType(req.image);
     const base64Data = cleanBase64(req.image);
+
+    // ─── Pre-rescale to 1086x768 + grid overlay ───────────────────────────
+    // gpt-4o vision runs a fixed internal pipeline (per Azure Tech Insider and
+    // oranlooney.com/token-encoding analysis): it scales the input to fit a
+    // 2048x2048 box, then re-scales so the SHORTEST side = 768px, then tiles
+    // into 512x512 chunks. For a typical 4:3 room photo that means the model's
+    // internal coordinate space is 1086x768. If we send the image at a different
+    // size, the model silently rescales and emits coordinates in its internal
+    // space — which we'd then misinterpret as normalized [0,1] floats. Sending
+    // the image at 1086x768 makes the model's coords line up with our image
+    // 1:1, so the normalized floats it returns are accurate.
+    //
+    // The 10x10 grid overlay is a documented community technique
+    // (community.openai.com/t/671669) that materially improves coordinate
+    // precision — the model can anchor "yellow chair at column 2, row 6"
+    // instead of estimating abstract floats.
+    const analysisImageBase64 = await prepareAnalysisImage(Buffer.from(base64Data, "base64"), mimeType);
 
     // Try GPT-4o first (best vision), fall back to gpt-4o-mini (cheaper/faster).
     // Override the chain via OPENAI_VISION_MODEL env if a newer model lands.
@@ -1168,19 +1378,123 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
                                 // and furniture edges. "low" was downsampling and the model
                                 // was missing entire walls + obstacles. Costs slightly more
                                 // tokens but precision is the whole point of this call.
-                                image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "high" },
+                                image_url: { url: `data:image/jpeg;base64,${analysisImageBase64}`, detail: "high" },
                             },
                             { type: "text", text: ANALYSIS_PROMPT },
                         ],
                     },
                 ],
-                // Bumped 3000 → 4000 → 6000: the reasoning-first analysis prompt
-                // (vanishing point + per-obstacle cue sentences + evidence per
-                // surface) needs more output room than a bare JSON dump. The
-                // reasoning field is what stops the model from hallucinating
-                // coordinates, so starving it defeats the whole point.
-                max_tokens: 6000,
-                response_format: { type: "json_object" },
+                // Bumped 3000 → 4000 → 6000 → 8000: the reasoning-first analysis
+                // prompt (vanishing point + per-obstacle cue sentences + evidence
+                // per surface) needs more output room than a bare JSON dump.
+                // The reasoning field is what stops the model from hallucinating
+                // coordinates, so starving it defeats the whole point. The strict
+                // json_schema also adds overhead vs the bare json_object mode.
+                max_tokens: 8000,
+                response_format: {
+                    type: "json_schema",
+                    json_schema: {
+                        name: "room_analysis",
+                        strict: true,
+                        schema: {
+                            type: "object",
+                            // ORDER MATTERS: fields are emitted in schema order,
+                            // so putting observations/reasoning BEFORE surfaces
+                            // forces the model to commit to what it sees before
+                            // committing to coordinates. This is the documented
+                            // Structured Outputs chain-of-thought pattern.
+                            additionalProperties: false,
+                            properties: {
+                                reasoning: {
+                                    type: "object",
+                                    additionalProperties: false,
+                                    properties: {
+                                        vanishingPoint: {
+                                            type: "array",
+                                            items: { type: "number" },
+                                            minItems: 2,
+                                            maxItems: 2,
+                                        },
+                                        observedObjects: {
+                                            type: "array",
+                                            items: { type: "string" },
+                                        },
+                                        wallPlanes: {
+                                            type: "array",
+                                            items: { type: "string" },
+                                        },
+                                        ambiguous: {
+                                            type: "array",
+                                            items: { type: "string" },
+                                        },
+                                    },
+                                    required: ["vanishingPoint", "observedObjects", "wallPlanes", "ambiguous"],
+                                },
+                                text: { type: "string" },
+                                dimensions: {
+                                    type: "object",
+                                    additionalProperties: false,
+                                    properties: {
+                                        width: { type: "number" },
+                                        height: { type: "number" },
+                                        areaM2: { type: "number" },
+                                    },
+                                    required: ["width", "height", "areaM2"],
+                                },
+                                style: { type: "string" },
+                                lighting: { type: "string" },
+                                suggestedMaterials: {
+                                    type: "array",
+                                    items: { type: "string" },
+                                },
+                                surfaces: {
+                                    type: "array",
+                                    items: {
+                                        type: "object",
+                                        additionalProperties: false,
+                                        properties: {
+                                            type: {
+                                                type: "string",
+                                                // Enum prevents invented categories.
+                                                enum: [
+                                                    "wall", "floor", "ceiling",
+                                                    "window", "door", "television", "cabinet",
+                                                    "shelf", "picture_frame", "mirror",
+                                                    "fireplace", "light_fixture", "radiator",
+                                                    "furniture",
+                                                ],
+                                            },
+                                            evidence: { type: "string" },
+                                            bounds: {
+                                                type: "object",
+                                                additionalProperties: false,
+                                                properties: {
+                                                    x: { type: "number" },
+                                                    y: { type: "number" },
+                                                    width: { type: "number" },
+                                                    height: { type: "number" },
+                                                },
+                                                required: ["x", "y", "width", "height"],
+                                            },
+                                            polygon: {
+                                                type: "array",
+                                                items: {
+                                                    type: "array",
+                                                    items: { type: "number" },
+                                                    minItems: 2,
+                                                    maxItems: 2,
+                                                },
+                                            },
+                                            confidence: { type: "number" },
+                                        },
+                                        required: ["type", "evidence", "bounds", "polygon", "confidence"],
+                                    },
+                                },
+                            },
+                            required: ["reasoning", "text", "dimensions", "style", "lighting", "suggestedMaterials", "surfaces"],
+                        },
+                    },
+                },
             } as any);
 
             const rawText = completion.choices[0]?.message?.content || "{\"text\":\"Could not analyze.\"}";
@@ -1209,6 +1523,83 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
     throw lastError || new Error("All OpenAI analysis models failed");
 }
 
+/**
+ * Pre-process the room photo for gpt-4o analysis:
+ *   1. Resize so the longest side is ~1086px (preserving aspect ratio).
+ *      This aligns the model's internal coordinate space with our image, so
+ *      the normalized [0,1] floats it returns map directly to image pixels.
+ *   2. Overlay a 10x10 grid with row/column numbers. This is a documented
+ *      community technique that improves coordinate precision — the model
+ *      can anchor observations to grid cells instead of estimating floats.
+ *
+ * Returns base64-encoded JPEG (always JPEG for consistency — the source mime
+ * doesn't matter at this point, we just need bytes the model can read).
+ *
+ * If sharp fails for any reason, falls back to the raw original image — the
+ * prompt still works, just with worse coordinate precision.
+ */
+async function prepareAnalysisImage(imageBuffer: Buffer, _sourceMime: string): Promise<string> {
+    try {
+        const TARGET_LONG_SIDE = 1086;
+        const meta = await sharp(imageBuffer).metadata();
+        const w = meta.width || 0;
+        const h = meta.height || 0;
+        if (w === 0 || h === 0) {
+            return imageBuffer.toString("base64");
+        }
+        const longest = Math.max(w, h);
+        const scale = longest > TARGET_LONG_SIDE ? TARGET_LONG_SIDE / longest : 1;
+        const newW = Math.round(w * scale);
+        const newH = Math.round(h * scale);
+
+        // 10x10 grid: thin white-translucent lines + row/col numbers at the edges.
+        // Cell width/height in pixels of the resized image.
+        const cellW = newW / 10;
+        const cellH = newH / 10;
+        const lines: string[] = [];
+        // Vertical lines + column numbers along the top edge.
+        for (let i = 1; i < 10; i++) {
+            const x = Math.round(i * cellW);
+            lines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${newH}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>`);
+        }
+        // Horizontal lines + row numbers along the left edge.
+        for (let i = 1; i < 10; i++) {
+            const y = Math.round(i * cellH);
+            lines.push(`<line x1="0" y1="${y}" x2="${newW}" y2="${y}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>`);
+        }
+        // Numeric labels: column index 0-9 across top, row index 0-9 down left.
+        const colLabels: string[] = [];
+        for (let c = 0; c < 10; c++) {
+            const x = Math.round(c * cellW + cellW / 2);
+            colLabels.push(`<text x="${x}" y="14" fill="yellow" font-size="11" font-family="monospace" text-anchor="middle">c${c}</text>`);
+        }
+        const rowLabels: string[] = [];
+        for (let r = 0; r < 10; r++) {
+            const y = Math.round(r * cellH + cellH / 2 + 4);
+            rowLabels.push(`<text x="6" y="${y}" fill="yellow" font-size="11" font-family="monospace">r${r}</text>`);
+        }
+
+        const overlaySvg = Buffer.from(
+            `<svg width="${newW}" height="${newH}" xmlns="http://www.w3.org/2000/svg">
+                ${lines.join("\n")}
+                ${colLabels.join("\n")}
+                ${rowLabels.join("\n")}
+            </svg>`
+        );
+
+        const processed = await sharp(imageBuffer)
+            .resize(newW, newH, { fit: "fill" })
+            .composite([{ input: overlaySvg, top: 0, left: 0, blend: "over" }])
+            .jpeg({ quality: 90 })
+            .toBuffer();
+
+        return processed.toString("base64");
+    } catch (e) {
+        console.warn(`[prepareAnalysisImage] sharp pipeline failed, sending raw image:`, (e as Error)?.message);
+        return imageBuffer.toString("base64");
+    }
+}
+
 // =============================================================
 // PUBLIC API — Multi-Provider Failover Orchestrator
 // =============================================================
@@ -1221,26 +1612,31 @@ export async function generateOverlay(
     const start = Date.now();
     const errors: string[] = [];
 
-    // SIMPLIFIED July 2026: OpenAI is the only image-generation provider.
-    // Rationale: Gemini's image API uses the 'interactions.create' endpoint
-    // (not generateContent), so the existing Gemini image code was calling the
-    // wrong API surface and silently failing. OpenRouter only routes to other
-    // providers' text-in/image-out models, which produce SVG placeholders, not
-    // real renders. OpenAI's images.edit with mask + input_fidelity=high is the
-    // only path that actually works for this product's inpainting use case.
-    // Verified against OpenAI API reference (developers.openai.com/api/reference/
-    // resources/images/methods/edit/) July 2026.
-    //
-    // We still honor an explicit preferredProvider of 'gemini' or 'openrouter'
-    // if the caller asks for it (backward compat), but they will likely throw
-    // and fall through to OpenAI.
-    const providerChain: AIProvider[] = ["openai", "generic"];
+    // ─── Provider chain selection ─────────────────────────────────────
+    // For inpaint mode with surfaces + a fal.ai key, FLUX.1 Fill is preferred.
+    // It is a real diffusion inpainter — unmasked pixels are composited back
+    // 1:1, which solves the gpt-image-1.5 "soft-mask full regen" problem
+    // (OpenAI staff confirmed limitation: community.openai.com/t/1244275).
+    // If FLUX is unavailable (no key, not inpaint mode, no surfaces), fall
+    // back to the gpt-image-1.5 path which always works but softens texture.
+    const isInpaint = (req as any).mode === "inpaint" && !!req.analysis?.surfaces?.length;
+    const wantFlux = isInpaint && !!config.FAL_API_KEY;
+    const providerChain: AIProvider[] = wantFlux
+        ? ["flux", "openai", "generic"]
+        : ["openai", "generic"];
 
-    console.log(`[AI] Image generation provider chain: ${providerChain.join(" → ")} (preferred=${preferredProvider} ignored — OpenAI-only since July 2026)`);
+    console.log(`[AI] Image generation provider chain: ${providerChain.join(" → ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);
 
     for (const provider of providerChain) {
         try {
             switch (provider) {
+                case "flux":
+                    if (!config.FAL_API_KEY) {
+                        errors.push("FLUX: No FAL_API_KEY configured");
+                        continue;
+                    }
+                    return await generateOverlayFluxFill(req, config, start);
+
                 case "openai":
                     if (!config.OPENAI_API_KEY) {
                         errors.push("OpenAI: No API key configured");
@@ -1252,7 +1648,7 @@ export async function generateOverlay(
                     return await generateGenericOverlay(req);
 
                 default:
-                    errors.push(`${provider}: not in image-generation chain (OpenAI-only)`);
+                    errors.push(`${provider}: not in image-generation chain`);
             }
         } catch (error: any) {
             const msg = error?.message || String(error);

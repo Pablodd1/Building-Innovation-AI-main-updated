@@ -643,22 +643,28 @@ export async function buildOpenAIWallMask(
         }
     };
 
+    // Shared polygon rasterizer: paints pixels inside the polygon with `value`.
+    // Uses SVG → sharp → single channel → OR. Same approach for walls and
+    // obstacles so both get perspective-accurate masks, not bounding boxes.
+    const paintPolygon = async (polygon: any[], value: number) => {
+        const pts = polygon
+            .map(([px, py]: [number, number]) =>
+                `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`)
+            .join(" ");
+        const svg = Buffer.from(
+            `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
+        );
+        const polyChannel = await sharp(svg).extractChannel("green").raw().toBuffer();
+        for (let i = 0; i < mask.length; i++) {
+            if (polyChannel[i] > 127) mask[i] = value;
+        }
+    };
+
     // Mark wall regions as editable (255). Prefer polygon if present.
     for (const w of wallSurfaces) {
         if (Array.isArray(w.polygon) && w.polygon.length >= 3) {
-            // Rasterize the polygon via SVG → extract a single channel → OR into mask.
             try {
-                const pts = w.polygon
-                    .map(([px, py]: [number, number]) =>
-                        `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`)
-                    .join(" ");
-                const svg = Buffer.from(
-                    `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
-                );
-                const polyChannel = await sharp(svg).extractChannel("green").raw().toBuffer();
-                for (let i = 0; i < mask.length; i++) {
-                    if (polyChannel[i] > 127) mask[i] = 255;
-                }
+                await paintPolygon(w.polygon, 255);
             } catch {
                 // polygon rasterization failed — fall back to the wall's bbox
                 if (w.bounds) {
@@ -684,10 +690,21 @@ export async function buildOpenAIWallMask(
 
     // Cut out obstacles (anything that isn't a wall) so furniture/cabinets/
     // windows/TVs are preserved even when they sit in front of a wall.
+    // Prefer polygon when present — bounding boxes over-carve into walls on
+    // all four sides (a TV's bbox includes empty wall above/below the TV),
+    // which leaves visible gaps in the rendered material around obstacles.
     const obstacles = allSurfaces.filter(
         (s: any) => s.type !== "wall" && s.bounds
     );
     for (const s of obstacles) {
+        if (Array.isArray(s.polygon) && s.polygon.length >= 3) {
+            try {
+                await paintPolygon(s.polygon, 0);
+                continue;
+            } catch {
+                // fall through to bbox
+            }
+        }
         fillRect(
             Math.round(s.bounds.x * imgWidth),
             Math.round(s.bounds.y * imgHeight),
@@ -721,4 +738,118 @@ export async function buildOpenAIWallMask(
 
     console.log(`[OpenAIMask] Built ${imgWidth}x${imgHeight} mask: ${wallSurfaces.length} walls, ${obstacles.length} obstacles preserved`);
     return rgbaMask;
+}
+
+/**
+ * Build a binary (1-channel grayscale) inpaint mask from analysis surfaces.
+ * White (255) = edit, Black (0) = preserve. This is the format FLUX Fill,
+ * SDXL Inpaint, and most non-OpenAI diffusion inpainters expect (vs. the
+ * RGBA alpha-style mask OpenAI's images.edit uses above).
+ *
+ * Same wall/obstacle logic as buildOpenAIWallMask — both must stay in sync.
+ * Centralizing the rasterization in one place would be cleaner, but the two
+ * output formats differ enough that we keep two thin builders over a shared
+ * rasterizer (paintPolygon inline above) instead.
+ */
+export async function buildBinaryWallMask(
+    imageBuffer: Buffer,
+    analysis: { surfaces?: any[] } | undefined,
+    surfaces: any[] | undefined
+): Promise<Buffer | null> {
+    const allSurfaces = surfaces ?? analysis?.surfaces;
+    if (!allSurfaces || !Array.isArray(allSurfaces) || allSurfaces.length === 0) {
+        return null;
+    }
+
+    const meta = await sharp(imageBuffer).metadata();
+    const imgWidth = meta.width || 800;
+    const imgHeight = meta.height || 600;
+
+    const wallSurfaces = allSurfaces.filter(
+        (s: any) => s.type === "wall" && (s.confidence ?? 0) > 0.4
+    );
+    if (wallSurfaces.length === 0) {
+        return null;
+    }
+
+    // 1-channel mask: 255 = wall (edit), 0 = preserve. Start all black.
+    const mask = Buffer.alloc(imgWidth * imgHeight, 0);
+
+    const fillRect = (mx: number, my: number, mw: number, mh: number, value: number) => {
+        const x0 = Math.max(0, Math.min(mx, imgWidth - 1));
+        const y0 = Math.max(0, Math.min(my, imgHeight - 1));
+        const x1 = Math.max(0, Math.min(mx + mw, imgWidth));
+        const y1 = Math.max(0, Math.min(my + mh, imgHeight));
+        for (let y = y0; y < y1; y++) {
+            const rowStart = y * imgWidth;
+            for (let x = x0; x < x1; x++) {
+                mask[rowStart + x] = value;
+            }
+        }
+    };
+
+    const paintPolygon = async (polygon: any[], value: number) => {
+        const pts = polygon
+            .map(([px, py]: [number, number]) =>
+                `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`)
+            .join(" ");
+        const svg = Buffer.from(
+            `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
+        );
+        const polyChannel = await sharp(svg).extractChannel("green").raw().toBuffer();
+        for (let i = 0; i < mask.length; i++) {
+            if (polyChannel[i] > 127) mask[i] = value;
+        }
+    };
+
+    for (const w of wallSurfaces) {
+        if (Array.isArray(w.polygon) && w.polygon.length >= 3) {
+            try { await paintPolygon(w.polygon, 255); }
+            catch {
+                if (w.bounds) fillRect(
+                    Math.round(w.bounds.x * imgWidth),
+                    Math.round(w.bounds.y * imgHeight),
+                    Math.round(w.bounds.width * imgWidth),
+                    Math.round(w.bounds.height * imgHeight),
+                    255
+                );
+            }
+        } else if (w.bounds) {
+            fillRect(
+                Math.round(w.bounds.x * imgWidth),
+                Math.round(w.bounds.y * imgHeight),
+                Math.round(w.bounds.width * imgWidth),
+                Math.round(w.bounds.height * imgHeight),
+                255
+            );
+        }
+    }
+
+    const obstacles = allSurfaces.filter(
+        (s: any) => s.type !== "wall" && s.bounds
+    );
+    for (const s of obstacles) {
+        if (Array.isArray(s.polygon) && s.polygon.length >= 3) {
+            try { await paintPolygon(s.polygon, 0); continue; } catch { /* fall through */ }
+        }
+        fillRect(
+            Math.round(s.bounds.x * imgWidth),
+            Math.round(s.bounds.y * imgHeight),
+            Math.round(s.bounds.width * imgWidth),
+            Math.round(s.bounds.height * imgHeight),
+            0
+        );
+    }
+
+    // Emit a grayscale PNG. fal.ai / FLUX Fill accept either a single PNG with
+    // white=fill/black=keep OR an RGBA mask with alpha. We use the grayscale
+    // form because it is unambiguous and smaller.
+    const binary = await sharp(mask, {
+        raw: { width: imgWidth, height: imgHeight, channels: 1 }
+    })
+        .png()
+        .toBuffer();
+
+    console.log(`[BinaryMask] Built ${imgWidth}x${imgHeight} binary mask: ${wallSurfaces.length} walls, ${obstacles.length} obstacles preserved`);
+    return binary;
 }

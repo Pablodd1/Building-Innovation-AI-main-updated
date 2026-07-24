@@ -2107,7 +2107,7 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
                     category: material?.category,
                     success: true,
                     durationMs: result.durationMs,
-                    model: `openai/${result.model}`,
+                    model: `${result.provider}/${result.model}`,
                 });
                 logUserActivity({
                     userId,
@@ -2116,14 +2116,14 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
                         materialId: material?.id || material?.refCode,
                         materialName: material?.name,
                         category: material?.category,
-                        provider: "openai",
+                        provider: result.provider,
                         model: result.model,
                         mode: "inpaint",
                         durationMs: result.durationMs,
                         success: true,
                     },
                 });
-                return res.json({ success: true, image: result.image, provider: "openai", model: result.model, mode: "inpaint" });
+                return res.json({ success: true, image: result.image, provider: result.provider, model: result.model, mode: "inpaint" });
             } catch (error: any) {
                 pushGenerationLog({
                     timestamp: new Date().toISOString(),
