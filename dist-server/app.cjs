@@ -58941,6 +58941,437 @@ var require_lib6 = __commonJS({
   }
 });
 
+// server/services/imageCompositor.ts
+var imageCompositor_exports = {};
+__export(imageCompositor_exports, {
+  buildOpenAIWallMask: () => buildOpenAIWallMask,
+  compositeProductOntoPhoto: () => compositeProductOntoPhoto
+});
+function cleanBase64(dataURI) {
+  const match = dataURI.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!match) throw new Error("Invalid image data URI");
+  return {
+    mimeType: match[1],
+    data: Buffer.from(match[2], "base64")
+  };
+}
+async function cropProductTexture(buffer) {
+  try {
+    const metadata = await (0, import_sharp.default)(buffer).metadata();
+    const width = metadata.width || 500;
+    const height = metadata.height || 500;
+    const cropW = Math.round(width * 0.2);
+    const cropH = Math.round(height * 0.8);
+    const cropX = Math.round((width - cropW) / 2);
+    const cropY = Math.round((height - cropH) / 2);
+    const croppedBuffer = await (0, import_sharp.default)(buffer).extract({ left: cropX, top: cropY, width: cropW, height: cropH }).png().toBuffer();
+    return { buffer: croppedBuffer, width: cropW, height: cropH };
+  } catch (e2) {
+    console.error("[Compositor] Error cropping product texture:", e2.message);
+    return null;
+  }
+}
+async function getProductImageBuffer(imageUrl, refCode) {
+  let projectRoot = process.cwd();
+  try {
+    if (typeof __dirname !== "undefined") {
+      projectRoot = path3.resolve(__dirname, "..");
+    }
+  } catch (e2) {
+  }
+  if (refCode) {
+    const localPaths = [
+      path3.join(projectRoot, "products", `${refCode}.webp`),
+      path3.join(process.cwd(), "products", `${refCode}.webp`),
+      path3.join(projectRoot, "product-webp", `${refCode}.webp`),
+      path3.join(process.cwd(), "product-webp", `${refCode}.webp`)
+    ];
+    for (const p of localPaths) {
+      if (fs3.existsSync(p)) {
+        console.log(`[Compositor] Found product image locally at: ${p}`);
+        const buffer = fs3.readFileSync(p);
+        return await cropProductTexture(buffer);
+      }
+    }
+  }
+  if (!imageUrl) return null;
+  const possiblePaths = [];
+  if (imageUrl.startsWith(SELF_URL)) {
+    const localPath = imageUrl.substring(SELF_URL.length);
+    const cleanPath = localPath.startsWith("/") ? localPath.substring(1) : localPath;
+    possiblePaths.push(
+      path3.join(projectRoot, "dist", cleanPath),
+      path3.join(process.cwd(), "dist", cleanPath),
+      path3.join(projectRoot, "public", cleanPath),
+      path3.join(projectRoot, cleanPath),
+      path3.join(process.cwd(), "public", cleanPath),
+      path3.join(process.cwd(), cleanPath),
+      path3.resolve(cleanPath)
+    );
+  } else if (imageUrl.startsWith("/")) {
+    possiblePaths.push(
+      path3.join(projectRoot, "dist", imageUrl.substring(1)),
+      path3.join(process.cwd(), "dist", imageUrl.substring(1)),
+      path3.join(projectRoot, "public", imageUrl.substring(1)),
+      path3.join(projectRoot, imageUrl.substring(1)),
+      path3.join(process.cwd(), "public", imageUrl.substring(1)),
+      path3.join(process.cwd(), imageUrl.substring(1)),
+      path3.resolve(imageUrl.substring(1))
+    );
+  } else if (!imageUrl.startsWith("http")) {
+    possiblePaths.push(
+      path3.join(projectRoot, "dist", imageUrl),
+      path3.join(process.cwd(), "dist", imageUrl),
+      path3.join(projectRoot, "public", imageUrl),
+      path3.join(projectRoot, imageUrl),
+      path3.join(process.cwd(), "public", imageUrl),
+      path3.join(process.cwd(), imageUrl),
+      path3.resolve(imageUrl)
+    );
+  }
+  for (const p of possiblePaths) {
+    if (fs3.existsSync(p)) {
+      const buffer = fs3.readFileSync(p);
+      return await cropProductTexture(buffer);
+    }
+  }
+  if (imageUrl.startsWith("http")) {
+    try {
+      const response = await fetch(imageUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Referer": "https://drive.google.com"
+        }
+      });
+      if (!response.ok) return null;
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        console.error("[imageCompositor] Received HTML instead of image from:", imageUrl);
+        return null;
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return await cropProductTexture(buffer);
+    } catch (e2) {
+      console.error("[imageCompositor] Fetch error:", e2.message);
+      return null;
+    }
+  }
+  return null;
+}
+function detectTargetSurfaces(req, imgWidth, imgHeight) {
+  if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
+    const wallSurfaces = req.analysis.surfaces.filter(
+      (s2) => s2.type === "wall" && s2.confidence > 0.4
+    );
+    if (wallSurfaces.length > 0) {
+      console.log(`[Compositor] Using ${wallSurfaces.length} AI-detected wall surface(s)`);
+      return wallSurfaces.map((s2) => ({
+        x: Math.round(s2.bounds.x * imgWidth),
+        y: Math.round(s2.bounds.y * imgHeight),
+        width: Math.round(s2.bounds.width * imgWidth),
+        height: Math.round(s2.bounds.height * imgHeight),
+        rotation: s2.rotation || 0,
+        polygon: Array.isArray(s2.polygon) ? s2.polygon : void 0
+      }));
+    }
+  }
+  let ceilingBottom = Math.round(imgHeight * 0.08);
+  let floorTop = Math.round(imgHeight * 0.72);
+  if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
+    const ceilingSurfaces = req.analysis.surfaces.filter(
+      (s2) => s2.type === "ceiling" && s2.confidence > 0.5
+    );
+    if (ceilingSurfaces.length > 0) {
+      ceilingBottom = Math.max(
+        ...ceilingSurfaces.map(
+          (s2) => Math.round((s2.bounds.y + s2.bounds.height) * imgHeight)
+        )
+      );
+    }
+    const floorSurfaces = req.analysis.surfaces.filter(
+      (s2) => s2.type === "floor" && s2.confidence > 0.5
+    );
+    if (floorSurfaces.length > 0) {
+      floorTop = Math.min(
+        ...floorSurfaces.map(
+          (s2) => Math.round(s2.bounds.y * imgHeight)
+        )
+      );
+    }
+  }
+  if (ceilingBottom < Math.round(imgHeight * 0.18)) ceilingBottom = Math.round(imgHeight * 0.18);
+  if (floorTop > Math.round(imgHeight * 0.68) || floorTop <= Math.round(imgHeight * 0.4)) floorTop = Math.round(imgHeight * 0.68);
+  const wallHeight = Math.max(1, floorTop - ceilingBottom);
+  console.log(`[Compositor] Inferred wall zone: y=${ceilingBottom}\u2192${floorTop} (${wallHeight}px)`);
+  return [{
+    x: 0,
+    y: ceilingBottom,
+    width: imgWidth,
+    height: wallHeight,
+    rotation: 0
+  }];
+}
+async function renderProductTiledOnWall(productBuffer, productWidth, productHeight, targetWidth, targetHeight, opacity = 0.88) {
+  const aspect = productWidth / productHeight;
+  let tileW = targetWidth;
+  let tileH = targetHeight;
+  tileH = targetHeight;
+  tileW = Math.round(tileH * aspect);
+  if (tileW > targetWidth) {
+    tileW = targetWidth;
+    tileH = Math.round(tileW / aspect);
+  }
+  tileW = Math.max(1, tileW);
+  tileH = Math.max(1, tileH);
+  console.log(`[Compositor] Tiling at realistic scale: tile=${tileW}x${tileH}px (wall=${targetWidth}x${targetHeight}) \u2014 approx ${Math.ceil(targetWidth / tileW)}x${Math.ceil(targetHeight / tileH)} grid`);
+  const resizedTile = await (0, import_sharp.default)(productBuffer).resize(tileW, tileH, { fit: "fill" }).png().toBuffer();
+  const tiledFull = await (0, import_sharp.default)({
+    create: {
+      width: targetWidth,
+      height: targetHeight,
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 0 }
+    }
+  }).composite([{ input: resizedTile, tile: true, blend: "over" }]).png().toBuffer();
+  const withOpacity = await (0, import_sharp.default)(tiledFull).composite([{
+    input: {
+      create: {
+        width: targetWidth,
+        height: targetHeight,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: opacity }
+      }
+    },
+    blend: "dest-in"
+  }]).png().toBuffer();
+  return withOpacity;
+}
+async function compositeProductOntoPhoto(req) {
+  const startTime = Date.now();
+  try {
+    const { data: userPhotoData, mimeType: userPhotoMime } = cleanBase64(req.originalImage);
+    const userPhoto = (0, import_sharp.default)(userPhotoData);
+    const userMeta = await userPhoto.metadata();
+    const imgWidth = userMeta.width || 800;
+    const imgHeight = userMeta.height || 600;
+    const productInfo = await getProductImageBuffer(req.material.imageUrl, req.material.refCode || req.material.id);
+    if (!productInfo) {
+      throw new Error(`Product image not found: ${req.material.imageUrl}`);
+    }
+    const targets = detectTargetSurfaces(req, imgWidth, imgHeight);
+    const hasAnalysis = !!(req.analysis?.surfaces && req.analysis.surfaces.length > 0);
+    console.log(`[Compositor] Compositing onto ${targets.length} target(s) (AI analysis: ${hasAnalysis ? "yes" : "no, using inferred wall zone"})`);
+    const category = req.material.category || "";
+    const compositeOperations = [];
+    for (const target of targets) {
+      const x2 = Math.max(0, Math.min(target.x, imgWidth - 1));
+      const y = Math.max(0, Math.min(target.y, imgHeight - 1));
+      const width = Math.max(1, Math.min(target.width, imgWidth - x2));
+      const height = Math.max(1, Math.min(target.height, imgHeight - y));
+      console.log(`[Compositor] Rendering product on wall zone: x=${x2} y=${y} w=${width} h=${height}`);
+      const croppedWallZone = (0, import_sharp.default)(userPhotoData).extract({ left: x2, top: y, width, height });
+      const { channels } = await croppedWallZone.stats();
+      const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
+      let mask;
+      if (target.polygon && target.polygon.length >= 3) {
+        try {
+          const pointsSvg = target.polygon.map(([px, py]) => `${Math.round(px * imgWidth - x2)},${Math.round(py * imgHeight - y)}`).join(" ");
+          const svgBuffer = Buffer.from(
+            `<svg width="${width}" height="${height}"><polygon points="${pointsSvg}" fill="white"/></svg>`
+          );
+          const pngMask = await (0, import_sharp.default)(svgBuffer).extractChannel("green").raw().toBuffer();
+          mask = Buffer.from(pngMask);
+          console.log(`[Compositor] Created SVG polygon mask for angled wall with ${target.polygon.length} corners`);
+        } catch (e2) {
+          console.warn(`[Compositor] Could not render polygon mask, defaulting to bounding box:`, e2.message);
+          mask = Buffer.alloc(width * height, 255);
+        }
+      } else {
+        mask = Buffer.alloc(width * height, 255);
+      }
+      if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
+        const nonWallSurfaces = req.analysis.surfaces.filter(
+          (s2) => s2.type !== "wall" && s2.bounds
+        );
+        for (const s2 of nonWallSurfaces) {
+          const sx = Math.round(s2.bounds.x * imgWidth);
+          const sy = Math.round(s2.bounds.y * imgHeight);
+          const sw = Math.round(s2.bounds.width * imgWidth);
+          const sh = Math.round(s2.bounds.height * imgHeight);
+          const left = Math.max(x2, sx);
+          const top = Math.max(y, sy);
+          const right = Math.min(x2 + width, sx + sw);
+          const bottom = Math.min(y + height, sy + sh);
+          if (right > left && bottom > top) {
+            console.log(`[Compositor] Masking out obstacle (${s2.type}) at relative x:${left - x2} y:${top - y} w:${right - left} h:${bottom - top}`);
+            for (let row = top; row < bottom; row++) {
+              const maskY = row - y;
+              const rowStart = maskY * width;
+              for (let col = left; col < right; col++) {
+                const maskX = col - x2;
+                mask[rowStart + maskX] = 0;
+              }
+            }
+          }
+        }
+      }
+      const productLayer = await renderProductTiledOnWall(
+        productInfo.buffer,
+        productInfo.width,
+        productInfo.height,
+        width,
+        height,
+        1
+        // full opacity
+      );
+      const maskImage = await (0, import_sharp.default)(mask, {
+        raw: { width, height, channels: 1 }
+      }).toColorspace("b-w").png().toBuffer();
+      const maskedProduct = await (0, import_sharp.default)(productLayer).composite([{
+        input: maskImage,
+        blend: "dest-in"
+      }]).png().toBuffer();
+      const safeAvgLuma = Math.max(30, avgLuma);
+      const lightingScale = 255 / safeAvgLuma;
+      const lightingMap = await croppedWallZone.greyscale().linear(lightingScale, 0).blur(1).png().toBuffer();
+      const maskedLightingMap = await (0, import_sharp.default)(lightingMap).ensureAlpha().composite([{
+        input: maskImage,
+        blend: "dest-in"
+      }]).png().toBuffer();
+      compositeOperations.push({
+        input: maskedProduct,
+        left: x2,
+        top: y,
+        blend: "over"
+      });
+      compositeOperations.push({
+        input: maskedLightingMap,
+        left: x2,
+        top: y,
+        blend: "multiply"
+      });
+    }
+    const compositeImage = await (0, import_sharp.default)(userPhotoData).composite(compositeOperations).jpeg({ quality: 95 }).toBuffer();
+    const durationMs = Date.now() - startTime;
+    return {
+      image: `data:image/jpeg;base64,${compositeImage.toString("base64")}`,
+      method: "composited",
+      durationMs,
+      details: {
+        productImageUsed: req.material.imageUrl || "unknown",
+        transform: `scaled to cover x${targets.length} surfaces, luma-shaded over`,
+        surfaceDetected: !!req.analysis?.surfaces
+      }
+    };
+  } catch (error) {
+    console.error("[Compositor] Error:", error.stack || error.message);
+    return {
+      image: req.originalImage,
+      method: "fallback",
+      durationMs: Date.now() - startTime,
+      details: {
+        productImageUsed: req.material.imageUrl || "unknown",
+        transform: "error-fallback",
+        surfaceDetected: false
+      }
+    };
+  }
+}
+async function buildOpenAIWallMask(imageBuffer, analysis, surfaces) {
+  const allSurfaces = surfaces ?? analysis?.surfaces;
+  if (!allSurfaces || !Array.isArray(allSurfaces) || allSurfaces.length === 0) {
+    return null;
+  }
+  const meta = await (0, import_sharp.default)(imageBuffer).metadata();
+  const imgWidth = meta.width || 800;
+  const imgHeight = meta.height || 600;
+  const wallSurfaces = allSurfaces.filter(
+    (s2) => s2.type === "wall" && (s2.confidence ?? 0) > 0.4
+  );
+  if (wallSurfaces.length === 0) {
+    return null;
+  }
+  const mask = Buffer.alloc(imgWidth * imgHeight, 0);
+  const fillRect = (mx, my, mw, mh, value) => {
+    const x0 = Math.max(0, Math.min(mx, imgWidth - 1));
+    const y0 = Math.max(0, Math.min(my, imgHeight - 1));
+    const x1 = Math.max(0, Math.min(mx + mw, imgWidth));
+    const y1 = Math.max(0, Math.min(my + mh, imgHeight));
+    for (let y = y0; y < y1; y++) {
+      const rowStart = y * imgWidth;
+      for (let x2 = x0; x2 < x1; x2++) {
+        mask[rowStart + x2] = value;
+      }
+    }
+  };
+  for (const w of wallSurfaces) {
+    if (Array.isArray(w.polygon) && w.polygon.length >= 3) {
+      try {
+        const pts = w.polygon.map(([px, py]) => `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`).join(" ");
+        const svg = Buffer.from(
+          `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
+        );
+        const polyChannel = await (0, import_sharp.default)(svg).extractChannel("green").raw().toBuffer();
+        for (let i2 = 0; i2 < mask.length; i2++) {
+          if (polyChannel[i2] > 127) mask[i2] = 255;
+        }
+      } catch {
+        if (w.bounds) {
+          fillRect(
+            Math.round(w.bounds.x * imgWidth),
+            Math.round(w.bounds.y * imgHeight),
+            Math.round(w.bounds.width * imgWidth),
+            Math.round(w.bounds.height * imgHeight),
+            255
+          );
+        }
+      }
+    } else if (w.bounds) {
+      fillRect(
+        Math.round(w.bounds.x * imgWidth),
+        Math.round(w.bounds.y * imgHeight),
+        Math.round(w.bounds.width * imgWidth),
+        Math.round(w.bounds.height * imgHeight),
+        255
+      );
+    }
+  }
+  const obstacles = allSurfaces.filter(
+    (s2) => s2.type !== "wall" && s2.bounds
+  );
+  for (const s2 of obstacles) {
+    fillRect(
+      Math.round(s2.bounds.x * imgWidth),
+      Math.round(s2.bounds.y * imgHeight),
+      Math.round(s2.bounds.width * imgWidth),
+      Math.round(s2.bounds.height * imgHeight),
+      0
+    );
+  }
+  const rgba = Buffer.alloc(imgWidth * imgHeight * 4);
+  for (let i2 = 0; i2 < mask.length; i2++) {
+    rgba[i2 * 4 + 0] = 0;
+    rgba[i2 * 4 + 1] = 0;
+    rgba[i2 * 4 + 2] = 0;
+    rgba[i2 * 4 + 3] = 255 - mask[i2];
+  }
+  const rgbaMask = await (0, import_sharp.default)(rgba, {
+    raw: { width: imgWidth, height: imgHeight, channels: 4 }
+  }).png().toBuffer();
+  console.log(`[OpenAIMask] Built ${imgWidth}x${imgHeight} mask: ${wallSurfaces.length} walls, ${obstacles.length} obstacles preserved`);
+  return rgbaMask;
+}
+var import_sharp, fs3, path3, SELF_URL;
+var init_imageCompositor = __esm({
+  "server/services/imageCompositor.ts"() {
+    import_sharp = __toESM(require_lib6(), 1);
+    fs3 = __toESM(require("fs"), 1);
+    path3 = __toESM(require("path"), 1);
+    import_sharp.default.cache(false);
+    SELF_URL = process.env.SITE_URL || "https://buildingapp.us";
+  }
+});
+
 // server/telegramAlerts.ts
 var telegramAlerts_exports = {};
 __export(telegramAlerts_exports, {
@@ -104497,7 +104928,7 @@ function logToFile(level, msg) {
 function logInfo(msg) {
   logToFile("INFO", msg);
 }
-var cleanBase64 = (dataURI) => {
+var cleanBase642 = (dataURI) => {
   let cleaned = dataURI.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
   cleaned = cleaned.replace(/[\r\n]/g, "");
   cleaned = cleaned.replace(/ /g, "+");
@@ -104507,12 +104938,12 @@ var getMimeType = (dataURI) => {
   const match = dataURI.match(/^data:(image\/\w+);base64,/);
   return match ? match[1] : "image/jpeg";
 };
-var SELF_URL = process.env.SITE_URL || "https://buildingapp.us";
+var SELF_URL2 = process.env.SITE_URL || "https://buildingapp.us";
 var getImageBase64 = async (urlPath) => {
   try {
     if (!urlPath) return null;
-    if (urlPath.startsWith(SELF_URL + "/products/")) {
-      const localRel = urlPath.substring(SELF_URL.length + 1);
+    if (urlPath.startsWith(SELF_URL2 + "/products/")) {
+      const localRel = urlPath.substring(SELF_URL2.length + 1);
       const localAbs = import_path61.default.resolve(localRel);
       if (import_fs2.default.existsSync(localAbs)) {
         const data = import_fs2.default.readFileSync(localAbs);
@@ -104522,8 +104953,8 @@ var getImageBase64 = async (urlPath) => {
       }
     }
     if (urlPath.startsWith("http://") || urlPath.startsWith("https://")) {
-      if (urlPath.startsWith(SELF_URL)) {
-        const localPath = urlPath.substring(SELF_URL.length);
+      if (urlPath.startsWith(SELF_URL2)) {
+        const localPath = urlPath.substring(SELF_URL2.length);
         const cleanPath2 = localPath.startsWith("/") ? localPath.substring(1) : localPath;
         const possiblePaths2 = [
           import_path61.default.join(process.cwd(), "dist", cleanPath2),
@@ -104640,16 +105071,6 @@ function getOpenRouterSDK(apiKey) {
   _cachedOpenRouterKey = apiKey;
   return _cachedOpenRouter;
 }
-function extractGeminiImage(response) {
-  if (response.candidates?.[0]?.content?.parts) {
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
-    }
-  }
-  throw new Error("No image generated in Gemini response.");
-}
 function buildOverlayPrompt(req) {
   const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
   const lightingHint = req.renderOptions?.lighting === "SUNSET" ? "warm golden hour sunset lighting" : req.renderOptions?.lighting === "NIGHT_LUXURY" ? "dramatic night luxury lighting with warm interior glow" : "natural ambient lighting";
@@ -104675,46 +105096,127 @@ ${req.userInstruction ? `User request: "${req.userInstruction}"` : ""}
 
 STRICT RENDERING RULES:
 1. 100% PHOTOREALISM: The output must look like a real photograph, equal in quality and resolution to the original picture.
-2. EXACT OVERLAY: Apply the EXACT texture, pattern, color, and scale from the Product Reference image onto the target surface.
-3. PRESERVE FOREGROUND: You MUST flawlessly preserve and cut around all objects IN FRONT of the surface (furniture, people, plants, windows). DO NOT paint over them.
+2. EXACT OVERLAY: Apply the EXACT texture, pattern, color, and scale from the Product Reference image onto the target surface. Do not soften, simplify, or reinterpret the pattern \u2014 copy it faithfully at the correct scale.
+3. PRESERVE FOREGROUND (highest priority): You MUST flawlessly preserve and cut around all objects IN FRONT of the surface (furniture, people, plants, windows, wall-mounted items, art, TVs, doors). DO NOT paint over them, DO NOT move them, DO NOT replace them, DO NOT restyle them. They must appear pixel-faithful to the original photo.
 4. PERSPECTIVE & LIGHTING: Match the room's 3D perspective exactly. Re-apply the original room's shadows, reflections, and highlights over the new material so it blends perfectly.
 5. Lighting conditions: ${lightingHint}
-6. Output ONLY the final high-quality image.`;
+
+FORBIDDEN (anti-hallucination \u2014 these are hard failures):
+- Do NOT invent new objects that were not in the original photo (no added furniture, plants, art, lamps, rugs, windows, or doors).
+- Do NOT remove objects that were in the original photo (no "cleaned up" furniture, no deleted wall art).
+- Do NOT change the room's geometry \u2014 walls, ceiling height, and floor layout stay identical.
+- Do NOT change the camera angle or crop.
+- Do NOT "improve" the original photo's lighting or color balance.
+- Do NOT alter the color, pattern, or finish of the Product Reference material.
+
+OUTPUT: A single photorealistic image, identical to the original photo except that the target wall surfaces now show the Product Reference material. Output ONLY the final image, no text, no explanation.`;
   }
   return { prompt, isFurniture };
 }
-var ANALYSIS_PROMPT = `You are a Senior Architectural Interior Analyst. Analyze this photo of an interior/exterior space.
+var ANALYSIS_PROMPT = `You are a precision architectural scanner. Your output drives an automated material-overlay system: every surface you return becomes a renderable region, and every obstacle you return becomes a protected mask. Errors are visible to customers.
 
-Your PRIMARY task is to detect WALL PANELS with pixel-accurate surface bounds and 4-point perspective polygon corners. The product texture will be mapped exclusively to walls \u2014 floors, decks, and ceilings must be IGNORED for rendering.
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+THE TWO FAILURE MODES \u2014 BOTH ARE EQUALLY BAD
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+You are balancing between two opposite failure modes. Calibrate to the middle:
+  FAILURE A \u2014 HALLUCINATION: returning an object that is not actually in the photo, or coordinates that don't match the pixels.
+  FAILURE B \u2014 OMISSION: failing to return an object that IS clearly visible in the photo.
+Both destroy the render. Do not swing to either extreme. If you can see a chair, a TV, a painting, or a lamp in the photo, you MUST emit it as an obstacle \u2014 that is not hallucination, that is the job.
 
-Return your response in this EXACT JSON format:
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+WORK IN THIS ORDER (mandatory)
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+Fill the "reasoning" object FIRST, then build "surfaces" from it. The reasoning field is where you commit to what you actually see before writing any coordinates.
+
+reasoning.vanishingPoint: [x, y] \u2014 approximate normalized location where wall/ceiling/floor lines converge. If the photo is a flat-on view with no perspective, write [0.5, 0.5].
+reasoning.observedObjects: list EVERY discrete object you can see, as a one-line cue. Examples: "yellow armchair at center-left, lower third", "wall-mounted TV upper-right, dark rectangle", "wooden floor lower third". A real furnished room typically has 4-10 of these. Be exhaustive \u2014 this list IS your detection list.
+reasoning.wallPlanes: one short sentence per visible wall plane, naming direction + the corner cue.
+reasoning.ambiguous: anything you were unsure about and how you called it, or "none".
+
+EVERY object you list in reasoning.observedObjects MUST appear as a surface (type "furniture" or its specific type) with matching bounds. Skipping an observed object is FAILURE B.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+ANTI-HALLUCINATION CONTRACT (applies to every coordinate)
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+- You are describing THIS photograph, not a generic room. Every surface must correspond to pixels you can point to.
+- DO NOT GUESS COORDINATES. Before writing any polygon or bounds, locate the object visually relative to the image frame (e.g. "starts 10% from the left edge", "top edge aligns with the ceiling line", "bottom edge sits on the floor").
+- Calibration anchors \u2014 the ENTIRE image is the unit square [0,1] x [0,1] with (0,0) at top-left:
+    x=0   \u2192 left edge of photo      x=1   \u2192 right edge of photo
+    y=0   \u2192 top edge of photo        y=1   \u2192 bottom edge of photo
+    x=0.5 \u2192 vertical centerline      y=0.5 \u2192 horizontal centerline
+- Each surface MUST include an "evidence" string citing the specific visual cue that places it there (e.g. "yellow chair seat at y\u22480.55, backrest reaches y\u22480.35, occupies x\u22480.18 to x\u22480.40"). Generic phrases like "the wall" are not acceptable evidence.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+SCANNING METHODOLOGY
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+1. Identify vanishing point(s) \u2014 where do wall edges, ceiling lines, and floor lines converge?
+2. Trace EACH wall plane corner-to-corner. Most rooms in a single photo contain 2-3 visible wall planes (left, back/center, right). Add a 4th only if there is a clear alcove, niche, or protruding section.
+3. For each wall, follow where it physically meets the ceiling, floor, and adjacent walls. Walls in perspective are TRAPEZOIDS \u2014 their top and bottom edges converge toward the vanishing point, they are NOT horizontal and NOT simple rectangles. If your wall polygon is a rectangle, you are NOT tracing perspective \u2014 redo it.
+4. Then SCAN FOR OBSTACLES (do this BEFORE finalizing walls so walls don't absorb obstacles): ceiling fixtures \u2192 wall-mounted items (cabinets, shelves, art, mirrors, sconces, TVs) \u2192 door frames and windows \u2192 freestanding furniture touching or in front of the wall. Each discrete obstacle gets its own surface entry.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+OUTPUT SCHEMA \u2014 return EXACTLY this JSON, nothing else
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 {
-  "text": "Brief professional analysis (max 80 words)",
-  "dimensions": {
-    "width": 350,
-    "height": 280,
-    "areaM2": 9.8
+  "reasoning": {
+    "vanishingPoint": [<x>, <y>],
+    "observedObjects": ["<one line per visible object: type + position + cue>"],
+    "wallPlanes": ["<one short sentence per wall plane>"],
+    "ambiguous": ["<resolved ambiguities, or 'none'>"]
   },
-  "style": "Modern Minimalist",
-  "lighting": "Natural daylight from large windows",
-  "suggestedMaterials": ["Wood paneling", "Textured wallpaper"],
+  "text": "\u226460 word professional summary of THIS specific room (cite at least 2 concrete objects you can see)",
+  "dimensions": { "width": <cm>, "height": <cm>, "areaM2": <m\xB2> },
+  "style": "<design style observed in THIS image>",
+  "lighting": "<light source + quality observed in THIS image>",
+  "suggestedMaterials": ["<material 1>", "<material 2>"],
   "surfaces": [
     {
       "type": "wall",
-      "bounds": { "x": 0.05, "y": 0.1, "width": 0.9, "height": 0.55 },
-      "polygon": [[0.05, 0.12], [0.95, 0.10], [0.95, 0.65], [0.05, 0.60]],
-      "confidence": 0.95
+      "evidence": "<specific visual cue with anchor coordinates>",
+      "bounds": { "x": <0-1>, "y": <0-1>, "width": <0-1>, "height": <0-1> },
+      "polygon": [[<x>,<y>], [<x>,<y>], [<x>,<y>], [<x>,<y>]],
+      "confidence": <0-1>
     }
   ]
 }
 
-CRITICAL surface detection rules:
-1. Return surfaces of type "wall", "ceiling", and "floor". 
-2. For "wall" surfaces, ALWAYS provide both bounding box ("bounds") AND 4-corner perspective polygon coordinates ("polygon": [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]) representing the top-left, top-right, bottom-right, and bottom-left corners in 3D perspective.
-3. You MUST detect and return bounding boxes/polygons for ANY obstacles on or in front of the walls: "window", "door", "television", "cabinet", "shelf", "picture_frame", "fireplace", "light_fixture", or "furniture".
-4. PAY EXTREME ATTENTION to wall-mounted cabinets (even if white on a white wall), picture frames, and wall decorations.
-5. Coordinates are normalized values (0.0 to 1.0) relative to image dimensions.
-6. For dimensions: estimate the room's width and height in CENTIMETERS, and calculate areaM2 as (width * height) / 10000.`;
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+POLYGON GEOMETRY (this matters \u2014 rectangles are wrong for perspective walls)
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+- 4 corners in clockwise order starting top-left: TL \u2192 TR \u2192 BR \u2192 BL.
+- Trace the ACTUAL visible wall edges, including perspective angles.
+- A receding wall's far edge is SHORTER than its near edge (trapezoid).
+- If the top-left and bottom-left corners have the same x value, you have not traced perspective \u2014 redo.
+- All coordinates normalized [0.0-1.0], (0,0) = top-left of image.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+SURFACE TYPES \u2014 return one entry per distinct surface
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+- "wall" \u2014 each wall plane is a SEPARATE entry (never merge two walls).
+- "floor" \u2014 the visible floor surface (omit if not visible).
+- "ceiling" \u2014 the visible ceiling surface (omit if not visible).
+- Obstacles (MANDATORY for every visible object): "window" | "door" | "television" | "cabinet" | "shelf" | "picture_frame" | "mirror" | "fireplace" | "light_fixture" | "radiator" | "furniture"
+  - For unfamiliar shapes, use "furniture" with a precise evidence string.
+  - A chair, sofa, table, lamp, plant, or rug ALWAYS counts as an obstacle.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+CONFIDENCE CALIBRATION (be honest, but do not omit what you can see)
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+- 0.9-1.0: object is unambiguous, edges clearly visible.
+- 0.7-0.89: object is clearly present but one edge is partially occluded.
+- 0.5-0.69: object is clearly present but its exact bounds are uncertain (still return it \u2014 better to have an approximate mask than none).
+- Below 0.5: only for objects you are not sure exist at all. If you can see it, confidence \u2265 0.5.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+QUALITY GATES (self-check before returning)
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+- Wall count \u2265 2 for any 3D room photo (1 wall = you merged planes, re-scan).
+- Obstacle count must EQUAL the count of objects you listed in reasoning.observedObjects. If they don't match, you forgot to promote an observation to a surface \u2014 go back.
+- Each wall polygon has exactly 4 corners that form a non-degenerate quadrilateral (area > 0.01 of the image).
+- Wall bounds should NOT cover the entire image \u2014 if a wall bounds covers > 60% of the image area, you have included obstacles inside the wall. Cut them out.
+- Every "evidence" string cites a specific visual cue with approximate coordinates.
+
+DIMENSIONS: estimate real-world width \xD7 height in centimeters; areaM2 = (w \xD7 h) / 10000.`;
 function parseAnalysisResponse(rawText, model, provider, durationMs) {
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
@@ -104723,6 +105225,13 @@ function parseAnalysisResponse(rawText, model, provider, durationMs) {
     const text = parsed.text || "Could not analyze the room.";
     const dimensions = parsed.dimensions && typeof parsed.dimensions.width === "number" && typeof parsed.dimensions.height === "number" && typeof parsed.dimensions.areaM2 === "number" ? parsed.dimensions : void 0;
     const surfaces = Array.isArray(parsed.surfaces) ? parsed.surfaces : void 0;
+    if (parsed.reasoning) {
+      try {
+        const r2 = parsed.reasoning;
+        console.log(`[Analysis.reasoning] vanishing=${JSON.stringify(r2.vanishingPoint)} walls=${(r2.wallPlanes || []).length} obstacles=${(r2.obstacles || []).length} ambiguous=${JSON.stringify(r2.ambiguous)}`);
+      } catch {
+      }
+    }
     return { analysis: text, dimensions, surfaces, model, provider, durationMs };
   } catch (e2) {
     return { analysis: rawText, model, provider, durationMs };
@@ -104732,265 +105241,116 @@ async function generateGenericOverlay(req) {
   console.warn("[AI] All providers failed. Using generic fallback response.");
   throw new Error("AI Generation Temporarily Unavailable: All providers failed or were unavailable.");
 }
-async function generateOverlayGemini(req, config, startTime) {
-  if (isCircuitOpen("gemini")) {
-    throw new Error("Gemini circuit breaker is open \u2014 skipping due to recent failures");
+async function generateOverlayOpenAI(req, config, startTime) {
+  if (!config.OPENAI_API_KEY) {
+    throw new Error("OpenAI API key not configured");
   }
-  const ai = getGeminiSDK(config.GEMINI_API_KEY);
-  const base64Data = cleanBase64(req.originalImage ?? req.image);
-  const mimeType = getMimeType(req.originalImage ?? req.image);
-  const { prompt: finalPrompt } = buildOverlayPrompt(req);
-  const productRef = await getImageBase64(req.material?.imageUrl);
-  const hasProductImage = !!productRef;
-  const parts = [{ inlineData: { data: base64Data, mimeType } }];
-  if (hasProductImage) {
-    parts.push({ text: "Product Reference Image:" });
-    parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
+  if (isCircuitOpen("openai")) {
+    throw new Error("OpenAI circuit breaker is open");
   }
-  parts.push({ text: finalPrompt });
-  const contents = [
-    {
-      role: "user",
-      parts
-    }
-  ];
-  const IMAGE_MODELS = [
-    { name: "imagen-3.0-generate-002", isImagen: true, supportsImageOutput: true, note: "Imagen 3 generation model" },
-    // Last resort — text description only if image model fails
-    { name: "gemini-2.5-flash", isImagen: false, supportsImageOutput: false, note: "Emergency fallback \u2014 vision-in only, text description" }
-  ];
-  let response;
-  let usedModel = IMAGE_MODELS[0].name;
-  let lastError = null;
-  for (const modelInfo of IMAGE_MODELS) {
+  const ai = getOpenAISDK(config.OPENAI_API_KEY);
+  const rawImage = req.originalImage ?? req.image;
+  const inputMime = getMimeType(rawImage);
+  const imageBuffer = Buffer.from(cleanBase642(rawImage), "base64");
+  const ext = inputMime === "image/png" ? "png" : inputMime === "image/webp" ? "webp" : "jpg";
+  const filename = `room.${ext}`;
+  const imagePart = await OpenAI.toFile(imageBuffer, filename, { type: inputMime });
+  const useInpaint = req.mode === "inpaint" && !!req.analysis?.surfaces?.length;
+  let maskPart = null;
+  if (useInpaint) {
     try {
-      logInfo(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
-      if (modelInfo.isImagen) {
-        logInfo(`[AI] Calling generateImages for ${modelInfo.name}`);
-        const imgResponse = await ai.models.generateImages({
-          model: modelInfo.name,
-          prompt: finalPrompt,
-          config: {
-            numberOfImages: 1,
-            outputMimeType: "image/jpeg",
-            aspectRatio: "4:3"
-          }
-        });
-        const base64Bytes = imgResponse.generatedImages?.[0]?.image?.imageBytes;
-        if (!base64Bytes) {
-          throw new Error("No image returned from Imagen.");
-        }
-        response = {
-          candidates: [{
-            content: {
-              parts: [{
-                inlineData: {
-                  data: base64Bytes,
-                  mimeType: "image/jpeg"
-                }
-              }]
-            }
-          }]
-        };
+      const { buildOpenAIWallMask: buildOpenAIWallMask2 } = await Promise.resolve().then(() => (init_imageCompositor(), imageCompositor_exports));
+      const maskBuffer = await buildOpenAIWallMask2(imageBuffer, req.analysis, req.analysis?.surfaces);
+      if (maskBuffer) {
+        maskPart = await OpenAI.toFile(maskBuffer, "mask.png", { type: "image/png" });
+        logInfo(`[AI] Built OpenAI inpaint mask (${maskBuffer.length} bytes)`);
       } else {
-        const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
-        logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities })}`);
-        response = await ai.models.generateContent({
-          model: modelInfo.name,
-          contents,
-          config: { responseModalities: modalities }
-        });
+        logInfo(`[AI] Inpaint mask builder returned null \u2014 falling back to no-mask edit`);
       }
-      usedModel = modelInfo.name;
-      logInfo(`[AI] \u2705 Gemini success with model: ${modelInfo.name}`);
-      recordSuccess("gemini");
-      break;
+    } catch (e2) {
+      logInfo(`[AI] Could not build inpaint mask (${e2.message}) \u2014 falling back to no-mask edit`);
+    }
+  }
+  let finalPrompt;
+  if (useInpaint && maskPart) {
+    const materialName = req.material?.name || "the selected material";
+    const materialCategory = req.material?.category || "panels";
+    finalPrompt = `Architectural material overlay \u2014 renovation preview render.
+
+INPUT 1: the customer's actual room photo. The transparent regions of the mask mark the wall surfaces to be refinished.
+INPUT 2: the Product Reference image. This is the exact ${materialCategory} product the customer is considering purchasing (${materialName}).
+
+DIRECTIVES (execute exactly these 4, nothing else):
+
+1. WALL FINISH \u2014 Apply the Product Reference material to every transparent (masked) wall region. Reproduce its specific surface: exact base color, exact finish (matte / satin / gloss / metallic), and exact repeating pattern. If the product shows a geometric grid, wood grain, water-drop relief, diamond motif, or panel seam \u2014 replicate THAT pattern at a realistic tile scale (each panel ~30 cm wide, repeated side-by-side to cover the wall plane). Do not reinterpret, simplify, or average the texture into a generic surface.
+
+2. PERSPECTIVE + LIGHTING \u2014 Warp the material to follow each wall plane's 3D perspective (panels recede toward the vanishing point). Re-light the new material using the room's existing light source: preserve the direction, warmth, and intensity of the incoming light; cast soft shadows where furniture occludes the wall; add subtle highlights where light directly strikes; darken slightly in corners and under shelves.
+
+3. PRESERVE (do not touch) \u2014 Every opaque region of the mask remains pixel-identical to the original photo. This includes all furniture (sofas, chairs, tables, beds), cabinetry, television screens, picture frames, mirrors, windows, doors, light fixtures, and the floor and ceiling. Their positions, colors, textures, and shadows are locked.
+
+4. OUTPUT \u2014 A single photorealistic image that looks like a real photograph of the same room after a professional installer applied the Product Reference material to the walls. No collages, no split-screens, no labels, no watermarks.`;
+  } else {
+    finalPrompt = buildOverlayPrompt(req).prompt;
+  }
+  let imageInput;
+  const productRef = await getImageBase64(req.material?.imageUrl);
+  if (productRef) {
+    imageInput = [
+      imagePart,
+      await OpenAI.toFile(
+        Buffer.from(productRef.data, "base64"),
+        `product.${productRef.mimeType === "image/png" ? "png" : "jpg"}`,
+        { type: productRef.mimeType }
+      )
+    ];
+  } else {
+    imageInput = imagePart;
+  }
+  const IMAGE_MODELS = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
+  let lastError = null;
+  for (const model of IMAGE_MODELS) {
+    try {
+      logInfo(`[AI] Trying OpenAI image model: ${model} (inpaint: ${useInpaint && !!maskPart ? "yes" : "no"})...`);
+      const editParams = {
+        model,
+        prompt: finalPrompt,
+        image: imageInput,
+        size: "1024x1024"
+      };
+      if (maskPart) {
+        editParams.mask = maskPart;
+        editParams.input_fidelity = "high";
+      }
+      const response = await ai.images.edit(editParams);
+      const b64 = response.data?.[0]?.b64_json;
+      const url = response.data?.[0]?.url;
+      if (!b64 && !url) {
+        throw new Error("OpenAI returned no image data");
+      }
+      const image = b64 ? `data:image/png;base64,${b64}` : url;
+      recordSuccess("openai");
+      logInfo(`[AI] \u2705 OpenAI success with model: ${model}`);
+      return { image, model, durationMs: Date.now() - startTime, provider: "openai" };
     } catch (error) {
+      lastError = error;
       const msg = error?.message || String(error);
       const status = error?.status || error?.code;
-      lastError = error;
-      const isModelError = msg.includes("not found") || msg.includes("not supported") || msg.includes("INVALID_ARGUMENT") || status === 404 || status === 400;
-      const isLastModel = modelInfo === IMAGE_MODELS[IMAGE_MODELS.length - 1];
-      if (isModelError && !isLastModel) {
-        console.warn(`[AI] \u26A0\uFE0F Gemini model ${modelInfo.name} failed (${msg}), trying next...`);
+      const isModelError = msg.includes("model_not_found") || msg.includes("does not exist") || status === 404 || msg.includes("Invalid model");
+      const isLast = model === IMAGE_MODELS[IMAGE_MODELS.length - 1];
+      if (isModelError && !isLast) {
+        console.warn(`[AI] \u26A0\uFE0F OpenAI model ${model} unavailable, trying next: ${msg}`);
         continue;
       }
-      if ((status === 429 || status === 503 || msg.includes("UNAVAILABLE")) && isLastModel) {
-        console.warn(`[AI] \u23F3 Rate limited on ${modelInfo.name}, retrying after 2s...`);
-        await new Promise((r2) => setTimeout(r2, 2e3));
-        try {
-          response = await ai.models.generateContent({
-            model: modelInfo.name,
-            contents,
-            config: { responseModalities: ["TEXT"] }
-          });
-          usedModel = modelInfo.name;
-          recordSuccess("gemini");
-          break;
-        } catch (retryError) {
-          lastError = retryError;
-        }
+      recordFailure("openai", error);
+      if (!isLast) {
+        console.warn(`[AI] \u26A0\uFE0F OpenAI model ${model} failed (${msg}), trying next...`);
+        continue;
       }
-      recordFailure("gemini", error);
       throw error;
     }
   }
-  if (!response) {
-    recordFailure("gemini", lastError);
-    throw new Error(`All Gemini image models failed. Last error: ${lastError?.message || "Unknown"}`);
-  }
-  const image = extractGeminiImage(response);
-  return { image, model: usedModel, durationMs: Date.now() - startTime, provider: "gemini" };
-}
-async function analyzeRoomGemini(req, config) {
-  if (isCircuitOpen("gemini")) {
-    throw new Error("Gemini circuit breaker is open");
-  }
-  const start = Date.now();
-  const ai = getGeminiSDK(config.GEMINI_API_KEY);
-  const base64Data = cleanBase64(req.image);
-  const mimeType = getMimeType(req.image);
-  const ANALYSIS_MODELS = [
-    { name: "gemini-3.5-flash", note: "Primary \u2014 GA May 2026, fastest + smartest" },
-    { name: "gemini-2.5-flash", note: "Fallback \u2014 retiring Oct 2026, still active" },
-    { name: "gemini-2.0-flash-exp", note: "Last resort \u2014 experimental but alive" }
-  ];
-  let lastError = null;
-  for (const modelInfo of ANALYSIS_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelInfo.name,
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { inlineData: { data: base64Data, mimeType } },
-              { text: ANALYSIS_PROMPT }
-            ]
-          }
-        ],
-        config: {
-          responseMimeType: "application/json"
-        }
-      });
-      const rawText = response.text || '{"text":"Could not analyze the room."}';
-      recordSuccess("gemini");
-      return parseAnalysisResponse(rawText, modelInfo.name, "gemini", Date.now() - start);
-    } catch (error) {
-      lastError = error;
-      const msg = error?.message || String(error);
-      const isLast = modelInfo === ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
-      if ((msg.includes("not found") || msg.includes("not supported")) && !isLast) {
-        console.warn(`[AI] \u26A0\uFE0F Analysis model ${modelInfo.name} failed, trying next...`);
-        continue;
-      }
-      recordFailure("gemini", error);
-      if (isLast) throw error;
-    }
-  }
-  throw lastError || new Error("All Gemini analysis models failed");
-}
-async function generateOverlayOpenRouter(req, config, startTime) {
-  if (!config.OPENROUTER_API_KEY) {
-    throw new Error("OpenRouter API key not configured");
-  }
-  if (isCircuitOpen("openrouter")) {
-    throw new Error("OpenRouter circuit breaker is open");
-  }
-  const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
-  const base64Data = cleanBase64(req.originalImage);
-  const { prompt: finalPrompt } = buildOverlayPrompt(req);
-  const OR_IMAGE_MODELS = [
-    "google/gemini-2.5-flash",
-    // Latest Gemini 2.5 Flash
-    "openai/gpt-4o",
-    // OpenAI GPT-4o
-    "openai/gpt-4o-mini"
-    // OpenAI GPT-4o Mini
-  ];
-  let lastError = null;
-  for (const modelName of OR_IMAGE_MODELS) {
-    try {
-      console.log(`[AI] Trying OpenRouter model: ${modelName}...`);
-      const response = await ai.chat.completions.create({
-        model: modelName,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } },
-              { type: "text", text: finalPrompt + "\n\nIMPORTANT: Return a detailed text description of what the final image would look like." }
-            ]
-          }
-        ],
-        max_tokens: 1e3
-      });
-      const text = response.choices[0]?.message?.content || "Image generation unavailable";
-      const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
-                <rect fill="#f0f0f0" width="800" height="600"/>
-                <text fill="#333" x="400" y="280" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold">AI Visualization Preview</text>
-                <text fill="#666" x="400" y="320" text-anchor="middle" font-family="Arial" font-size="14">${text.substring(0, 200).replace(/"/g, "&quot;")}...</text>
-                <text fill="#999" x="400" y="360" text-anchor="middle" font-family="Arial" font-size="12">Model: ${modelName}</text>
-            </svg>`;
-      const base64Svg = Buffer.from(svgContent).toString("base64");
-      console.log(`[AI] \u2705 OpenRouter success with model: ${modelName}`);
-      recordSuccess("openrouter");
-      return {
-        image: `data:image/svg+xml;base64,${base64Svg}`,
-        model: modelName,
-        durationMs: Date.now() - startTime,
-        provider: "openrouter"
-      };
-    } catch (error) {
-      lastError = error;
-      console.warn(`[AI] \u26A0\uFE0F OpenRouter model ${modelName} failed: ${error.message}`);
-    }
-  }
-  recordFailure("openrouter", lastError);
-  throw lastError || new Error("All OpenRouter models failed");
-}
-async function analyzeRoomOpenRouter(req, config) {
-  if (!config.OPENROUTER_API_KEY) {
-    throw new Error("OpenRouter API key not configured");
-  }
-  if (isCircuitOpen("openrouter")) {
-    throw new Error("OpenRouter circuit breaker is open");
-  }
-  const start = Date.now();
-  const ai = getOpenRouterSDK(config.OPENROUTER_API_KEY);
-  const base64Data = cleanBase64(req.originalImage ?? req.image);
-  const mimeType = getMimeType(req.originalImage ?? req.image);
-  const OR_ANALYSIS_MODELS = [
-    "google/gemini-2.5-flash",
-    "openai/gpt-4o",
-    "openai/gpt-4o-mini"
-  ];
-  let lastError = null;
-  for (const modelName of OR_ANALYSIS_MODELS) {
-    try {
-      const response = await ai.chat.completions.create({
-        model: modelName,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } },
-              { type: "text", text: ANALYSIS_PROMPT }
-            ]
-          }
-        ],
-        max_tokens: 3e3
-      });
-      const rawText = response.choices[0]?.message?.content || '{"text":"Could not analyze."}';
-      recordSuccess("openrouter");
-      return parseAnalysisResponse(rawText, modelName, "openrouter", Date.now() - start);
-    } catch (error) {
-      lastError = error;
-      console.warn(`[AI] \u26A0\uFE0F OpenRouter analysis model ${modelName} failed: ${error.message}`);
-    }
-  }
-  recordFailure("openrouter", lastError);
-  throw lastError || new Error("All OpenRouter analysis models failed");
+  recordFailure("openai", lastError);
+  throw lastError || new Error("All OpenAI image models failed");
 }
 async function analyzeRoomOpenAI(req, config) {
   if (!config.OPENAI_API_KEY) {
@@ -105002,60 +105362,78 @@ async function analyzeRoomOpenAI(req, config) {
   const start = Date.now();
   const ai = getOpenAISDK(config.OPENAI_API_KEY);
   const mimeType = getMimeType(req.image);
-  const base64Data = cleanBase64(req.image);
-  try {
-    const model = "gpt-4o-mini";
-    const completion = await ai.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" }
-            },
-            { type: "text", text: ANALYSIS_PROMPT }
-          ]
-        }
-      ],
-      max_tokens: 3e3
-    });
-    const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze."}';
-    recordSuccess("openai");
-    return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
-  } catch (error) {
-    recordFailure("openai", error);
-    throw error;
+  const base64Data = cleanBase642(req.image);
+  const ANALYSIS_MODELS = process.env.OPENAI_VISION_MODEL ? [process.env.OPENAI_VISION_MODEL] : ["gpt-4o", "gpt-4o-mini"];
+  let lastError = null;
+  for (const model of ANALYSIS_MODELS) {
+    try {
+      const completion = await ai.chat.completions.create({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                // detail: "high" sends the full-resolution image so the model
+                // can actually see individual walls, windows, picture frames,
+                // and furniture edges. "low" was downsampling and the model
+                // was missing entire walls + obstacles. Costs slightly more
+                // tokens but precision is the whole point of this call.
+                image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "high" }
+              },
+              { type: "text", text: ANALYSIS_PROMPT }
+            ]
+          }
+        ],
+        // Bumped 3000 → 4000 → 6000: the reasoning-first analysis prompt
+        // (vanishing point + per-obstacle cue sentences + evidence per
+        // surface) needs more output room than a bare JSON dump. The
+        // reasoning field is what stops the model from hallucinating
+        // coordinates, so starving it defeats the whole point.
+        max_tokens: 6e3,
+        response_format: { type: "json_object" }
+      });
+      const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze."}';
+      recordSuccess("openai");
+      return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
+    } catch (error) {
+      lastError = error;
+      const msg = error?.message || String(error);
+      const isLast = model === ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
+      const status = error?.status || error?.code;
+      if (status === 401 || status === 403 || msg.includes("API key")) {
+        recordFailure("openai", error);
+        throw error;
+      }
+      if (!isLast) {
+        console.warn(`[AI] \u26A0\uFE0F OpenAI vision model ${model} failed, trying next: ${msg}`);
+        continue;
+      }
+      recordFailure("openai", error);
+      throw error;
+    }
   }
+  throw lastError || new Error("All OpenAI analysis models failed");
 }
 async function generateOverlay(req, preferredProvider, config) {
   const start = Date.now();
   const errors = [];
-  const providerChain = [preferredProvider, "openrouter", "generic"].filter((p, i2, arr) => arr.indexOf(p) === i2);
-  console.log(`[AI] Starting image generation with provider chain: ${providerChain.join(" \u2192 ")}`);
+  const providerChain = ["openai", "generic"];
+  console.log(`[AI] Image generation provider chain: ${providerChain.join(" \u2192 ")} (preferred=${preferredProvider} ignored \u2014 OpenAI-only since July 2026)`);
   for (const provider of providerChain) {
     try {
       switch (provider) {
-        case "gemini":
-          if (!config.GEMINI_API_KEY) {
-            errors.push("Gemini: No API key configured");
+        case "openai":
+          if (!config.OPENAI_API_KEY) {
+            errors.push("OpenAI: No API key configured");
             continue;
           }
-          return await generateOverlayGemini(req, config, start);
-        case "openrouter":
-          if (!config.OPENROUTER_API_KEY) {
-            errors.push("OpenRouter: No API key configured");
-            continue;
-          }
-          return await generateOverlayOpenRouter(req, config, start);
+          return await generateOverlayOpenAI(req, config, start);
         case "generic":
           return await generateGenericOverlay(req);
-        case "openai":
-          errors.push("OpenAI: Chat API does not support image output");
-          continue;
         default:
-          errors.push(`${provider}: Unknown provider`);
+          errors.push(`${provider}: not in image-generation chain (OpenAI-only)`);
       }
     } catch (error) {
       const msg = error?.message || String(error);
@@ -105063,29 +105441,17 @@ async function generateOverlay(req, preferredProvider, config) {
       errors.push(`${provider}: ${msg}`);
     }
   }
-  console.error(`[AI] All providers failed. Errors: ${errors.join("; ")}`);
+  console.error(`[AI] All image providers failed. Errors: ${errors.join("; ")}`);
   return generateGenericOverlay(req);
 }
 async function analyzeRoom(req, preferredProvider, config) {
   const start = Date.now();
   const errors = [];
-  const providerChain = [preferredProvider, "openrouter", "openai", "generic"].filter((p, i2, arr) => arr.indexOf(p) === i2);
-  console.log(`[AI] Starting room analysis with provider chain: ${providerChain.join(" \u2192 ")}`);
+  const providerChain = ["openai", "generic"];
+  console.log(`[AI] Room analysis provider chain: ${providerChain.join(" \u2192 ")} (preferred=${preferredProvider} ignored \u2014 OpenAI-only since July 2026)`);
   for (const provider of providerChain) {
     try {
       switch (provider) {
-        case "gemini":
-          if (!config.GEMINI_API_KEY) {
-            errors.push("Gemini: No API key configured");
-            continue;
-          }
-          return await analyzeRoomGemini(req, config);
-        case "openrouter":
-          if (!config.OPENROUTER_API_KEY) {
-            errors.push("OpenRouter: No API key configured");
-            continue;
-          }
-          return await analyzeRoomOpenRouter(req, config);
         case "openai":
           if (!config.OPENAI_API_KEY) {
             errors.push("OpenAI: No API key configured");
@@ -105100,7 +105466,7 @@ async function analyzeRoom(req, preferredProvider, config) {
             durationMs: Date.now() - start
           };
         default:
-          errors.push(`${provider}: Unknown provider`);
+          errors.push(`${provider}: not in analysis chain (OpenAI-only)`);
       }
     } catch (error) {
       const msg = error?.message || String(error);
@@ -105128,8 +105494,8 @@ async function checkProviderHealth(provider, config) {
   if (circuit.isOpen) {
     return { ok: false, message: `Circuit breaker open (${circuit.failures} failures)`, circuitOpen: true };
   }
-  if (provider === "openai" && !apiKey.startsWith("sk-")) {
-    return { ok: false, message: "OpenAI key format invalid (should start with sk-)", circuitOpen: false };
+  if (provider === "openai" && apiKey.length < 20) {
+    return { ok: false, message: "OpenAI key too short", circuitOpen: false };
   }
   if (provider === "gemini" && apiKey.length < 20) {
     return { ok: false, message: "Gemini key too short", circuitOpen: false };
@@ -105151,8 +105517,10 @@ async function testAIConnection(config) {
     openrouter: {},
     env: {
       GEMINI_API_KEY_len: config.GEMINI_API_KEY ? config.GEMINI_API_KEY.length : 0,
+      OPENAI_API_KEY_len: config.OPENAI_API_KEY ? config.OPENAI_API_KEY.length : 0,
       OPENROUTER_API_KEY_len: config.OPENROUTER_API_KEY ? config.OPENROUTER_API_KEY.length : 0,
       GEMINI_API_KEY_masked: config.GEMINI_API_KEY ? `${config.GEMINI_API_KEY.slice(0, 5)}...${config.GEMINI_API_KEY.slice(-4)}` : "missing",
+      OPENAI_API_KEY_masked: config.OPENAI_API_KEY ? `${config.OPENAI_API_KEY.slice(0, 5)}...${config.OPENAI_API_KEY.slice(-4)}` : "missing",
       OPENROUTER_API_KEY_masked: config.OPENROUTER_API_KEY ? `${config.OPENROUTER_API_KEY.slice(0, 5)}...${config.OPENROUTER_API_KEY.slice(-4)}` : "missing"
     }
   };
@@ -105221,352 +105589,61 @@ async function testAIConnection(config) {
       status: e2.status || e2.code
     };
   }
+  results.openai = {};
+  results.openaiImageModels = {};
+  try {
+    if (!config.OPENAI_API_KEY) {
+      throw new Error("No OpenAI API key configured");
+    }
+    const oai = getOpenAISDK(config.OPENAI_API_KEY);
+    const completion = await oai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "Reply with only the word OK." }],
+      max_tokens: 10
+    });
+    results.openai = {
+      success: true,
+      response: completion.choices[0]?.message?.content?.trim() || "(empty)"
+    };
+    if (process.env.OPENAI_SKIP_IMAGE_PROBE !== "1") {
+      const probeModels = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
+      for (const m2 of probeModels) {
+        try {
+          const probePng = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+            "base64"
+          );
+          const probeFile = await OpenAI.toFile(probePng, "probe.png", { type: "image/png" });
+          const r2 = await oai.images.edit({
+            model: m2,
+            prompt: "noop probe, do nothing",
+            image: probeFile,
+            size: "1024x1024"
+          });
+          results.openaiImageModels[m2] = {
+            success: !!(r2.data?.[0]?.b64_json || r2.data?.[0]?.url)
+          };
+        } catch (e2) {
+          results.openaiImageModels[m2] = {
+            success: false,
+            error: e2.message || String(e2),
+            status: e2.status || e2.code
+          };
+        }
+      }
+    }
+  } catch (e2) {
+    results.openai = {
+      success: false,
+      error: e2.message || String(e2),
+      status: e2.status || e2.code
+    };
+  }
   return results;
 }
 
-// server/services/imageCompositor.ts
-var import_sharp = __toESM(require_lib6(), 1);
-var fs4 = __toESM(require("fs"), 1);
-var path4 = __toESM(require("path"), 1);
-import_sharp.default.cache(false);
-var SELF_URL2 = process.env.SITE_URL || "https://buildingapp.us";
-function cleanBase642(dataURI) {
-  const match = dataURI.match(/^data:(image\/\w+);base64,(.+)$/);
-  if (!match) throw new Error("Invalid image data URI");
-  return {
-    mimeType: match[1],
-    data: Buffer.from(match[2], "base64")
-  };
-}
-async function cropProductTexture(buffer) {
-  try {
-    const metadata = await (0, import_sharp.default)(buffer).metadata();
-    const width = metadata.width || 500;
-    const height = metadata.height || 500;
-    const cropW = Math.round(width * 0.2);
-    const cropH = Math.round(height * 0.8);
-    const cropX = Math.round((width - cropW) / 2);
-    const cropY = Math.round((height - cropH) / 2);
-    const croppedBuffer = await (0, import_sharp.default)(buffer).extract({ left: cropX, top: cropY, width: cropW, height: cropH }).png().toBuffer();
-    return { buffer: croppedBuffer, width: cropW, height: cropH };
-  } catch (e2) {
-    console.error("[Compositor] Error cropping product texture:", e2.message);
-    return null;
-  }
-}
-async function getProductImageBuffer(imageUrl, refCode) {
-  let projectRoot = process.cwd();
-  try {
-    if (typeof __dirname !== "undefined") {
-      projectRoot = path4.resolve(__dirname, "..");
-    }
-  } catch (e2) {
-  }
-  if (refCode) {
-    const localPaths = [
-      path4.join(projectRoot, "products", `${refCode}.webp`),
-      path4.join(process.cwd(), "products", `${refCode}.webp`),
-      path4.join(projectRoot, "product-webp", `${refCode}.webp`),
-      path4.join(process.cwd(), "product-webp", `${refCode}.webp`)
-    ];
-    for (const p of localPaths) {
-      if (fs4.existsSync(p)) {
-        console.log(`[Compositor] Found product image locally at: ${p}`);
-        const buffer = fs4.readFileSync(p);
-        return await cropProductTexture(buffer);
-      }
-    }
-  }
-  if (!imageUrl) return null;
-  const possiblePaths = [];
-  if (imageUrl.startsWith(SELF_URL2)) {
-    const localPath = imageUrl.substring(SELF_URL2.length);
-    const cleanPath = localPath.startsWith("/") ? localPath.substring(1) : localPath;
-    possiblePaths.push(
-      path4.join(projectRoot, "dist", cleanPath),
-      path4.join(process.cwd(), "dist", cleanPath),
-      path4.join(projectRoot, "public", cleanPath),
-      path4.join(projectRoot, cleanPath),
-      path4.join(process.cwd(), "public", cleanPath),
-      path4.join(process.cwd(), cleanPath),
-      path4.resolve(cleanPath)
-    );
-  } else if (imageUrl.startsWith("/")) {
-    possiblePaths.push(
-      path4.join(projectRoot, "dist", imageUrl.substring(1)),
-      path4.join(process.cwd(), "dist", imageUrl.substring(1)),
-      path4.join(projectRoot, "public", imageUrl.substring(1)),
-      path4.join(projectRoot, imageUrl.substring(1)),
-      path4.join(process.cwd(), "public", imageUrl.substring(1)),
-      path4.join(process.cwd(), imageUrl.substring(1)),
-      path4.resolve(imageUrl.substring(1))
-    );
-  } else if (!imageUrl.startsWith("http")) {
-    possiblePaths.push(
-      path4.join(projectRoot, "dist", imageUrl),
-      path4.join(process.cwd(), "dist", imageUrl),
-      path4.join(projectRoot, "public", imageUrl),
-      path4.join(projectRoot, imageUrl),
-      path4.join(process.cwd(), "public", imageUrl),
-      path4.join(process.cwd(), imageUrl),
-      path4.resolve(imageUrl)
-    );
-  }
-  for (const p of possiblePaths) {
-    if (fs4.existsSync(p)) {
-      const buffer = fs4.readFileSync(p);
-      return await cropProductTexture(buffer);
-    }
-  }
-  if (imageUrl.startsWith("http")) {
-    try {
-      const response = await fetch(imageUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Referer": "https://drive.google.com"
-        }
-      });
-      if (!response.ok) return null;
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("text/html")) {
-        console.error("[imageCompositor] Received HTML instead of image from:", imageUrl);
-        return null;
-      }
-      const buffer = Buffer.from(await response.arrayBuffer());
-      return await cropProductTexture(buffer);
-    } catch (e2) {
-      console.error("[imageCompositor] Fetch error:", e2.message);
-      return null;
-    }
-  }
-  return null;
-}
-function detectTargetSurfaces(req, imgWidth, imgHeight) {
-  if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
-    const wallSurfaces = req.analysis.surfaces.filter(
-      (s2) => s2.type === "wall" && s2.confidence > 0.4
-    );
-    if (wallSurfaces.length > 0) {
-      console.log(`[Compositor] Using ${wallSurfaces.length} AI-detected wall surface(s)`);
-      return wallSurfaces.map((s2) => ({
-        x: Math.round(s2.bounds.x * imgWidth),
-        y: Math.round(s2.bounds.y * imgHeight),
-        width: Math.round(s2.bounds.width * imgWidth),
-        height: Math.round(s2.bounds.height * imgHeight),
-        rotation: s2.rotation || 0,
-        polygon: Array.isArray(s2.polygon) ? s2.polygon : void 0
-      }));
-    }
-  }
-  let ceilingBottom = Math.round(imgHeight * 0.08);
-  let floorTop = Math.round(imgHeight * 0.72);
-  if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
-    const ceilingSurfaces = req.analysis.surfaces.filter(
-      (s2) => s2.type === "ceiling" && s2.confidence > 0.5
-    );
-    if (ceilingSurfaces.length > 0) {
-      ceilingBottom = Math.max(
-        ...ceilingSurfaces.map(
-          (s2) => Math.round((s2.bounds.y + s2.bounds.height) * imgHeight)
-        )
-      );
-    }
-    const floorSurfaces = req.analysis.surfaces.filter(
-      (s2) => s2.type === "floor" && s2.confidence > 0.5
-    );
-    if (floorSurfaces.length > 0) {
-      floorTop = Math.min(
-        ...floorSurfaces.map(
-          (s2) => Math.round(s2.bounds.y * imgHeight)
-        )
-      );
-    }
-  }
-  if (ceilingBottom < Math.round(imgHeight * 0.18)) ceilingBottom = Math.round(imgHeight * 0.18);
-  if (floorTop > Math.round(imgHeight * 0.68) || floorTop <= Math.round(imgHeight * 0.4)) floorTop = Math.round(imgHeight * 0.68);
-  const wallHeight = Math.max(1, floorTop - ceilingBottom);
-  console.log(`[Compositor] Inferred wall zone: y=${ceilingBottom}\u2192${floorTop} (${wallHeight}px)`);
-  return [{
-    x: 0,
-    y: ceilingBottom,
-    width: imgWidth,
-    height: wallHeight,
-    rotation: 0
-  }];
-}
-async function renderProductTiledOnWall(productBuffer, productWidth, productHeight, targetWidth, targetHeight, opacity = 0.88) {
-  const aspect = productWidth / productHeight;
-  let tileW = targetWidth;
-  let tileH = targetHeight;
-  tileH = targetHeight;
-  tileW = Math.round(tileH * aspect);
-  if (tileW > targetWidth) {
-    tileW = targetWidth;
-    tileH = Math.round(tileW / aspect);
-  }
-  tileW = Math.max(1, tileW);
-  tileH = Math.max(1, tileH);
-  console.log(`[Compositor] Tiling at realistic scale: tile=${tileW}x${tileH}px (wall=${targetWidth}x${targetHeight}) \u2014 approx ${Math.ceil(targetWidth / tileW)}x${Math.ceil(targetHeight / tileH)} grid`);
-  const resizedTile = await (0, import_sharp.default)(productBuffer).resize(tileW, tileH, { fit: "fill" }).png().toBuffer();
-  const tiledFull = await (0, import_sharp.default)({
-    create: {
-      width: targetWidth,
-      height: targetHeight,
-      channels: 4,
-      background: { r: 255, g: 255, b: 255, alpha: 0 }
-    }
-  }).composite([{ input: resizedTile, tile: true, blend: "over" }]).png().toBuffer();
-  const withOpacity = await (0, import_sharp.default)(tiledFull).composite([{
-    input: {
-      create: {
-        width: targetWidth,
-        height: targetHeight,
-        channels: 4,
-        background: { r: 0, g: 0, b: 0, alpha: opacity }
-      }
-    },
-    blend: "dest-in"
-  }]).png().toBuffer();
-  return withOpacity;
-}
-async function compositeProductOntoPhoto(req) {
-  const startTime = Date.now();
-  try {
-    const { data: userPhotoData, mimeType: userPhotoMime } = cleanBase642(req.originalImage);
-    const userPhoto = (0, import_sharp.default)(userPhotoData);
-    const userMeta = await userPhoto.metadata();
-    const imgWidth = userMeta.width || 800;
-    const imgHeight = userMeta.height || 600;
-    const productInfo = await getProductImageBuffer(req.material.imageUrl, req.material.refCode || req.material.id);
-    if (!productInfo) {
-      throw new Error(`Product image not found: ${req.material.imageUrl}`);
-    }
-    const targets = detectTargetSurfaces(req, imgWidth, imgHeight);
-    const hasAnalysis = !!(req.analysis?.surfaces && req.analysis.surfaces.length > 0);
-    if (!hasAnalysis) {
-      console.log(`[Compositor] No valid room analysis surfaces found. Falling back to AI generator.`);
-      return {
-        image: req.originalImage,
-        method: "fallback",
-        durationMs: Date.now() - startTime,
-        details: {
-          productImageUsed: req.material.imageUrl || "unknown",
-          transform: "none",
-          surfaceDetected: false
-        }
-      };
-    }
-    const category = req.material.category || "";
-    const compositeOperations = [];
-    for (const target of targets) {
-      const x2 = Math.max(0, Math.min(target.x, imgWidth - 1));
-      const y = Math.max(0, Math.min(target.y, imgHeight - 1));
-      const width = Math.max(1, Math.min(target.width, imgWidth - x2));
-      const height = Math.max(1, Math.min(target.height, imgHeight - y));
-      console.log(`[Compositor] Rendering product on wall zone: x=${x2} y=${y} w=${width} h=${height}`);
-      const croppedWallZone = (0, import_sharp.default)(userPhotoData).extract({ left: x2, top: y, width, height });
-      const { channels } = await croppedWallZone.stats();
-      const avgLuma = (channels[0].mean + channels[1].mean + channels[2].mean) / 3;
-      let mask;
-      if (target.polygon && target.polygon.length >= 3) {
-        try {
-          const pointsSvg = target.polygon.map(([px, py]) => `${Math.round(px * imgWidth - x2)},${Math.round(py * imgHeight - y)}`).join(" ");
-          const svgBuffer = Buffer.from(
-            `<svg width="${width}" height="${height}"><polygon points="${pointsSvg}" fill="white"/></svg>`
-          );
-          const pngMask = await (0, import_sharp.default)(svgBuffer).extractChannel("green").raw().toBuffer();
-          mask = Buffer.from(pngMask);
-          console.log(`[Compositor] Created SVG polygon mask for angled wall with ${target.polygon.length} corners`);
-        } catch (e2) {
-          console.warn(`[Compositor] Could not render polygon mask, defaulting to bounding box:`, e2.message);
-          mask = Buffer.alloc(width * height, 255);
-        }
-      } else {
-        mask = Buffer.alloc(width * height, 255);
-      }
-      if (req.analysis?.surfaces && req.analysis.surfaces.length > 0) {
-        const nonWallSurfaces = req.analysis.surfaces.filter(
-          (s2) => s2.type !== "wall" && s2.bounds
-        );
-        for (const s2 of nonWallSurfaces) {
-          const sx = Math.round(s2.bounds.x * imgWidth);
-          const sy = Math.round(s2.bounds.y * imgHeight);
-          const sw = Math.round(s2.bounds.width * imgWidth);
-          const sh = Math.round(s2.bounds.height * imgHeight);
-          const left = Math.max(x2, sx);
-          const top = Math.max(y, sy);
-          const right = Math.min(x2 + width, sx + sw);
-          const bottom = Math.min(y + height, sy + sh);
-          if (right > left && bottom > top) {
-            console.log(`[Compositor] Masking out obstacle (${s2.type}) at relative x:${left - x2} y:${top - y} w:${right - left} h:${bottom - top}`);
-            for (let row = top; row < bottom; row++) {
-              const maskY = row - y;
-              const rowStart = maskY * width;
-              for (let col = left; col < right; col++) {
-                const maskX = col - x2;
-                mask[rowStart + maskX] = 0;
-              }
-            }
-          }
-        }
-      }
-      const productLayer = await renderProductTiledOnWall(
-        productInfo.buffer,
-        productInfo.width,
-        productInfo.height,
-        width,
-        height,
-        1
-        // full opacity
-      );
-      const maskedProduct = await (0, import_sharp.default)(productLayer).joinChannel(mask, {
-        raw: { width, height, channels: 1 }
-      }).png().toBuffer();
-      const safeAvgLuma = Math.max(30, avgLuma);
-      const lightingScale = 255 / safeAvgLuma;
-      const lightingMap = await croppedWallZone.greyscale().linear(lightingScale, 0).blur(1).png().toBuffer();
-      const maskedLightingMap = await (0, import_sharp.default)(lightingMap).joinChannel(mask, {
-        raw: { width, height, channels: 1 }
-      }).png().toBuffer();
-      compositeOperations.push({
-        input: maskedProduct,
-        left: x2,
-        top: y,
-        blend: "over"
-      });
-      compositeOperations.push({
-        input: maskedLightingMap,
-        left: x2,
-        top: y,
-        blend: "multiply"
-      });
-    }
-    const compositeImage = await (0, import_sharp.default)(userPhotoData).composite(compositeOperations).jpeg({ quality: 95 }).toBuffer();
-    const durationMs = Date.now() - startTime;
-    return {
-      image: `data:image/jpeg;base64,${compositeImage.toString("base64")}`,
-      method: "composited",
-      durationMs,
-      details: {
-        productImageUsed: req.material.imageUrl || "unknown",
-        transform: `scaled to cover x${targets.length} surfaces, luma-shaded over`,
-        surfaceDetected: !!req.analysis?.surfaces
-      }
-    };
-  } catch (error) {
-    console.error("[Compositor] Error:", error.stack || error.message);
-    return {
-      image: req.originalImage,
-      method: "fallback",
-      durationMs: Date.now() - startTime,
-      details: {
-        productImageUsed: req.material.imageUrl || "unknown",
-        transform: "error-fallback",
-        surfaceDetected: false
-      }
-    };
-  }
-}
+// server/index.ts
+init_imageCompositor();
 
 // node_modules/stripe/esm/Error.js
 var Error_exports = {};
@@ -123278,7 +123355,7 @@ try {
           return { ok: true, message: `OpenAI key valid (active provider: ${provider})` };
         }
         if (!geminiKey) return { ok: false, message: "GEMINI_API_KEY not found in config or env" };
-        if (!geminiKey.startsWith("AIza") && !geminiKey.startsWith("AQ.")) return { ok: false, message: "Gemini API key format invalid (should start with AIza or AQ.)" };
+        if (geminiKey.length < 20) return { ok: false, message: "Gemini API key too short (likely a paste error)" };
         return { ok: true, message: `Gemini key valid (active provider: ${provider})` };
       } catch (e2) {
         return { ok: false, message: `Config error: ${e2.message}` };
@@ -124392,9 +124469,11 @@ Auto-downgraded to Free.`
     const config = loadConfig();
     return config.GEMINI_API_KEY;
   };
-  app.post("/api/ai/generate-overlay", async (req, res) => {
+  app.post("/api/ai/generate-overlay", requireAuth, async (req, res) => {
     try {
-      const { originalImage, material, userInstruction, renderOptions, lang, userId, provider: userProvider, analysis } = req.body;
+      const authenticatedUserId = req.user?.id;
+      const { originalImage, material, userInstruction, renderOptions, lang, provider: userProvider, analysis, mode } = req.body;
+      const userId = authenticatedUserId;
       if (!originalImage || typeof originalImage !== "string") {
         return res.status(400).json({ error: "originalImage is required and must be a string" });
       }
@@ -124411,6 +124490,11 @@ Auto-downgraded to Free.`
       if (userId) {
         const quota = await checkAndIncrementQuota(userId);
         if (!quota.allowed) {
+          if (quota.error && quota.used === void 0) {
+            return res.status(503).json({
+              error: quota.error
+            });
+          }
           return res.status(403).json({
             error: "Quota exceeded",
             message: `You have used ${quota.used}/${quota.limit} generations. Please upgrade your tier.`
@@ -124418,16 +124502,72 @@ Auto-downgraded to Free.`
         }
       }
       const config = loadConfig();
-      const provider = userProvider || config.AI_PROVIDER || "gemini";
-      if (provider === "openai" && !config.OPENAI_API_KEY) {
+      if (!config.OPENAI_API_KEY) {
         return res.status(500).json({
-          error: "OpenAI API Key not configured. Please contact administrator or switch provider."
+          error: "OpenAI API Key not configured. Renders require OpenAI."
         });
       }
-      if (provider === "gemini" && !config.GEMINI_API_KEY) {
-        return res.status(500).json({
-          error: "Gemini API Key not configured. Please contact administrator or switch provider."
-        });
+      const provider = userProvider || "openai";
+      if (mode === "inpaint") {
+        if (!config.OPENAI_API_KEY) {
+          return res.status(500).json({
+            error: "OpenAI API Key not configured. Realistic Render requires an OpenAI key."
+          });
+        }
+        if (!analysis?.surfaces || analysis.surfaces.length === 0) {
+          return res.status(400).json({
+            error: "Room analysis is required for Realistic Render. Wait for analysis to complete, then try again."
+          });
+        }
+        try {
+          const result2 = await generateOverlay({
+            originalImage: cleanedImage,
+            material,
+            userInstruction: userInstruction || "",
+            renderOptions,
+            mode: "inpaint",
+            analysis
+          }, "openai", config);
+          pushGenerationLog({
+            timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+            userId,
+            materialId: material?.id || material?.refCode,
+            materialName: material?.name,
+            category: material?.category,
+            success: true,
+            durationMs: result2.durationMs,
+            model: `openai/${result2.model}`
+          });
+          logUserActivity({
+            userId,
+            action: "RENDER",
+            details: {
+              materialId: material?.id || material?.refCode,
+              materialName: material?.name,
+              category: material?.category,
+              provider: "openai",
+              model: result2.model,
+              mode: "inpaint",
+              durationMs: result2.durationMs,
+              success: true
+            }
+          });
+          return res.json({ success: true, image: result2.image, provider: "openai", model: result2.model, mode: "inpaint" });
+        } catch (error) {
+          pushGenerationLog({
+            timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+            userId,
+            materialId: material?.id || material?.refCode,
+            materialName: material?.name,
+            category: material?.category,
+            success: false,
+            durationMs: 0,
+            model: "openai-inpaint-error",
+            error: getErrorMessage(error)
+          });
+          console.error("Inpaint render failed:", error);
+          return res.status(500).json({ error: getErrorMessage(error) });
+        }
       }
       const compositeResult = await compositeProductOntoPhoto({
         originalImage: cleanedImage,
@@ -124518,9 +124658,11 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: getErrorMessage(error) });
     }
   });
-  app.post("/api/ai/analyze-room", async (req, res) => {
+  app.post("/api/ai/analyze-room", requireAuth, async (req, res) => {
     try {
-      const { image, userId, lang, provider: userProvider } = req.body;
+      const authenticatedUserId = req.user?.id;
+      const { image, lang, provider: userProvider } = req.body;
+      const userId = authenticatedUserId;
       if (!image || typeof image !== "string") {
         console.log("[AI Debug] Invalid image body: not a string or empty");
         return res.status(400).json({ error: "image is required and must be a string" });
@@ -124543,17 +124685,17 @@ Auto-downgraded to Free.`
       if (userId) {
         const quota = await checkAndIncrementQuota(userId);
         if (!quota.allowed) {
+          if (quota.error && quota.used === void 0) {
+            return res.status(503).json({ error: quota.error });
+          }
           return res.status(403).json({ error: "Quota exceeded" });
         }
       }
       const config = loadConfig();
-      const provider = userProvider || config.AI_PROVIDER || "gemini";
-      if (provider === "openai" && !config.OPENAI_API_KEY) {
-        return res.status(500).json({ error: "OpenAI API Key not configured" });
+      if (!config.OPENAI_API_KEY) {
+        return res.status(500).json({ error: "OpenAI API Key not configured. Analysis requires OpenAI." });
       }
-      if (provider === "gemini" && !config.GEMINI_API_KEY) {
-        return res.status(500).json({ error: "Gemini API Key not configured" });
-      }
+      const provider = userProvider || "openai";
       const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
       res.json({
         success: true,
@@ -125380,10 +125522,15 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: e2.message });
     }
   });
-  app.get("/api/users/:id/memory", async (req, res) => {
+  app.get("/api/users/:id/memory", requireAuth, async (req, res) => {
     try {
+      const authenticatedUserId = req.user?.id;
+      const authenticatedRole = req.user?.role;
       const { id } = req.params;
       const userId = parseInt(id);
+      if (authenticatedRole !== "admin" && userId !== authenticatedUserId) {
+        return res.status(403).json({ error: "Forbidden: you can only access your own memory." });
+      }
       let memory = { lastState: {}, history: [], behaviors: {} };
       try {
         const result = await query("SELECT last_state, history, behaviors FROM user_memories WHERE user_id = $1", [userId]);
@@ -125414,10 +125561,15 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: "Internal server error" });
     }
   });
-  app.post("/api/users/:id/memory", import_express.default.json(), async (req, res) => {
+  app.post("/api/users/:id/memory", requireAuth, import_express.default.json(), async (req, res) => {
     try {
+      const authenticatedUserId = req.user?.id;
+      const authenticatedRole = req.user?.role;
       const { id } = req.params;
       const userId = parseInt(id);
+      if (authenticatedRole !== "admin" && userId !== authenticatedUserId) {
+        return res.status(403).json({ error: "Forbidden: you can only write your own memory." });
+      }
       const { lastState, historyItem, behaviorEvent } = req.body;
       let currentMemory = { lastState: {}, history: [], behaviors: {} };
       let source = "JSON";
@@ -125677,7 +125829,6 @@ Auto-downgraded to Free.`
   });
   async function checkAndIncrementQuota(userId) {
     try {
-      if (userId === 999) return { allowed: true };
       const result = await query("SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1", [userId]);
       if (result.rows.length === 0) return { allowed: false, error: "User not found" };
       let { id, email, tier, generations_used, tier_expires_at } = result.rows[0];
@@ -125699,7 +125850,7 @@ Auto-downgraded to Free.`
       try {
         const users = await getUsers();
         const user = users.find((u) => String(u.id) === String(userId));
-        if (!user) return { allowed: true };
+        if (!user) return { allowed: false, error: "User not found in fallback store" };
         await checkAndDowngradeExpiredTier(user);
         const tier = user.tier || "Free";
         const tierKey = normalizeTier(tier);
@@ -125717,7 +125868,8 @@ Auto-downgraded to Free.`
         }
         return { allowed: true, used: used + 1, limit: tierConfig.limit };
       } catch (jsonErr) {
-        return { allowed: true };
+        console.error("Quota check hard failure:", jsonErr);
+        return { allowed: false, error: "Quota service unavailable \u2014 please try again." };
       }
     }
   }

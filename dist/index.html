@@ -56,6 +56,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://res.cloudinary.com" />
     <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+
+    <!-- LCP: Preload the hero image so the browser starts fetching it
+         immediately, BEFORE the JS bundle parses and discovers it.
+         Without this, the image isn't seen until react-vendor.js runs,
+         adding ~546ms of "discovery delay" to LCP. -->
+    <link rel="preload" fetchpriority="high" as="image"
+          href="https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Espacio_Int_ipvzyz.jpg" />
     
     <!-- App Icons -->
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
@@ -129,8 +136,8 @@
         .print\:bg-white { background-color: #fff !important; }
       }
     </style>
-  <script type="module" crossorigin src="/assets/index-BiA19udB.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/react-vendor-DS5MNCNF.js">
+  <script type="module" crossorigin src="/assets/index-YgiqoFeg.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/react-vendor-DijcRoi0.js">
   <link rel="stylesheet" crossorigin href="/assets/index-D-RbwkIq.css">
 </head>
   <body class="bg-slate-900 text-white">

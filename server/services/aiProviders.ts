@@ -437,11 +437,20 @@ ${req.userInstruction ? `User request: "${req.userInstruction}"` : ""}
 
 STRICT RENDERING RULES:
 1. 100% PHOTOREALISM: The output must look like a real photograph, equal in quality and resolution to the original picture.
-2. EXACT OVERLAY: Apply the EXACT texture, pattern, color, and scale from the Product Reference image onto the target surface.
-3. PRESERVE FOREGROUND: You MUST flawlessly preserve and cut around all objects IN FRONT of the surface (furniture, people, plants, windows). DO NOT paint over them.
+2. EXACT OVERLAY: Apply the EXACT texture, pattern, color, and scale from the Product Reference image onto the target surface. Do not soften, simplify, or reinterpret the pattern — copy it faithfully at the correct scale.
+3. PRESERVE FOREGROUND (highest priority): You MUST flawlessly preserve and cut around all objects IN FRONT of the surface (furniture, people, plants, windows, wall-mounted items, art, TVs, doors). DO NOT paint over them, DO NOT move them, DO NOT replace them, DO NOT restyle them. They must appear pixel-faithful to the original photo.
 4. PERSPECTIVE & LIGHTING: Match the room's 3D perspective exactly. Re-apply the original room's shadows, reflections, and highlights over the new material so it blends perfectly.
 5. Lighting conditions: ${lightingHint}
-6. Output ONLY the final high-quality image.`;
+
+FORBIDDEN (anti-hallucination — these are hard failures):
+- Do NOT invent new objects that were not in the original photo (no added furniture, plants, art, lamps, rugs, windows, or doors).
+- Do NOT remove objects that were in the original photo (no "cleaned up" furniture, no deleted wall art).
+- Do NOT change the room's geometry — walls, ceiling height, and floor layout stay identical.
+- Do NOT change the camera angle or crop.
+- Do NOT "improve" the original photo's lighting or color balance.
+- Do NOT alter the color, pattern, or finish of the Product Reference material.
+
+OUTPUT: A single photorealistic image, identical to the original photo except that the target wall surfaces now show the Product Reference material. Output ONLY the final image, no text, no explanation.`;
     }
 
     return { prompt, isFurniture };
@@ -449,28 +458,64 @@ STRICT RENDERING RULES:
 
 const ANALYSIS_PROMPT = `You are a precision architectural scanner. Your output drives an automated material-overlay system: every surface you return becomes a renderable region, and every obstacle you return becomes a protected mask. Errors are visible to customers.
 
-TASK: Segment the photo into structural surfaces using the same precision an interior designer would need to quote a renovation.
+═══════════════════════════════════════════════════════════════
+THE TWO FAILURE MODES — BOTH ARE EQUALLY BAD
+═══════════════════════════════════════════════════════════════
+You are balancing between two opposite failure modes. Calibrate to the middle:
+  FAILURE A — HALLUCINATION: returning an object that is not actually in the photo, or coordinates that don't match the pixels.
+  FAILURE B — OMISSION: failing to return an object that IS clearly visible in the photo.
+Both destroy the render. Do not swing to either extreme. If you can see a chair, a TV, a painting, or a lamp in the photo, you MUST emit it as an obstacle — that is not hallucination, that is the job.
 
-SCANNING METHODOLOGY (follow in order):
-1. Identify the vanishing point(s) — where do the wall edges converge? This defines the perspective geometry.
-2. Trace EACH wall plane from corner to corner. Most rooms visible in a single photo contain 2-4 wall planes:
-   - Left wall (recedes leftward toward the vanishing point)
-   - Back/center wall (faces the camera most directly)
-   - Right wall (recedes rightward toward the vanishing point)
-   - Any alcove, niche, or protruding chimney/sided wall
-3. For each wall, trace its 4 corners by following where the wall physically meets the ceiling, floor, and adjacent walls. Walls in perspective are TRAPEZOIDS — their top and bottom edges are NOT horizontal.
-4. Scan systematically for obstacles in this exact order (top to bottom, left to right): ceiling fixtures → wall-mounted items (cabinets, shelves, art, mirrors, sconces, TVs) → door frames and windows → freestanding furniture touching the wall.
+═══════════════════════════════════════════════════════════════
+WORK IN THIS ORDER (mandatory)
+═══════════════════════════════════════════════════════════════
+Fill the "reasoning" object FIRST, then build "surfaces" from it. The reasoning field is where you commit to what you actually see before writing any coordinates.
 
-RETURN EXACTLY THIS JSON SHAPE:
+reasoning.vanishingPoint: [x, y] — approximate normalized location where wall/ceiling/floor lines converge. If the photo is a flat-on view with no perspective, write [0.5, 0.5].
+reasoning.observedObjects: list EVERY discrete object you can see, as a one-line cue. Examples: "yellow armchair at center-left, lower third", "wall-mounted TV upper-right, dark rectangle", "wooden floor lower third". A real furnished room typically has 4-10 of these. Be exhaustive — this list IS your detection list.
+reasoning.wallPlanes: one short sentence per visible wall plane, naming direction + the corner cue.
+reasoning.ambiguous: anything you were unsure about and how you called it, or "none".
+
+EVERY object you list in reasoning.observedObjects MUST appear as a surface (type "furniture" or its specific type) with matching bounds. Skipping an observed object is FAILURE B.
+
+═══════════════════════════════════════════════════════════════
+ANTI-HALLUCINATION CONTRACT (applies to every coordinate)
+═══════════════════════════════════════════════════════════════
+- You are describing THIS photograph, not a generic room. Every surface must correspond to pixels you can point to.
+- DO NOT GUESS COORDINATES. Before writing any polygon or bounds, locate the object visually relative to the image frame (e.g. "starts 10% from the left edge", "top edge aligns with the ceiling line", "bottom edge sits on the floor").
+- Calibration anchors — the ENTIRE image is the unit square [0,1] x [0,1] with (0,0) at top-left:
+    x=0   → left edge of photo      x=1   → right edge of photo
+    y=0   → top edge of photo        y=1   → bottom edge of photo
+    x=0.5 → vertical centerline      y=0.5 → horizontal centerline
+- Each surface MUST include an "evidence" string citing the specific visual cue that places it there (e.g. "yellow chair seat at y≈0.55, backrest reaches y≈0.35, occupies x≈0.18 to x≈0.40"). Generic phrases like "the wall" are not acceptable evidence.
+
+═══════════════════════════════════════════════════════════════
+SCANNING METHODOLOGY
+═══════════════════════════════════════════════════════════════
+1. Identify vanishing point(s) — where do wall edges, ceiling lines, and floor lines converge?
+2. Trace EACH wall plane corner-to-corner. Most rooms in a single photo contain 2-3 visible wall planes (left, back/center, right). Add a 4th only if there is a clear alcove, niche, or protruding section.
+3. For each wall, follow where it physically meets the ceiling, floor, and adjacent walls. Walls in perspective are TRAPEZOIDS — their top and bottom edges converge toward the vanishing point, they are NOT horizontal and NOT simple rectangles. If your wall polygon is a rectangle, you are NOT tracing perspective — redo it.
+4. Then SCAN FOR OBSTACLES (do this BEFORE finalizing walls so walls don't absorb obstacles): ceiling fixtures → wall-mounted items (cabinets, shelves, art, mirrors, sconces, TVs) → door frames and windows → freestanding furniture touching or in front of the wall. Each discrete obstacle gets its own surface entry.
+
+═══════════════════════════════════════════════════════════════
+OUTPUT SCHEMA — return EXACTLY this JSON, nothing else
+═══════════════════════════════════════════════════════════════
 {
-  "text": "≤60 word professional summary of the space",
+  "reasoning": {
+    "vanishingPoint": [<x>, <y>],
+    "observedObjects": ["<one line per visible object: type + position + cue>"],
+    "wallPlanes": ["<one short sentence per wall plane>"],
+    "ambiguous": ["<resolved ambiguities, or 'none'>"]
+  },
+  "text": "≤60 word professional summary of THIS specific room (cite at least 2 concrete objects you can see)",
   "dimensions": { "width": <cm>, "height": <cm>, "areaM2": <m²> },
-  "style": "<design style>",
-  "lighting": "<light source + quality>",
+  "style": "<design style observed in THIS image>",
+  "lighting": "<light source + quality observed in THIS image>",
   "suggestedMaterials": ["<material 1>", "<material 2>"],
   "surfaces": [
     {
       "type": "wall",
+      "evidence": "<specific visual cue with anchor coordinates>",
       "bounds": { "x": <0-1>, "y": <0-1>, "width": <0-1>, "height": <0-1> },
       "polygon": [[<x>,<y>], [<x>,<y>], [<x>,<y>], [<x>,<y>]],
       "confidence": <0-1>
@@ -478,26 +523,41 @@ RETURN EXACTLY THIS JSON SHAPE:
   ]
 }
 
-POLYGON GEOMETRY (critical):
-- 4 corners in order: top-left → top-right → bottom-right → bottom-left
-- Trace the ACTUAL visible wall edges, including perspective angles
-- If a wall recedes, its far edge is shorter than its near edge (trapezoid, not rectangle)
-- Corners are normalized [0.0-1.0] where (0,0) is top-left of the image
+═══════════════════════════════════════════════════════════════
+POLYGON GEOMETRY (this matters — rectangles are wrong for perspective walls)
+═══════════════════════════════════════════════════════════════
+- 4 corners in clockwise order starting top-left: TL → TR → BR → BL.
+- Trace the ACTUAL visible wall edges, including perspective angles.
+- A receding wall's far edge is SHORTER than its near edge (trapezoid).
+- If the top-left and bottom-left corners have the same x value, you have not traced perspective — redo.
+- All coordinates normalized [0.0-1.0], (0,0) = top-left of image.
 
-SURFACE TYPES — return one entry per distinct surface:
-- "wall" — each wall plane is a SEPARATE entry (never merge two walls)
-- "floor" — the visible floor surface
-- "ceiling" — the visible ceiling surface
-- Obstacles (each protected from rendering):
-  "window" | "door" | "television" | "cabinet" | "shelf" |
-  "picture_frame" | "mirror" | "fireplace" | "light_fixture" |
-  "radiator" | "furniture"
+═══════════════════════════════════════════════════════════════
+SURFACE TYPES — return one entry per distinct surface
+═══════════════════════════════════════════════════════════════
+- "wall" — each wall plane is a SEPARATE entry (never merge two walls).
+- "floor" — the visible floor surface (omit if not visible).
+- "ceiling" — the visible ceiling surface (omit if not visible).
+- Obstacles (MANDATORY for every visible object): "window" | "door" | "television" | "cabinet" | "shelf" | "picture_frame" | "mirror" | "fireplace" | "light_fixture" | "radiator" | "furniture"
+  - For unfamiliar shapes, use "furniture" with a precise evidence string.
+  - A chair, sofa, table, lamp, plant, or rug ALWAYS counts as an obstacle.
 
-QUALITY GATES (self-check before returning):
-- Wall count ≥ 2 for any 3D room photo (1 wall = you merged planes, re-scan)
-- Obstacle count ≥ 3 for any furnished room (0-2 = you missed items, re-scan)
-- Each wall polygon has 4 corners that form a non-degenerate quadrilateral
-- No two surfaces have identical bounds (deduplicates merged entries)
+═══════════════════════════════════════════════════════════════
+CONFIDENCE CALIBRATION (be honest, but do not omit what you can see)
+═══════════════════════════════════════════════════════════════
+- 0.9-1.0: object is unambiguous, edges clearly visible.
+- 0.7-0.89: object is clearly present but one edge is partially occluded.
+- 0.5-0.69: object is clearly present but its exact bounds are uncertain (still return it — better to have an approximate mask than none).
+- Below 0.5: only for objects you are not sure exist at all. If you can see it, confidence ≥ 0.5.
+
+═══════════════════════════════════════════════════════════════
+QUALITY GATES (self-check before returning)
+═══════════════════════════════════════════════════════════════
+- Wall count ≥ 2 for any 3D room photo (1 wall = you merged planes, re-scan).
+- Obstacle count must EQUAL the count of objects you listed in reasoning.observedObjects. If they don't match, you forgot to promote an observation to a surface — go back.
+- Each wall polygon has exactly 4 corners that form a non-degenerate quadrilateral (area > 0.01 of the image).
+- Wall bounds should NOT cover the entire image — if a wall bounds covers > 60% of the image area, you have included obstacles inside the wall. Cut them out.
+- Every "evidence" string cites a specific visual cue with approximate coordinates.
 
 DIMENSIONS: estimate real-world width × height in centimeters; areaM2 = (w × h) / 10000.`;
 
@@ -515,6 +575,16 @@ function parseAnalysisResponse(rawText: string, model: string, provider: AIProvi
             ? parsed.dimensions
             : undefined;
         const surfaces = Array.isArray(parsed.surfaces) ? parsed.surfaces : undefined;
+
+        // Surface the model's reasoning block in server logs so we can audit
+        // whether it actually scanned the room or shortcut to coordinates.
+        // This is a debug aid — it is not returned to the client.
+        if (parsed.reasoning) {
+            try {
+                const r = parsed.reasoning;
+                console.log(`[Analysis.reasoning] vanishing=${JSON.stringify(r.vanishingPoint)} walls=${(r.wallPlanes || []).length} obstacles=${(r.obstacles || []).length} ambiguous=${JSON.stringify(r.ambiguous)}`);
+            } catch { /* best-effort log */ }
+        }
 
         return { analysis: text, dimensions, surfaces, model, provider, durationMs };
     } catch (e) {
@@ -1104,10 +1174,12 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
                         ],
                     },
                 ],
-                // Bumped from 3000 to 4000: a proper multi-wall analysis with
-                // 4-point polygons for each wall + 6-8 obstacles needs more
-                // output tokens than a single-wall shortcut.
-                max_tokens: 4000,
+                // Bumped 3000 → 4000 → 6000: the reasoning-first analysis prompt
+                // (vanishing point + per-obstacle cue sentences + evidence per
+                // surface) needs more output room than a bare JSON dump. The
+                // reasoning field is what stops the model from hallucinating
+                // coordinates, so starving it defeats the whole point.
+                max_tokens: 6000,
                 response_format: { type: "json_object" },
             } as any);
 
