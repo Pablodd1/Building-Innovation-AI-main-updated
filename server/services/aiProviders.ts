@@ -447,38 +447,63 @@ STRICT RENDERING RULES:
     return { prompt, isFurniture };
 }
 
-const ANALYSIS_PROMPT = `You are a Senior Architectural Interior Analyst. Analyze this photo of an interior/exterior space.
+const ANALYSIS_PROMPT = `You are a Senior Architectural Interior Analyst performing a PRECISE structural survey.
 
-Your PRIMARY task is to detect WALL PANELS with pixel-accurate surface bounds and 4-point perspective polygon corners. The product texture will be mapped exclusively to walls — floors, decks, and ceilings must be IGNORED for rendering.
+CRITICAL: You are detecting surfaces for a virtual material overlay. If you miss a wall, the customer will not see the product applied there. If you merge two walls into one, the perspective will be wrong. If you miss an obstacle, it will be painted over. Precision matters more than brevity.
+
+YOUR TASK: Identify EVERY distinct wall surface in the photo. Most rooms have 2-4 visible walls (left wall, back wall, right wall, plus any alcove/side walls). Each wall MUST be a SEPARATE entry in the surfaces array.
 
 Return your response in this EXACT JSON format:
 {
   "text": "Brief professional analysis (max 80 words)",
-  "dimensions": {
-    "width": 350,
-    "height": 280,
-    "areaM2": 9.8
-  },
+  "dimensions": { "width": 350, "height": 280, "areaM2": 9.8 },
   "style": "Modern Minimalist",
   "lighting": "Natural daylight from large windows",
-  "suggestedMaterials": ["Wood paneling", "Textured wallpaper"],
+  "suggestedMaterials": ["Wood paneling"],
   "surfaces": [
     {
       "type": "wall",
-      "bounds": { "x": 0.05, "y": 0.1, "width": 0.9, "height": 0.55 },
-      "polygon": [[0.05, 0.12], [0.95, 0.10], [0.95, 0.65], [0.05, 0.60]],
+      "bounds": { "x": 0.0, "y": 0.08, "width": 0.45, "height": 0.62 },
+      "polygon": [[0.02, 0.10], [0.45, 0.08], [0.46, 0.70], [0.0, 0.68]],
       "confidence": 0.95
     }
   ]
 }
 
-CRITICAL surface detection rules:
-1. Return surfaces of type "wall", "ceiling", and "floor". 
-2. For "wall" surfaces, ALWAYS provide both bounding box ("bounds") AND 4-corner perspective polygon coordinates ("polygon": [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]) representing the top-left, top-right, bottom-right, and bottom-left corners in 3D perspective.
-3. You MUST detect and return bounding boxes/polygons for ANY obstacles on or in front of the walls: "window", "door", "television", "cabinet", "shelf", "picture_frame", "fireplace", "light_fixture", or "furniture".
-4. PAY EXTREME ATTENTION to wall-mounted cabinets (even if white on a white wall), picture frames, and wall decorations.
-5. Coordinates are normalized values (0.0 to 1.0) relative to image dimensions.
-6. For dimensions: estimate the room's width and height in CENTIMETERS, and calculate areaM2 as (width * height) / 10000.`;
+MANDATORY DETECTION RULES (follow ALL of them):
+
+1. WALLS — detect EACH wall as a separate surface. A typical interior photo shows:
+   - Left wall (receding to the left edge, polygon will have angled corners showing perspective)
+   - Back/center wall (facing the camera, may be roughly rectangular)
+   - Right wall (receding to the right edge)
+   NEVER combine multiple walls into one surface. If you see two walls meeting at a corner, they are TWO entries.
+
+2. POLYGON CORNERS — for EVERY wall, provide 4 corner coordinates that trace the ACTUAL visible shape of the wall, NOT a generic rectangle. Walls in perspective photos are trapezoids, not rectangles.
+   - Corner order: [top-left, top-right, bottom-right, bottom-left]
+   - The top edge of a wall in perspective is NOT horizontal — it angles toward the vanishing point
+   - Look at where the wall ACTUALLY meets the ceiling and floor, and trace those edges
+
+3. FLOOR and CEILING — always detect them as separate surfaces (type "floor" and "ceiling"). Even though we don't render on them, they define the wall boundaries.
+
+4. OBSTACLES — YOU MUST detect EVERY object on or in front of walls. This is non-negotiable: if you miss an obstacle, the render will paint over a customer's real furniture, TV, or artwork, which destroys trust. Before you finalize your surfaces array, scan the image systematically for EACH of these and add a surface entry for every one you see:
+   - "window" (any window, including small ones)
+   - "door" (including door frames)
+   - "television" / "monitor"
+   - "cabinet" / "shelf" / "bookcase" (wall-mounted OR freestanding against the wall)
+   - "picture_frame" / "artwork" / "mirror" (ANY wall hanging — these are easy to miss)
+   - "fireplace"
+   - "light_fixture" (wall sconces, ceiling lights that touch the wall)
+   - "furniture" (sofas, chairs, tables, beds — anything in front of the wall)
+   A typical furnished room has 4-8 obstacles. If you return 0 obstacles, you almost certainly missed some — re-scan the image.
+
+5. COORDINATES are normalized (0.0 to 1.0) relative to image dimensions.
+   - x=0 is left edge, x=1 is right edge
+   - y=0 is top edge, y=1 is bottom edge
+
+6. DIMENSIONS — estimate the room's real width and height in CENTIMETERS.
+   areaM2 = (width * height) / 10000.
+
+QUALITY CHECK before you return: (a) Count your wall surfaces — if you only have 1 wall but the photo shows a 3D room with corners, you missed walls. (b) Count your obstacles — if you have 0 obstacles in a furnished room, re-scan. (c) Verify each wall polygon has 4 corners that trace the actual visible shape, not a generic rectangle.`;
 
 function parseAnalysisResponse(rawText: string, model: string, provider: AIProvider, durationMs: number): AnalysisResult {
     try {
@@ -936,11 +961,13 @@ async function generateOverlayOpenAI(req: OverlayRequest, config: AIConfig, star
         const basePrompt = buildOverlayPrompt(req).prompt;
         finalPrompt = `${basePrompt}
 
-CRITICAL MASK INSTRUCTIONS:
-- The SECOND input image is the Product Reference — the EXACT material texture, color, and pattern the user selected. Apply THIS texture (not an approximation) to the masked wall regions.
-- Edit ONLY the transparent regions of the mask (the wall areas). Apply the Product Reference texture there, preserving its exact color, pattern, gloss, and physical scale.
-- Preserve the opaque regions of the mask (furniture, floor, ceiling, windows, doors) PIXEL-PERFECT — do not alter them in any way.
-- Match the existing room's lighting, shadows, and 3D perspective on the new material so it looks like a real photograph.`;
+CRITICAL MASK + PRODUCT INSTRUCTIONS:
+- The SECOND input image is the Product Reference. This is the EXACT material the customer selected and is considering purchasing. Your render is their preview of how it will look.
+- TEXTURE FIDELITY: Reproduce the product's EXACT pattern, not an approximation or reinterpretation. If the product has a geometric grid, diamond pattern, water-drop texture, wood grain, or any repeating motif — REPLICATE that specific pattern on the walls. Do NOT simplify, smooth, or reinterpret it into a generic surface.
+- COLOR ACCURACY: Match the product's exact base color (black, white, wood tone, etc.) and its finish (matte, glossy, metallic).
+- SCALE: Tile/repeat the product pattern at a realistic physical scale for the wall surface (a single product panel is typically 30cm wide — show multiple panels side by side covering the wall, not one giant stretched panel).
+- Edit ONLY the transparent regions of the mask (the wall areas). The opaque regions (furniture, floor, ceiling, windows, doors, picture frames) must remain PIXEL-PERFECT and untouched.
+- Match the existing room's lighting, shadows, and 3D perspective so the material looks physically present in the space — show subtle shading where the wall recedes, highlights where light hits, and soft shadows from furniture cast onto the new material.`;
     } else {
         finalPrompt = buildOverlayPrompt(req).prompt;
     }
@@ -1059,13 +1086,21 @@ async function analyzeRoomOpenAI(req: AnalysisRequest, config: AIConfig): Promis
                         content: [
                             {
                                 type: "image_url",
-                                image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "low" },
+                                // detail: "high" sends the full-resolution image so the model
+                                // can actually see individual walls, windows, picture frames,
+                                // and furniture edges. "low" was downsampling and the model
+                                // was missing entire walls + obstacles. Costs slightly more
+                                // tokens but precision is the whole point of this call.
+                                image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "high" },
                             },
                             { type: "text", text: ANALYSIS_PROMPT },
                         ],
                     },
                 ],
-                max_tokens: 3000,
+                // Bumped from 3000 to 4000: a proper multi-wall analysis with
+                // 4-point polygons for each wall + 6-8 obstacles needs more
+                // output tokens than a single-wall shortcut.
+                max_tokens: 4000,
                 response_format: { type: "json_object" },
             } as any);
 
