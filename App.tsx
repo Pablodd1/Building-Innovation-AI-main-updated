@@ -286,6 +286,7 @@ const App: React.FC = () => {
         isGenerating: false,
         isAnalyzing: false,
         isRealisticGenerating: false,
+        loadingStage: 'idle',
         error: null,
         resultImage: null,
         resultVideo: null,
@@ -1840,8 +1841,17 @@ const App: React.FC = () => {
         setGenerationState((prev) => ({
             ...prev,
             isRealisticGenerating: true,
+            loadingStage: 'rendering',
             error: null,
         }));
+
+        // Advance the loading message after ~12s so the user sees progress
+        // during the long OpenAI call. We can't get real progress from the API,
+        // but most renders finish around 20-30s, so showing 'enhancing' from
+        // 12s onward matches reality better than a frozen 'rendering' message.
+        const stageTimer = setTimeout(() => {
+            setGenerationState((prev) => prev.isRealisticGenerating ? { ...prev, loadingStage: 'enhancing' } : prev);
+        }, 12000);
 
         try {
             const generatedImage = await generateMaterialOverlay(
@@ -1869,9 +1879,11 @@ const App: React.FC = () => {
             ];
             setHistory(newHistory);
             setHistoryIndex(newHistory.length - 1);
+            clearTimeout(stageTimer);
             setGenerationState((prev) => ({
                 ...prev,
                 isRealisticGenerating: false,
+                loadingStage: 'idle',
                 resultImage: generatedImage,
             }));
 
@@ -1898,6 +1910,7 @@ const App: React.FC = () => {
         } catch (error: any) {
             const errorMsg = error.message || "Unknown error";
             console.error("Realistic render failed:", errorMsg);
+            clearTimeout(stageTimer);
 
             fetch('/api/log-error', {
                 method: 'POST',
@@ -1912,6 +1925,7 @@ const App: React.FC = () => {
             setGenerationState((prev) => ({
                 ...prev,
                 isRealisticGenerating: false,
+                loadingStage: 'idle',
                 error: (lang === 'es' ? 'Error en render realista: ' : 'Realistic render error: ') + userFriendlyError
             }));
         }
@@ -1927,6 +1941,7 @@ const App: React.FC = () => {
         setGenerationState((prev) => ({
             ...prev,
             isAnalyzing: true,
+            loadingStage: 'analyzing',
             error: null,
         }));
         try {
@@ -1938,6 +1953,7 @@ const App: React.FC = () => {
             setGenerationState((prev) => ({
                 ...prev,
                 isAnalyzing: false,
+                loadingStage: 'idle',
                 analysis: analysisResult,
             }));
             logUserBehavior("ROOM_ANALYSIS", { analysisLength: analysisResult.text.length });
@@ -1945,6 +1961,7 @@ const App: React.FC = () => {
             setGenerationState((prev) => ({
                 ...prev,
                 isAnalyzing: false,
+                loadingStage: 'idle',
                 error: lang === "es" ? "El servicio de análisis no está disponible temporalmente." : "Analysis service is temporarily unavailable.",
             }));
         }
@@ -4524,12 +4541,16 @@ const App: React.FC = () => {
             <div className="h-screen bg-slate-950 flex flex-col md:flex-row overflow-hidden">
                 {/* Main Viewport */}
                 <div className="flex-1 relative flex items-center justify-center bg-black/50 overflow-hidden">
-                    {generationState.isGenerating && (
+                    {(generationState.isGenerating || generationState.isRealisticGenerating || generationState.isAnalyzing) && (
                         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
-                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-                            <div className="text-blue-400 font-mono text-sm animate-pulse">
-                                {t.editor.processing}
+                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
+                            <div className="text-purple-200 font-mono text-sm animate-pulse mb-1">
+                                {generationState.loadingStage === 'analyzing' ? t.editor.loadingAnalyzing
+                                 : generationState.loadingStage === 'rendering' ? t.editor.loadingRendering
+                                 : generationState.loadingStage === 'enhancing' ? t.editor.loadingEnhancing
+                                 : t.editor.processing}
                             </div>
+                            <div className="text-slate-400 text-[10px]">{t.editor.loadingPleaseWait}</div>
                         </div>
                     )}
 
@@ -4679,42 +4700,45 @@ const App: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Error banner spans full width above the buttons */}
+                            {/* Error banner spans full width above the button */}
                             {generationState.error && (
                                 <div className="col-span-2 p-2 mb-1 bg-red-50 border border-red-200 rounded-lg text-red-700 text-[10px] text-center">{generationState.error}</div>
                             )}
 
-                            {/* Realistic Render — full width, AI inpainting (slower, higher quality) */}
+                            {/* SINGLE Generate button — uses OpenAI inpaint (the path that produces photorealistic results with the actual product texture). Old compositor button removed per product decision July 2026. */}
                             <div className="col-span-2">
                                 <Button
                                     onClick={handleRealisticRender}
-                                    isLoading={generationState.isRealisticGenerating}
-                                    disabled={!originalImage || !selectedMaterial || !generationState.analysis || generationState.isGenerating}
+                                    isLoading={generationState.isRealisticGenerating || generationState.isAnalyzing}
+                                    disabled={!originalImage || !selectedMaterial || generationState.isGenerating}
                                     variant="primary"
-                                    className="w-full py-2.5 text-[11px] uppercase tracking-widest font-bold shadow-lg shadow-purple-900/20 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 flex items-center justify-center gap-1.5"
-                                    title={!generationState.analysis ? t.editor.realisticRenderRequiresAnalysis : t.editor.realisticRenderHint}
+                                    className="w-full py-3.5 text-sm uppercase tracking-widest font-black shadow-lg shadow-purple-900/30 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 flex items-center justify-center gap-2"
                                 >
-                                    <span className="text-sm">✨</span>
-                                    {t.editor.realisticRender}
-                                </Button>
-                                <div className="text-[9px] text-slate-400 text-center mt-1 leading-tight">
-                                    {generationState.analysis
-                                        ? t.editor.realisticRenderHint
-                                        : t.editor.realisticRenderRequiresAnalysis}
-                                </div>
-                            </div>
-
-                            {/* Generate — left col */}
-                            <div className="col-span-1">
-                                <Button
-                                    onClick={handleGenerate}
-                                    isLoading={generationState.isGenerating}
-                                    disabled={generationState.isRealisticGenerating}
-                                    className="w-full py-3 text-xs uppercase tracking-widest font-black shadow-lg shadow-blue-900/20"
-                                >
+                                    <span className="text-base">✨</span>
                                     {generationState.resultImage ? t.editor.regenerate : t.editor.generate}
                                 </Button>
+                                {!generationState.analysis && !generationState.isAnalyzing && (
+                                    <div className="text-[10px] text-slate-400 text-center mt-1.5 leading-tight">
+                                        {t.editor.realisticRenderRequiresAnalysis}
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Multi-stage loading overlay — only visible while analysis or render is actively running. Reassures the user during the ~30s wait. */}
+                            {(generationState.isAnalyzing || generationState.isRealisticGenerating) && (
+                                <div className="col-span-2 mt-1 p-3 bg-slate-800/60 border border-purple-500/30 rounded-lg text-center">
+                                    <div className="flex items-center justify-center gap-2 mb-2">
+                                        <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+                                        <span className="text-[11px] text-purple-200 font-medium">
+                                            {generationState.loadingStage === 'analyzing' ? t.editor.loadingAnalyzing
+                                             : generationState.loadingStage === 'rendering' ? t.editor.loadingRendering
+                                             : generationState.loadingStage === 'enhancing' ? t.editor.loadingEnhancing
+                                             : t.editor.loadingRendering}
+                                        </span>
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 leading-tight">{t.editor.loadingPleaseWait}</div>
+                                </div>
+                            )}
 
                             {/* Download — right col */}
                             <div className="col-span-1">

@@ -74,6 +74,7 @@ export interface GenerationState {
   isGenerating: boolean;
   isAnalyzing: boolean; // Subtle loading state for text analysis
   isRealisticGenerating: boolean; // Separate flag for the slower OpenAI inpaint path
+  loadingStage: 'idle' | 'analyzing' | 'rendering' | 'enhancing'; // Drives the multi-stage overlay
   error: string | null;
   resultImage: string | null; // Base64
   resultVideo: string | null; // URL

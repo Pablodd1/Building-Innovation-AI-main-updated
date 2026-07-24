@@ -937,26 +937,33 @@ async function generateOverlayOpenAI(req: OverlayRequest, config: AIConfig, star
         finalPrompt = `${basePrompt}
 
 CRITICAL MASK INSTRUCTIONS:
-- Edit ONLY the transparent regions of the mask (the wall areas). These are where you must apply the new material.
+- The SECOND input image is the Product Reference — the EXACT material texture, color, and pattern the user selected. Apply THIS texture (not an approximation) to the masked wall regions.
+- Edit ONLY the transparent regions of the mask (the wall areas). Apply the Product Reference texture there, preserving its exact color, pattern, gloss, and physical scale.
 - Preserve the opaque regions of the mask (furniture, floor, ceiling, windows, doors) PIXEL-PERFECT — do not alter them in any way.
-- Match the existing room's lighting, shadows, and 3D perspective exactly on the new material.`;
+- Match the existing room's lighting, shadows, and 3D perspective on the new material so it looks like a real photograph.`;
     } else {
         finalPrompt = buildOverlayPrompt(req).prompt;
     }
 
-    // Build the image input. In inpaint mode: single room photo (mask applies
-    // to first image). In default mode: room photo + optional product ref.
+    // Build the image input. Per OpenAI docs (developers.openai.com/api/reference/
+    // resources/images/methods/edit/), images.edit accepts up to 16 input images
+    // and the mask applies to the FIRST image. We always send [roomPhoto, productImage]
+    // so the model can SEE the actual product texture instead of hallucinating it
+    // from the material name. Previously inpaint mode sent only the room photo,
+    // which is why renders "looked recreated but not like the original product".
     let imageInput: any;
-    if (useInpaint && maskPart) {
-        imageInput = imagePart;
+    const productRef = await getImageBase64(req.material?.imageUrl);
+    if (productRef) {
+        imageInput = [
+            imagePart,
+            await OpenAI.toFile(
+                Buffer.from(productRef.data, "base64"),
+                `product.${productRef.mimeType === "image/png" ? "png" : "jpg"}`,
+                { type: productRef.mimeType }
+            ),
+        ];
     } else {
-        const productRef = await getImageBase64(req.material?.imageUrl);
-        imageInput = productRef
-            ? [
-                imagePart,
-                await OpenAI.toFile(Buffer.from(productRef.data, "base64"), `product.${productRef.mimeType === "image/png" ? "png" : "jpg"}`, { type: productRef.mimeType }),
-            ]
-            : imagePart;
+        imageInput = imagePart;
     }
 
     // Per OpenAI API reference (developers.openai.com/api/reference/resources/images/methods/edit/),
