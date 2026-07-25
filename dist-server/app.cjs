@@ -54394,24 +54394,24 @@ var require_sharp = __commonJS({
       "@img/sharp-wasm32/sharp.node"
     ];
     var path6;
-    var sharp2;
+    var sharp3;
     var errors = [];
     for (path6 of paths) {
       try {
-        sharp2 = require(path6);
+        sharp3 = require(path6);
         break;
       } catch (err) {
         errors.push(err);
       }
     }
-    if (sharp2 && path6.startsWith("@img/sharp-linux-x64") && !sharp2._isUsingX64V2()) {
+    if (sharp3 && path6.startsWith("@img/sharp-linux-x64") && !sharp3._isUsingX64V2()) {
       const err = new Error("Prebuilt binaries for linux-x64 require v2 microarchitecture");
       err.code = "Unsupported CPU";
       errors.push(err);
-      sharp2 = null;
+      sharp3 = null;
     }
-    if (sharp2) {
-      module2.exports = sharp2;
+    if (sharp3) {
+      module2.exports = sharp3;
     } else {
       const [isLinux, isMacOs, isWindows] = ["linux", "darwin", "win32"].map((os) => runtimePlatform.startsWith(os));
       const help = [`Could not load the "sharp" module using the ${runtimePlatform} runtime`];
@@ -54728,7 +54728,7 @@ var require_constructor = __commonJS({
 var require_input = __commonJS({
   "node_modules/sharp/lib/input.js"(exports2, module2) {
     var is = require_is();
-    var sharp2 = require_sharp();
+    var sharp3 = require_sharp();
     var align = {
       left: "low",
       top: "low",
@@ -55225,7 +55225,7 @@ var require_input = __commonJS({
         if (this._isStreamInput()) {
           this.on("finish", () => {
             this._flattenBufferIn();
-            sharp2.metadata(this.options, (err, metadata2) => {
+            sharp3.metadata(this.options, (err, metadata2) => {
               if (err) {
                 callback(is.nativeError(err, stack));
               } else {
@@ -55234,7 +55234,7 @@ var require_input = __commonJS({
             });
           });
         } else {
-          sharp2.metadata(this.options, (err, metadata2) => {
+          sharp3.metadata(this.options, (err, metadata2) => {
             if (err) {
               callback(is.nativeError(err, stack));
             } else {
@@ -55248,7 +55248,7 @@ var require_input = __commonJS({
           return new Promise((resolve2, reject) => {
             const finished2 = () => {
               this._flattenBufferIn();
-              sharp2.metadata(this.options, (err, metadata2) => {
+              sharp3.metadata(this.options, (err, metadata2) => {
                 if (err) {
                   reject(is.nativeError(err, stack));
                 } else {
@@ -55264,7 +55264,7 @@ var require_input = __commonJS({
           });
         } else {
           return new Promise((resolve2, reject) => {
-            sharp2.metadata(this.options, (err, metadata2) => {
+            sharp3.metadata(this.options, (err, metadata2) => {
               if (err) {
                 reject(is.nativeError(err, stack));
               } else {
@@ -55281,7 +55281,7 @@ var require_input = __commonJS({
         if (this._isStreamInput()) {
           this.on("finish", () => {
             this._flattenBufferIn();
-            sharp2.stats(this.options, (err, stats2) => {
+            sharp3.stats(this.options, (err, stats2) => {
               if (err) {
                 callback(is.nativeError(err, stack));
               } else {
@@ -55290,7 +55290,7 @@ var require_input = __commonJS({
             });
           });
         } else {
-          sharp2.stats(this.options, (err, stats2) => {
+          sharp3.stats(this.options, (err, stats2) => {
             if (err) {
               callback(is.nativeError(err, stack));
             } else {
@@ -55304,7 +55304,7 @@ var require_input = __commonJS({
           return new Promise((resolve2, reject) => {
             this.on("finish", function() {
               this._flattenBufferIn();
-              sharp2.stats(this.options, (err, stats2) => {
+              sharp3.stats(this.options, (err, stats2) => {
                 if (err) {
                   reject(is.nativeError(err, stack));
                 } else {
@@ -55315,7 +55315,7 @@ var require_input = __commonJS({
           });
         } else {
           return new Promise((resolve2, reject) => {
-            sharp2.stats(this.options, (err, stats2) => {
+            sharp3.stats(this.options, (err, stats2) => {
               if (err) {
                 reject(is.nativeError(err, stack));
               } else {
@@ -57932,7 +57932,7 @@ var require_output = __commonJS({
   "node_modules/sharp/lib/output.js"(exports2, module2) {
     var path6 = require("node:path");
     var is = require_is();
-    var sharp2 = require_sharp();
+    var sharp3 = require_sharp();
     var formats = /* @__PURE__ */ new Map([
       ["heic", "heif"],
       ["heif", "heif"],
@@ -58684,7 +58684,7 @@ var require_output = __commonJS({
         if (this._isStreamInput()) {
           this.on("finish", () => {
             this._flattenBufferIn();
-            sharp2.pipeline(this.options, (err, data, info) => {
+            sharp3.pipeline(this.options, (err, data, info) => {
               if (err) {
                 callback(is.nativeError(err, stack));
               } else {
@@ -58693,7 +58693,7 @@ var require_output = __commonJS({
             });
           });
         } else {
-          sharp2.pipeline(this.options, (err, data, info) => {
+          sharp3.pipeline(this.options, (err, data, info) => {
             if (err) {
               callback(is.nativeError(err, stack));
             } else {
@@ -58706,7 +58706,7 @@ var require_output = __commonJS({
         if (this._isStreamInput()) {
           this.once("finish", () => {
             this._flattenBufferIn();
-            sharp2.pipeline(this.options, (err, data, info) => {
+            sharp3.pipeline(this.options, (err, data, info) => {
               if (err) {
                 this.emit("error", is.nativeError(err, stack));
               } else {
@@ -58721,7 +58721,7 @@ var require_output = __commonJS({
             this.emit("finish");
           }
         } else {
-          sharp2.pipeline(this.options, (err, data, info) => {
+          sharp3.pipeline(this.options, (err, data, info) => {
             if (err) {
               this.emit("error", is.nativeError(err, stack));
             } else {
@@ -58738,7 +58738,7 @@ var require_output = __commonJS({
           return new Promise((resolve2, reject) => {
             this.once("finish", () => {
               this._flattenBufferIn();
-              sharp2.pipeline(this.options, (err, data, info) => {
+              sharp3.pipeline(this.options, (err, data, info) => {
                 if (err) {
                   reject(is.nativeError(err, stack));
                 } else {
@@ -58753,7 +58753,7 @@ var require_output = __commonJS({
           });
         } else {
           return new Promise((resolve2, reject) => {
-            sharp2.pipeline(this.options, (err, data, info) => {
+            sharp3.pipeline(this.options, (err, data, info) => {
               if (err) {
                 reject(is.nativeError(err, stack));
               } else {
@@ -58812,10 +58812,10 @@ var require_utility = __commonJS({
     var detectLibc = require_detect_libc();
     var is = require_is();
     var { runtimePlatformArch } = require_libvips();
-    var sharp2 = require_sharp();
+    var sharp3 = require_sharp();
     var runtimePlatform = runtimePlatformArch();
-    var libvipsVersion = sharp2.libvipsVersion();
-    var format = sharp2.format();
+    var libvipsVersion = sharp3.libvipsVersion();
+    var format = sharp3.format();
     format.heif.output.alias = ["avif", "heic"];
     format.jpeg.output.alias = ["jpe", "jpg"];
     format.tiff.output.alias = ["tif"];
@@ -58862,36 +58862,36 @@ var require_utility = __commonJS({
     function cache(options) {
       if (is.bool(options)) {
         if (options) {
-          return sharp2.cache(50, 20, 100);
+          return sharp3.cache(50, 20, 100);
         } else {
-          return sharp2.cache(0, 0, 0);
+          return sharp3.cache(0, 0, 0);
         }
       } else if (is.object(options)) {
-        return sharp2.cache(options.memory, options.files, options.items);
+        return sharp3.cache(options.memory, options.files, options.items);
       } else {
-        return sharp2.cache();
+        return sharp3.cache();
       }
     }
     cache(true);
     function concurrency(concurrency2) {
-      return sharp2.concurrency(is.integer(concurrency2) ? concurrency2 : null);
+      return sharp3.concurrency(is.integer(concurrency2) ? concurrency2 : null);
     }
-    if (detectLibc.familySync() === detectLibc.GLIBC && !sharp2._isUsingJemalloc()) {
-      sharp2.concurrency(1);
-    } else if (detectLibc.familySync() === detectLibc.MUSL && sharp2.concurrency() === 1024) {
-      sharp2.concurrency(require("node:os").availableParallelism());
+    if (detectLibc.familySync() === detectLibc.GLIBC && !sharp3._isUsingJemalloc()) {
+      sharp3.concurrency(1);
+    } else if (detectLibc.familySync() === detectLibc.MUSL && sharp3.concurrency() === 1024) {
+      sharp3.concurrency(require("node:os").availableParallelism());
     }
     var queue = new events.EventEmitter();
     function counters() {
-      return sharp2.counters();
+      return sharp3.counters();
     }
     function simd(simd2) {
-      return sharp2.simd(is.bool(simd2) ? simd2 : null);
+      return sharp3.simd(is.bool(simd2) ? simd2 : null);
     }
     function block(options) {
       if (is.object(options)) {
         if (Array.isArray(options.operation) && options.operation.every(is.string)) {
-          sharp2.block(options.operation, true);
+          sharp3.block(options.operation, true);
         } else {
           throw is.invalidParameterError("operation", "Array<string>", options.operation);
         }
@@ -58902,7 +58902,7 @@ var require_utility = __commonJS({
     function unblock(options) {
       if (is.object(options)) {
         if (Array.isArray(options.operation) && options.operation.every(is.string)) {
-          sharp2.block(options.operation, false);
+          sharp3.block(options.operation, false);
         } else {
           throw is.invalidParameterError("operation", "Array<string>", options.operation);
         }
@@ -58944,6 +58944,7 @@ var require_lib6 = __commonJS({
 // server/services/imageCompositor.ts
 var imageCompositor_exports = {};
 __export(imageCompositor_exports, {
+  buildBinaryWallMask: () => buildBinaryWallMask,
   buildOpenAIWallMask: () => buildOpenAIWallMask,
   compositeProductOntoPhoto: () => compositeProductOntoPhoto
 });
@@ -59304,17 +59305,20 @@ async function buildOpenAIWallMask(imageBuffer, analysis, surfaces) {
       }
     }
   };
+  const paintPolygon = async (polygon, value) => {
+    const pts = polygon.map(([px, py]) => `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`).join(" ");
+    const svg = Buffer.from(
+      `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
+    );
+    const polyChannel = await (0, import_sharp.default)(svg).extractChannel("green").raw().toBuffer();
+    for (let i2 = 0; i2 < mask.length; i2++) {
+      if (polyChannel[i2] > 127) mask[i2] = value;
+    }
+  };
   for (const w of wallSurfaces) {
     if (Array.isArray(w.polygon) && w.polygon.length >= 3) {
       try {
-        const pts = w.polygon.map(([px, py]) => `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`).join(" ");
-        const svg = Buffer.from(
-          `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
-        );
-        const polyChannel = await (0, import_sharp.default)(svg).extractChannel("green").raw().toBuffer();
-        for (let i2 = 0; i2 < mask.length; i2++) {
-          if (polyChannel[i2] > 127) mask[i2] = 255;
-        }
+        await paintPolygon(w.polygon, 255);
       } catch {
         if (w.bounds) {
           fillRect(
@@ -59340,6 +59344,13 @@ async function buildOpenAIWallMask(imageBuffer, analysis, surfaces) {
     (s2) => s2.type !== "wall" && s2.bounds
   );
   for (const s2 of obstacles) {
+    if (Array.isArray(s2.polygon) && s2.polygon.length >= 3) {
+      try {
+        await paintPolygon(s2.polygon, 0);
+        continue;
+      } catch {
+      }
+    }
     fillRect(
       Math.round(s2.bounds.x * imgWidth),
       Math.round(s2.bounds.y * imgHeight),
@@ -59360,6 +59371,91 @@ async function buildOpenAIWallMask(imageBuffer, analysis, surfaces) {
   }).png().toBuffer();
   console.log(`[OpenAIMask] Built ${imgWidth}x${imgHeight} mask: ${wallSurfaces.length} walls, ${obstacles.length} obstacles preserved`);
   return rgbaMask;
+}
+async function buildBinaryWallMask(imageBuffer, analysis, surfaces) {
+  const allSurfaces = surfaces ?? analysis?.surfaces;
+  if (!allSurfaces || !Array.isArray(allSurfaces) || allSurfaces.length === 0) {
+    return null;
+  }
+  const meta = await (0, import_sharp.default)(imageBuffer).metadata();
+  const imgWidth = meta.width || 800;
+  const imgHeight = meta.height || 600;
+  const wallSurfaces = allSurfaces.filter(
+    (s2) => s2.type === "wall" && (s2.confidence ?? 0) > 0.4
+  );
+  if (wallSurfaces.length === 0) {
+    return null;
+  }
+  const mask = Buffer.alloc(imgWidth * imgHeight, 0);
+  const fillRect = (mx, my, mw, mh, value) => {
+    const x0 = Math.max(0, Math.min(mx, imgWidth - 1));
+    const y0 = Math.max(0, Math.min(my, imgHeight - 1));
+    const x1 = Math.max(0, Math.min(mx + mw, imgWidth));
+    const y1 = Math.max(0, Math.min(my + mh, imgHeight));
+    for (let y = y0; y < y1; y++) {
+      const rowStart = y * imgWidth;
+      for (let x2 = x0; x2 < x1; x2++) {
+        mask[rowStart + x2] = value;
+      }
+    }
+  };
+  const paintPolygon = async (polygon, value) => {
+    const pts = polygon.map(([px, py]) => `${Math.round(px * imgWidth)},${Math.round(py * imgHeight)}`).join(" ");
+    const svg = Buffer.from(
+      `<svg width="${imgWidth}" height="${imgHeight}"><polygon points="${pts}" fill="white"/></svg>`
+    );
+    const polyChannel = await (0, import_sharp.default)(svg).extractChannel("green").raw().toBuffer();
+    for (let i2 = 0; i2 < mask.length; i2++) {
+      if (polyChannel[i2] > 127) mask[i2] = value;
+    }
+  };
+  for (const w of wallSurfaces) {
+    if (Array.isArray(w.polygon) && w.polygon.length >= 3) {
+      try {
+        await paintPolygon(w.polygon, 255);
+      } catch {
+        if (w.bounds) fillRect(
+          Math.round(w.bounds.x * imgWidth),
+          Math.round(w.bounds.y * imgHeight),
+          Math.round(w.bounds.width * imgWidth),
+          Math.round(w.bounds.height * imgHeight),
+          255
+        );
+      }
+    } else if (w.bounds) {
+      fillRect(
+        Math.round(w.bounds.x * imgWidth),
+        Math.round(w.bounds.y * imgHeight),
+        Math.round(w.bounds.width * imgWidth),
+        Math.round(w.bounds.height * imgHeight),
+        255
+      );
+    }
+  }
+  const obstacles = allSurfaces.filter(
+    (s2) => s2.type !== "wall" && s2.bounds
+  );
+  for (const s2 of obstacles) {
+    if (Array.isArray(s2.polygon) && s2.polygon.length >= 3) {
+      try {
+        await paintPolygon(s2.polygon, 0);
+        continue;
+      } catch {
+      }
+    }
+    fillRect(
+      Math.round(s2.bounds.x * imgWidth),
+      Math.round(s2.bounds.y * imgHeight),
+      Math.round(s2.bounds.width * imgWidth),
+      Math.round(s2.bounds.height * imgHeight),
+      0
+    );
+  }
+  const binary = await (0, import_sharp.default)(mask, {
+    raw: { width: imgWidth, height: imgHeight, channels: 1 }
+  }).png().toBuffer();
+  console.log(`[BinaryMask] Built ${imgWidth}x${imgHeight} binary mask: ${wallSurfaces.length} walls, ${obstacles.length} obstacles preserved`);
+  return binary;
 }
 var import_sharp, fs3, path3, SELF_URL;
 var init_imageCompositor = __esm({
@@ -104863,6 +104959,7 @@ function isUndiciDispatcherVersionMismatchError(error) {
 // server/services/aiProviders.ts
 var import_fs2 = __toESM(require("fs"), 1);
 var import_path61 = __toESM(require("path"), 1);
+var import_sharp2 = __toESM(require_lib6(), 1);
 var circuitBreakers = /* @__PURE__ */ new Map();
 var CIRCUIT_THRESHOLD = 5;
 var CIRCUIT_RESET_MS = 3e5;
@@ -104939,6 +105036,33 @@ var getMimeType = (dataURI) => {
   return match ? match[1] : "image/jpeg";
 };
 var SELF_URL2 = process.env.SITE_URL || "https://buildingapp.us";
+var IMAGE_SIGNATURES = [
+  { mime: "image/jpeg", head: [255, 216, 255] },
+  // JPEG
+  { mime: "image/png", head: [137, 80, 78, 71] },
+  // PNG
+  { mime: "image/gif", head: [71, 73, 70, 56] },
+  // GIF8
+  { mime: "image/webp", head: [82, 73, 70, 70] }
+  // "RIFF" (WEBP container)
+];
+function sniffImageMime(buf) {
+  if (buf.length < 12) return null;
+  for (const sig of IMAGE_SIGNATURES) {
+    let ok = true;
+    for (let i2 = 0; i2 < sig.head.length; i2++) {
+      if (buf[i2] !== sig.head[i2]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      if (sig.mime === "image/webp" && buf.toString("ascii", 8, 12) !== "WEBP") continue;
+      return sig.mime;
+    }
+  }
+  return null;
+}
 var getImageBase64 = async (urlPath) => {
   try {
     if (!urlPath) return null;
@@ -104966,17 +105090,33 @@ var getImageBase64 = async (urlPath) => {
           if (import_fs2.default.existsSync(p)) {
             const data = import_fs2.default.readFileSync(p);
             const ext = import_path61.default.extname(p).toLowerCase().replace(".", "");
-            const mimeType2 = ext === "webp" ? "image/webp" : ext === "png" ? "image/png" : "image/jpeg";
-            return { data: data.toString("base64"), mimeType: mimeType2 };
+            const mimeType = ext === "webp" ? "image/webp" : ext === "png" ? "image/png" : "image/jpeg";
+            return { data: data.toString("base64"), mimeType };
           }
         }
         console.warn(`getImageBase64: local file not found for ${urlPath}, falling back to fetch...`);
       }
-      const response = await fetch(urlPath);
+      const isDrive = urlPath.includes("drive.google.com") || urlPath.includes("googleusercontent.com");
+      const response = await fetch(urlPath, {
+        headers: {
+          "User-Agent": "BuildingInnovationAI/1.0 (+https://buildingapp.us)",
+          ...isDrive ? { "Referer": "https://drive.google.com" } : {}
+        },
+        redirect: "follow"
+      });
       if (!response.ok) return null;
       const buffer = Buffer.from(await response.arrayBuffer());
-      const mimeType = response.headers.get("content-type") || "image/jpeg";
-      return { data: buffer.toString("base64"), mimeType };
+      const headerMime = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+      if (headerMime === "text/html" || headerMime.startsWith("text/")) {
+        console.warn(`getImageBase64: rejecting text/html response from ${urlPath} (likely Drive interstitial)`);
+        return null;
+      }
+      const sniffed = sniffImageMime(buffer);
+      if (!sniffed) {
+        console.warn(`getImageBase64: bytes from ${urlPath} are not a recognized image (no magic byte match)`);
+        return null;
+      }
+      return { data: buffer.toString("base64"), mimeType: sniffed };
     }
     const cleanPath = urlPath.startsWith("/") ? urlPath.substring(1) : urlPath;
     const possiblePaths = [
@@ -105014,6 +105154,7 @@ function loadConfig() {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "",
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
+    FAL_API_KEY: process.env.FAL_API_KEY || "",
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
     TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "",
     TELEGRAM_DAILY_REPORT_TIME: process.env.TELEGRAM_DAILY_REPORT_TIME || "09:00",
@@ -105028,6 +105169,7 @@ function loadConfig() {
         GEMINI_API_KEY: file.GEMINI_API_KEY || defaults3.GEMINI_API_KEY,
         OPENAI_API_KEY: file.OPENAI_API_KEY || defaults3.OPENAI_API_KEY,
         OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults3.OPENROUTER_API_KEY,
+        FAL_API_KEY: file.FAL_API_KEY || defaults3.FAL_API_KEY,
         STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
         STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "",
         TELEGRAM_BOT_TOKEN: file.TELEGRAM_BOT_TOKEN || defaults3.TELEGRAM_BOT_TOKEN,
@@ -105186,8 +105328,18 @@ POLYGON GEOMETRY (this matters \u2014 rectangles are wrong for perspective walls
 - 4 corners in clockwise order starting top-left: TL \u2192 TR \u2192 BR \u2192 BL.
 - Trace the ACTUAL visible wall edges, including perspective angles.
 - A receding wall's far edge is SHORTER than its near edge (trapezoid).
-- If the top-left and bottom-left corners have the same x value, you have not traced perspective \u2014 redo.
+- HARD RULE: a wall polygon is INVALID if TL.x == BL.x AND TR.x == BR.x (axis-aligned rectangle). Walls in real photos are NEVER perfect rectangles \u2014 perspective always angles at least one edge. If your polygon is a rectangle, you have not traced perspective, you have written a lazy bbox. Redo it.
+- The grid overlay you see (10x10 cells labeled c0-c9 across the top, r0-r9 down the left) is there to help you anchor coordinates. Use it: a corner "at column 3, row 2" is x=0.3, y=0.2.
 - All coordinates normalized [0.0-1.0], (0,0) = top-left of image.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+GRID OVERLAY (the yellow labels on the image)
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+- The image you are analyzing has a 10x10 grid drawn over it for calibration.
+- Yellow "c0"-"c9" labels along the top edge = column indices (x direction).
+- Yellow "r0"-"r9" labels along the left edge = row indices (y direction).
+- When estimating a coordinate, anchor it to a grid cell: "the chair seat is centered around column 2, row 6 \u2192 x=0.25, y=0.62". This dramatically improves your precision.
+- The grid is just an aid \u2014 your final coordinates must still be normalized floats in [0,1], not cell references.
 
 \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 SURFACE TYPES \u2014 return one entry per distinct surface
@@ -105228,7 +105380,7 @@ function parseAnalysisResponse(rawText, model, provider, durationMs) {
     if (parsed.reasoning) {
       try {
         const r2 = parsed.reasoning;
-        console.log(`[Analysis.reasoning] vanishing=${JSON.stringify(r2.vanishingPoint)} walls=${(r2.wallPlanes || []).length} obstacles=${(r2.obstacles || []).length} ambiguous=${JSON.stringify(r2.ambiguous)}`);
+        console.log(`[Analysis.reasoning] vanishing=${JSON.stringify(r2.vanishingPoint)} walls=${(r2.wallPlanes || []).length} observedObjects=${(r2.observedObjects || []).length} ambiguous=${JSON.stringify(r2.ambiguous)}`);
       } catch {
       }
     }
@@ -105294,6 +105446,9 @@ DIRECTIVES (execute exactly these 4, nothing else):
   }
   let imageInput;
   const productRef = await getImageBase64(req.material?.imageUrl);
+  if (!productRef && req.material?.imageUrl) {
+    throw new Error(`Failed to load product image from ${req.material.imageUrl}. Check Drive URL or proxy.`);
+  }
   if (productRef) {
     imageInput = [
       imagePart,
@@ -105352,6 +105507,74 @@ DIRECTIVES (execute exactly these 4, nothing else):
   recordFailure("openai", lastError);
   throw lastError || new Error("All OpenAI image models failed");
 }
+var FAL_FLUX_FILL_URL = "https://fal.run/fal-ai/flux-pro/v1.1/fill";
+async function generateOverlayFluxFill(req, config, startTime) {
+  if (!config.FAL_API_KEY) {
+    throw new Error("fal.ai API key not configured (FAL_API_KEY)");
+  }
+  const rawImage = req.originalImage ?? req.image;
+  if (!rawImage) throw new Error("No image provided for FLUX render");
+  const imageBuffer = Buffer.from(cleanBase642(rawImage), "base64");
+  if (!req.analysis?.surfaces?.length) {
+    throw new Error("FLUX Fill requires analysis surfaces \u2014 none provided");
+  }
+  const { buildBinaryWallMask: buildBinaryWallMask2 } = await Promise.resolve().then(() => (init_imageCompositor(), imageCompositor_exports));
+  const binaryMask = await buildBinaryWallMask2(imageBuffer, req.analysis, req.analysis?.surfaces);
+  if (!binaryMask) {
+    throw new Error("FLUX Fill: no wall surfaces in analysis \u2014 cannot build mask");
+  }
+  const { prompt } = buildOverlayPrompt(req);
+  const inputMime = getMimeType(rawImage);
+  let roomJpegBuffer;
+  try {
+    roomJpegBuffer = await (0, import_sharp2.default)(imageBuffer).flatten({ background: "#ffffff" }).jpeg({ quality: 95 }).toBuffer();
+  } catch {
+    roomJpegBuffer = inputMime === "image/jpeg" ? imageBuffer : imageBuffer;
+  }
+  const roomDataUri = `data:image/jpeg;base64,${roomJpegBuffer.toString("base64")}`;
+  const maskDataUri = `data:image/png;base64,${binaryMask.toString("base64")}`;
+  const body = {
+    image: roomDataUri,
+    mask: maskDataUri,
+    prompt,
+    strength: 0.98,
+    num_images: 1,
+    output_format: "jpeg",
+    enable_safety_checker: true
+  };
+  console.log(`[AI] Calling FLUX.1 Fill via fal.ai (mask size ${binaryMask.length}B, room ${roomJpegBuffer.length}B)...`);
+  const response = await fetch(FAL_FLUX_FILL_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Key ${config.FAL_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`FLUX Fill HTTP ${response.status}: ${errText.slice(0, 300)}`);
+  }
+  const data = await response.json();
+  const imageUrl = data?.images?.[0]?.url;
+  const imageB64 = data?.images?.[0]?.base64;
+  if (!imageUrl && !imageB64) {
+    throw new Error(`FLUX Fill: no image in response (keys=${Object.keys(data || {}).join(",")})`);
+  }
+  let image;
+  if (imageB64) {
+    image = `data:image/jpeg;base64,${imageB64}`;
+  } else {
+    const imgResp = await fetch(imageUrl);
+    if (!imgResp.ok) throw new Error(`FLUX Fill: could not fetch result image (${imgResp.status})`);
+    const imgBuf = Buffer.from(await imgResp.arrayBuffer());
+    image = `data:image/jpeg;base64,${imgBuf.toString("base64")}`;
+  }
+  recordSuccess("flux");
+  const durationMs = Date.now() - startTime;
+  console.log(`[AI] \u2705 FLUX.1 Fill success in ${durationMs}ms`);
+  return { image, model: "flux-1.1-fill-pro", durationMs, provider: "flux" };
+}
 async function analyzeRoomOpenAI(req, config) {
   if (!config.OPENAI_API_KEY) {
     throw new Error("OpenAI API key not configured");
@@ -105363,6 +105586,7 @@ async function analyzeRoomOpenAI(req, config) {
   const ai = getOpenAISDK(config.OPENAI_API_KEY);
   const mimeType = getMimeType(req.image);
   const base64Data = cleanBase642(req.image);
+  const analysisImageBase64 = await prepareAnalysisImage(Buffer.from(base64Data, "base64"), mimeType);
   const ANALYSIS_MODELS = process.env.OPENAI_VISION_MODEL ? [process.env.OPENAI_VISION_MODEL] : ["gpt-4o", "gpt-4o-mini"];
   let lastError = null;
   for (const model of ANALYSIS_MODELS) {
@@ -105380,19 +105604,132 @@ async function analyzeRoomOpenAI(req, config) {
                 // and furniture edges. "low" was downsampling and the model
                 // was missing entire walls + obstacles. Costs slightly more
                 // tokens but precision is the whole point of this call.
-                image_url: { url: `data:${mimeType};base64,${base64Data}`, detail: "high" }
+                image_url: { url: `data:image/jpeg;base64,${analysisImageBase64}`, detail: "high" }
               },
               { type: "text", text: ANALYSIS_PROMPT }
             ]
           }
         ],
-        // Bumped 3000 → 4000 → 6000: the reasoning-first analysis prompt
-        // (vanishing point + per-obstacle cue sentences + evidence per
-        // surface) needs more output room than a bare JSON dump. The
-        // reasoning field is what stops the model from hallucinating
-        // coordinates, so starving it defeats the whole point.
-        max_tokens: 6e3,
-        response_format: { type: "json_object" }
+        // Bumped 3000 → 4000 → 6000 → 8000: the reasoning-first analysis
+        // prompt (vanishing point + per-obstacle cue sentences + evidence
+        // per surface) needs more output room than a bare JSON dump.
+        // The reasoning field is what stops the model from hallucinating
+        // coordinates, so starving it defeats the whole point. The strict
+        // json_schema also adds overhead vs the bare json_object mode.
+        max_tokens: 8e3,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "room_analysis",
+            strict: true,
+            schema: {
+              type: "object",
+              // ORDER MATTERS: fields are emitted in schema order,
+              // so putting observations/reasoning BEFORE surfaces
+              // forces the model to commit to what it sees before
+              // committing to coordinates. This is the documented
+              // Structured Outputs chain-of-thought pattern.
+              additionalProperties: false,
+              properties: {
+                reasoning: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    vanishingPoint: {
+                      type: "array",
+                      items: { type: "number" },
+                      minItems: 2,
+                      maxItems: 2
+                    },
+                    observedObjects: {
+                      type: "array",
+                      items: { type: "string" }
+                    },
+                    wallPlanes: {
+                      type: "array",
+                      items: { type: "string" }
+                    },
+                    ambiguous: {
+                      type: "array",
+                      items: { type: "string" }
+                    }
+                  },
+                  required: ["vanishingPoint", "observedObjects", "wallPlanes", "ambiguous"]
+                },
+                text: { type: "string" },
+                dimensions: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    width: { type: "number" },
+                    height: { type: "number" },
+                    areaM2: { type: "number" }
+                  },
+                  required: ["width", "height", "areaM2"]
+                },
+                style: { type: "string" },
+                lighting: { type: "string" },
+                suggestedMaterials: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                surfaces: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      type: {
+                        type: "string",
+                        // Enum prevents invented categories.
+                        enum: [
+                          "wall",
+                          "floor",
+                          "ceiling",
+                          "window",
+                          "door",
+                          "television",
+                          "cabinet",
+                          "shelf",
+                          "picture_frame",
+                          "mirror",
+                          "fireplace",
+                          "light_fixture",
+                          "radiator",
+                          "furniture"
+                        ]
+                      },
+                      evidence: { type: "string" },
+                      bounds: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          x: { type: "number" },
+                          y: { type: "number" },
+                          width: { type: "number" },
+                          height: { type: "number" }
+                        },
+                        required: ["x", "y", "width", "height"]
+                      },
+                      polygon: {
+                        type: "array",
+                        items: {
+                          type: "array",
+                          items: { type: "number" },
+                          minItems: 2,
+                          maxItems: 2
+                        }
+                      },
+                      confidence: { type: "number" }
+                    },
+                    required: ["type", "evidence", "bounds", "polygon", "confidence"]
+                  }
+                }
+              },
+              required: ["reasoning", "text", "dimensions", "style", "lighting", "suggestedMaterials", "surfaces"]
+            }
+          }
+        }
       });
       const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze."}';
       recordSuccess("openai");
@@ -105416,14 +105753,70 @@ async function analyzeRoomOpenAI(req, config) {
   }
   throw lastError || new Error("All OpenAI analysis models failed");
 }
+async function prepareAnalysisImage(imageBuffer, _sourceMime) {
+  try {
+    const TARGET_LONG_SIDE = 1086;
+    const meta = await (0, import_sharp2.default)(imageBuffer).metadata();
+    const w = meta.width || 0;
+    const h2 = meta.height || 0;
+    if (w === 0 || h2 === 0) {
+      return imageBuffer.toString("base64");
+    }
+    const longest = Math.max(w, h2);
+    const scale = longest > TARGET_LONG_SIDE ? TARGET_LONG_SIDE / longest : 1;
+    const newW = Math.round(w * scale);
+    const newH = Math.round(h2 * scale);
+    const cellW = newW / 10;
+    const cellH = newH / 10;
+    const lines = [];
+    for (let i2 = 1; i2 < 10; i2++) {
+      const x2 = Math.round(i2 * cellW);
+      lines.push(`<line x1="${x2}" y1="0" x2="${x2}" y2="${newH}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>`);
+    }
+    for (let i2 = 1; i2 < 10; i2++) {
+      const y = Math.round(i2 * cellH);
+      lines.push(`<line x1="0" y1="${y}" x2="${newW}" y2="${y}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>`);
+    }
+    const colLabels = [];
+    for (let c = 0; c < 10; c++) {
+      const x2 = Math.round(c * cellW + cellW / 2);
+      colLabels.push(`<text x="${x2}" y="14" fill="yellow" font-size="11" font-family="monospace" text-anchor="middle">c${c}</text>`);
+    }
+    const rowLabels = [];
+    for (let r2 = 0; r2 < 10; r2++) {
+      const y = Math.round(r2 * cellH + cellH / 2 + 4);
+      rowLabels.push(`<text x="6" y="${y}" fill="yellow" font-size="11" font-family="monospace">r${r2}</text>`);
+    }
+    const overlaySvg = Buffer.from(
+      `<svg width="${newW}" height="${newH}" xmlns="http://www.w3.org/2000/svg">
+                ${lines.join("\n")}
+                ${colLabels.join("\n")}
+                ${rowLabels.join("\n")}
+            </svg>`
+    );
+    const processed = await (0, import_sharp2.default)(imageBuffer).resize(newW, newH, { fit: "fill" }).composite([{ input: overlaySvg, top: 0, left: 0, blend: "over" }]).jpeg({ quality: 90 }).toBuffer();
+    return processed.toString("base64");
+  } catch (e2) {
+    console.warn(`[prepareAnalysisImage] sharp pipeline failed, sending raw image:`, e2?.message);
+    return imageBuffer.toString("base64");
+  }
+}
 async function generateOverlay(req, preferredProvider, config) {
   const start = Date.now();
   const errors = [];
-  const providerChain = ["openai", "generic"];
-  console.log(`[AI] Image generation provider chain: ${providerChain.join(" \u2192 ")} (preferred=${preferredProvider} ignored \u2014 OpenAI-only since July 2026)`);
+  const isInpaint = req.mode === "inpaint" && !!req.analysis?.surfaces?.length;
+  const wantFlux = isInpaint && !!config.FAL_API_KEY;
+  const providerChain = wantFlux ? ["flux", "openai", "generic"] : ["openai", "generic"];
+  console.log(`[AI] Image generation provider chain: ${providerChain.join(" \u2192 ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);
   for (const provider of providerChain) {
     try {
       switch (provider) {
+        case "flux":
+          if (!config.FAL_API_KEY) {
+            errors.push("FLUX: No FAL_API_KEY configured");
+            continue;
+          }
+          return await generateOverlayFluxFill(req, config, start);
         case "openai":
           if (!config.OPENAI_API_KEY) {
             errors.push("OpenAI: No API key configured");
@@ -105433,7 +105826,7 @@ async function generateOverlay(req, preferredProvider, config) {
         case "generic":
           return await generateGenericOverlay(req);
         default:
-          errors.push(`${provider}: not in image-generation chain (OpenAI-only)`);
+          errors.push(`${provider}: not in image-generation chain`);
       }
     } catch (error) {
       const msg = error?.message || String(error);
@@ -122834,7 +123227,7 @@ async function sendPurchaseNotifications(params) {
 var import_crypto2 = __toESM(require("crypto"), 1);
 
 // server/buildInfo.ts
-var BUILD_COMMIT = "${GITHUB_SHA:-unknown}";
+var BUILD_COMMIT = "unknown";
 var BUILD_TIME = (/* @__PURE__ */ new Date()).toISOString();
 
 // server/index.ts
@@ -122890,8 +123283,7 @@ ${error.stack || error}
     telegramAlerts.sendMessage({
       text: `<b>\u{1F6A8} CRITICAL STARTUP ERROR</b>
 
-<b>Error:</b> <code>${(error.message || String(error)).substring(0, 200)}</code>
-<b>Stack:</b> <pre>${(error.stack || "No stack").substring(0, 500)}</pre>`,
+<b>Error:</b> <code>${(error.message || String(error)).substring(0, 200)}</code>`,
       parse_mode: "HTML"
     });
   } catch (tgErr) {
@@ -122990,6 +123382,20 @@ try {
     if (record.count >= RATE_LIMIT) {
       console.warn(`[RATE LIMIT] ${ip} exceeded limit for ${req.path}`);
       return res.status(429).json({ error: "Too many requests. Please slow down." });
+    }
+    record.count++;
+    next();
+  }, aiRateLimit = function(req, res, next) {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const record = aiRateStore.get(ip);
+    if (!record || now > record.resetTime) {
+      aiRateStore.set(ip, { count: 1, resetTime: now + RATE_WINDOW });
+      return next();
+    }
+    if (record.count >= AI_RATE_LIMIT) {
+      console.warn(`[AI RATE LIMIT] ${ip} exceeded AI limit`);
+      return res.status(429).json({ error: "Too many AI requests. Wait a minute." });
     }
     record.count++;
     next();
@@ -123725,9 +124131,16 @@ Auto-downgraded to Free.`
   });
   let stripeInstance = null;
   let lastStripeKey = null;
-  async function getStripe() {
+  async function getStripeKey() {
     const config = await getConfig();
-    const key = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "sk_test_123";
+    const key = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
+    if (!key || key === "sk_test_123") {
+      throw new Error("STRIPE_SECRET_KEY not configured. Stripe is disabled.");
+    }
+    return key;
+  }
+  async function getStripe() {
+    const key = await getStripeKey();
     if (!stripeInstance || lastStripeKey !== key) {
       stripeInstance = new stripe_esm_node_default(key, { apiVersion: "2025-02-24.acacia" });
       lastStripeKey = key;
@@ -123736,7 +124149,11 @@ Auto-downgraded to Free.`
   }
   async function getStripeWebhookSecret() {
     const config = await getConfig();
-    return config.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "whsec_123";
+    const secret = config.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
+    if (!secret || secret === "whsec_123") {
+      throw new Error("STRIPE_WEBHOOK_SECRET not configured. Stripe webhooks are disabled.");
+    }
+    return secret;
   }
   app.post("/api/webhooks/stripe", import_express.default.raw({ type: "application/json" }), async (req, res) => {
     const sig = req.headers["stripe-signature"];
@@ -123874,16 +124291,7 @@ Auto-downgraded to Free.`
       const config = await getConfig();
       const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
       if (!secretKey || secretKey === "sk_test_123") {
-        logUserActivity({
-          userId: parseInt(userId),
-          action: "PURCHASE_INIT",
-          details: { tier, mode: "subscription", method: "mock_checkout" }
-        });
-        return res.json({
-          isMock: true,
-          sessionId: `mock_${Date.now()}`,
-          tier
-        });
+        return res.status(503).json({ error: "Stripe is not configured. Contact support." });
       }
       const tiers = await getTiers();
       const matchedTier = Object.values(tiers).find(
@@ -123938,15 +124346,7 @@ Auto-downgraded to Free.`
       const config = await getConfig();
       const secretKey = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
       if (!secretKey || secretKey === "sk_test_123") {
-        return res.json({
-          isMock: true,
-          sessionId: `mock_product_${Date.now()}`,
-          items: items.map((item) => ({
-            name: item.material?.name || "Unknown",
-            quantity: item.quantity,
-            totalCost: item.totalCost
-          }))
-        });
+        return res.status(503).json({ error: "Stripe is not configured. Contact support." });
       }
       const baseUrl = req.headers.origin || `https://${req.headers.host}` || "https://buildingapp.us";
       const lineItems = items.map((item) => {
@@ -124008,6 +124408,9 @@ Auto-downgraded to Free.`
   const RATE_LIMIT = 100;
   const RATE_WINDOW = 60 * 1e3;
   app.use("/api/", rateLimit);
+  const AI_RATE_LIMIT = 5;
+  const aiRateStore = /* @__PURE__ */ new Map();
+  app.use("/api/ai/", aiRateLimit);
   app.use((req, res, next) => {
     monitor.trackRequest(req);
     const start = Date.now();
@@ -124417,37 +124820,6 @@ Auto-downgraded to Free.`
     const match = dataURI.match(/^data:(image\/\w+);base64,/);
     return match ? match[1] : "image/jpeg";
   };
-  const getImageBase642 = async (urlPath) => {
-    try {
-      if (!urlPath) return null;
-      if (urlPath.startsWith("http://") || urlPath.startsWith("https://")) {
-        const response = await fetch(urlPath);
-        if (!response.ok) throw new Error(`Failed to fetch remote image: ${response.statusText}`);
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const mimeType = response.headers.get("content-type") || "image/jpeg";
-        return { data: buffer.toString("base64"), mimeType };
-      }
-      const cleanPath = urlPath.startsWith("/") ? urlPath.substring(1) : urlPath;
-      const possiblePaths = [
-        import_path62.default.join(process.cwd(), "public", cleanPath),
-        import_path62.default.join(process.cwd(), cleanPath),
-        import_path62.default.resolve(cleanPath)
-      ];
-      for (const fullPath of possiblePaths) {
-        if (import_fs3.default.existsSync(fullPath)) {
-          const data = import_fs3.default.readFileSync(fullPath);
-          const ext = import_path62.default.extname(fullPath).toLowerCase().replace(".", "");
-          const mimeType = ext === "webp" ? "image/webp" : ext === "png" ? "image/png" : "image/jpeg";
-          return { data: data.toString("base64"), mimeType };
-        }
-      }
-      return null;
-    } catch (e2) {
-      console.warn(`Could not load image: ${urlPath}`, e2);
-      return null;
-    }
-  };
   const getErrorMessage = (error) => {
     if (typeof error === "string") return error;
     if (error?.error?.message) return error.error.message;
@@ -124536,7 +124908,7 @@ Auto-downgraded to Free.`
             category: material?.category,
             success: true,
             durationMs: result2.durationMs,
-            model: `openai/${result2.model}`
+            model: `${result2.provider}/${result2.model}`
           });
           logUserActivity({
             userId,
@@ -124545,14 +124917,14 @@ Auto-downgraded to Free.`
               materialId: material?.id || material?.refCode,
               materialName: material?.name,
               category: material?.category,
-              provider: "openai",
+              provider: result2.provider,
               model: result2.model,
               mode: "inpaint",
               durationMs: result2.durationMs,
               success: true
             }
           });
-          return res.json({ success: true, image: result2.image, provider: "openai", model: result2.model, mode: "inpaint" });
+          return res.json({ success: true, image: result2.image, provider: result2.provider, model: result2.model, mode: "inpaint" });
         } catch (error) {
           pushGenerationLog({
             timestamp: (/* @__PURE__ */ new Date()).toISOString(),

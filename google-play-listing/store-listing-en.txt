@@ -1,0 +1,33 @@
+=== SHORT DESCRIPTION (80 chars max) ===
+AI-powered material visualization — see how any wall material looks in your room before you buy. 300+ materials, instant quotes.
+
+=== FULL DESCRIPTION (4000 chars max) ===
+Building Innovation AI lets you visualize architectural materials on your walls in seconds.
+
+Take a photo of any room — interior or exterior — and our AI instantly analyzes the space, detects walls, furniture, and obstacles. Then pick from 300+ materials (PVC panels, laminates, flooring, adhesives, and more) and watch the AI overlay the exact texture, color, and pattern onto your wall, keeping everything else perfectly intact.
+
+WHY BUILDING INNOVATION AI:
+• AI-Powered Room Analysis — detects walls, windows, doors, furniture, and ceiling fixtures with precise polygon masking
+• Photorealistic Rendering — materials blend with actual lighting, shadows, and perspective
+• 300+ Material Catalog — PVC panels, laminates, flooring, wall adhesives, ceiling materials from Colombian manufacturers
+• Instant Quotes — select materials, get quantity estimates, add to cart, and generate professional PDF quotes
+• Works Indoors & Outdoors — exterior facades, interior rooms, commercial spaces
+• Spanish & English — toggle language anytime, supports metric (m/cm) and imperial (ft/in) units
+• Free Tier — 5 free renders. Upgrade for unlimited.
+
+PERFECT FOR:
+• Homeowners planning renovations
+• Contractors presenting options to clients  
+• Architects visualizing material combinations
+• Construction material retailers showing products in real spaces
+• Interior designers creating mood boards
+
+HOW IT WORKS:
+1. Take or upload a room photo
+2. AI scans the room (walls, furniture, windows — all detected automatically)
+3. Browse 300+ materials by category
+4. Tap a material, then "Visualize in My Space"
+5. AI renders the material onto your wall in ~30 seconds
+6. Add to cart, generate a quote PDF, or save for later
+
+No design skills needed. No Photoshop. Just a photo of your room.

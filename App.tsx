@@ -103,6 +103,8 @@ const App: React.FC = () => {
         if (path === 'editor') return AppView.EDITOR;
         if (path === 'estimation') return AppView.ESTIMATION;
         if (path === 'cart') return AppView.CART;
+        if (path === 'privacy') return AppView.PRIVACY;
+        if (path === 'terms') return AppView.TERMS;
         return AppView.LOGIN;
     }, [location]);
     const setView = (v: AppView) => {
@@ -115,6 +117,8 @@ const App: React.FC = () => {
             [AppView.EDITOR]: '/editor',
             [AppView.ESTIMATION]: '/estimation',
             [AppView.CART]: '/cart',
+            [AppView.PRIVACY]: '/privacy',
+            [AppView.TERMS]: '/terms',
         };
         navigate(map[v] || '/');
     };
@@ -4794,6 +4798,75 @@ const App: React.FC = () => {
         );
     };
 
+    // ponytail: simple in-app legal pages for app store compliance
+    const renderLegalPage = (type: 'privacy' | 'terms') => {
+        const isPrivacy = type === 'privacy';
+        const content = isPrivacy ? {
+            title: { en: 'Privacy Policy', es: 'Política de Privacidad' },
+            body: { en: `Building Innovation AI respects your privacy.
+
+We collect only the information you provide: name, email, phone number, and address for account creation. Photos you upload are transmitted securely to OpenAI for AI processing and are not stored permanently on our servers.
+
+We do NOT sell, share, or monetize your personal data. We do not use tracking cookies or advertising identifiers.
+
+For the complete policy, visit unitecusadesign.com/policies/.`,
+                es: `Building Innovation AI respeta su privacidad.
+
+Recopilamos solo la información que usted proporciona: nombre, correo electrónico, teléfono y dirección para crear su cuenta. Las fotos que sube se transmiten de forma segura a OpenAI para procesamiento de IA y no se almacenan permanentemente en nuestros servidores.
+
+NO vendemos, compartimos ni monetizamos sus datos personales. No utilizamos cookies de seguimiento ni identificadores publicitarios.
+
+Para la política completa, visite unitecusadesign.com/policies/.`
+            }
+        } : {
+            title: { en: 'Terms of Service', es: 'Términos de Servicio' },
+            body: { en: `By using Building Innovation AI, you agree to these terms.
+
+The app provides AI-powered material visualization for informational purposes. Renders are AI-generated approximations and may not perfectly represent real-world results.
+
+Free accounts include 5 renders. Paid tiers unlock additional renders as described in the app.
+
+We reserve the right to modify these terms. Continued use constitutes acceptance.
+
+For complete terms, visit unitecusadesign.com/policies/.`,
+                es: `Al usar Building Innovation AI, usted acepta estos términos.
+
+La aplicación proporciona visualización de materiales con IA con fines informativos. Los renders son aproximaciones generadas por IA y pueden no representar perfectamente los resultados del mundo real.
+
+Las cuentas gratuitas incluyen 5 renders. Los planes pagos desbloquean renders adicionales según se describe en la aplicación.
+
+Nos reservamos el derecho de modificar estos términos. El uso continuo constituye aceptación.
+
+Para los términos completos, visite unitecusadesign.com/policies/.`
+            }
+        };
+
+        return (
+            <div className="min-h-screen bg-gray-100 p-6 flex flex-col">
+                <header className="flex items-center gap-4 mb-6">
+                    <button onClick={() => setView(AppView.LANDING)}
+                        className="p-2 -ml-2 text-gray-600 hover:text-gray-900">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <h1 className="text-xl font-bold text-gray-800">
+                        {lang === 'es' ? content.title.es : content.title.en}
+                    </h1>
+                </header>
+                <div className="max-w-2xl mx-auto w-full bg-white rounded-2xl p-6 shadow-sm border border-gray-200 whitespace-pre-line text-gray-700 text-sm leading-relaxed">
+                    {lang === 'es' ? content.body.es : content.body.en}
+                </div>
+                <div className="mt-6 text-center">
+                    <a href="https://www.unitecusadesign.com/policies/" target="_blank" rel="noreferrer"
+                        className="text-blue-600 hover:underline text-sm">
+                        {lang === 'es' ? 'Ver política completa →' : 'View full policy →'}
+                    </a>
+                </div>
+            </div>
+        );
+    };
+
     const renderCart = () => {
         // Re-read cart from local storage for render
         const cartItems: CartItem[] = JSON.parse(
@@ -5797,6 +5870,9 @@ const App: React.FC = () => {
                 </div>
             )}
             {view === AppView.EDITOR && renderEditor()}
+
+            {view === AppView.PRIVACY && renderLegalPage('privacy')}
+            {view === AppView.TERMS && renderLegalPage('terms')}
 
 
 

@@ -53,6 +53,8 @@ export enum AppView {
   EDITOR = "EDITOR",
   ESTIMATION = "ESTIMATION",
   CART = "CART",
+  PRIVACY = "PRIVACY",
+  TERMS = "TERMS",
 }
 
 export interface RoomDimensions {

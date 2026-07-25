@@ -1,0 +1,17 @@
+APP INFO:
+- App name: Building Innovation AI
+- Package: com.buildinginnovation.app
+- Category: House & Home
+- Tags: Home Improvement, Interior Design, Architecture
+- Price: Free (with in-app purchases for premium tiers)
+- Content rating: Everyone
+- Website: https://buildingapp.us
+- Support email: support@buildingapp.us
+- Privacy policy: https://buildingapp.us/#/privacy
+- Terms: https://buildingapp.us/#/terms
+
+KEYSTORE:
+- File: building-innovation.keystore
+- Alias: buildinginnovation
+- Location: /home/jasme/buildingapp-review/building-innovation.keystore
+- CRITICAL: Do not lose this file or password. Cannot update app without it.

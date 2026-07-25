@@ -1,0 +1,9 @@
+FEATURE GRAPHIC: 1024x500 PNG/JPG (required)
+PROMO GRAPHIC: 180x120 PNG (optional)
+ICON: 512x512 PNG (already exists at public/icon-512.png)
+
+Feature graphic should show:
+- App name "Building Innovation AI"  
+- Tagline: "Visualize Any Material. Instantly."
+- Before/After room shot side-by-side
+- Dark background (#0a1628) with amber accent (#f59e0b)

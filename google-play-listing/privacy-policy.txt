@@ -1,0 +1,7 @@
+Privacy Policy URL: https://buildingapp.us/#/privacy
+
+Data Safety Section for Google Play:
+- No user data collected (email/password stored for account only)
+- Photos uploaded for AI processing are transmitted to OpenAI API (encrypted)
+- No location data collected
+- No advertising ID used

@@ -64,6 +64,7 @@ try {
 
 
 // CRASH LOGGER: Captures startup errors on Hostinger
+// ponytail: stacks go to local crash.log only, Telegram gets message-only (no paths)
 function logCrash(error: any) {
     const msg = `${new Date().toISOString()}\n${error.stack || error}\n`;
     try {
@@ -71,12 +72,11 @@ function logCrash(error: any) {
     } catch (e) {}
     console.error('CRITICAL STARTUP ERROR:', error);
 
-    // Send Telegram alert
+    // Send Telegram alert — message only, no stack trace
     try {
         telegramAlerts.sendMessage({
             text: `<b>🚨 CRITICAL STARTUP ERROR</b>\n\n` +
-                  `<b>Error:</b> <code>${(error.message || String(error)).substring(0, 200)}</code>\n` +
-                  `<b>Stack:</b> <pre>${(error.stack || 'No stack').substring(0, 500)}</pre>`,
+                  `<b>Error:</b> <code>${(error.message || String(error)).substring(0, 200)}</code>`,
             parse_mode: 'HTML'
         });
     } catch (tgErr) {
@@ -1062,10 +1062,18 @@ app.use((req: Request, res: Response, next: any) => {
 let stripeInstance: Stripe | null = null;
 let lastStripeKey: string | null = null;
 
-async function getStripe() {
+async function getStripeKey() {
     const config = await getConfig();
-    const key = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || 'sk_test_123';
-    
+    const key = config.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY;
+    // ponytail: throw instead of test-key fallback — silent test-key usage = lost payments
+    if (!key || key === 'sk_test_123') {
+        throw new Error('STRIPE_SECRET_KEY not configured. Stripe is disabled.');
+    }
+    return key;
+}
+
+async function getStripe() {
+    const key = await getStripeKey();
     if (!stripeInstance || lastStripeKey !== key) {
         stripeInstance = new Stripe(key, { apiVersion: '2025-02-24.acacia' as any });
         lastStripeKey = key;
@@ -1075,7 +1083,12 @@ async function getStripe() {
 
 async function getStripeWebhookSecret() {
     const config = await getConfig();
-    return config.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || 'whsec_123';
+    const secret = config.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
+    // ponytail: throw instead of test-secret fallback
+    if (!secret || secret === 'whsec_123') {
+        throw new Error('STRIPE_WEBHOOK_SECRET not configured. Stripe webhooks are disabled.');
+    }
+    return secret;
 }
 
 app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req: Request, res: Response) => {
@@ -1240,16 +1253,8 @@ app.post('/api/checkout/create-session', requireAuth, express.json(), async (req
 
         // If no Stripe key configured, fall back to mock mode
         if (!secretKey || secretKey === 'sk_test_123') {
-            logUserActivity({
-                userId: parseInt(userId),
-                action: 'PURCHASE_INIT',
-                details: { tier, mode: 'subscription', method: 'mock_checkout' },
-            });
-            return res.json({
-                isMock: true,
-                sessionId: `mock_${Date.now()}`,
-                tier: tier
-            });
+            // ponytail: return clear error, not silent mock
+            return res.status(503).json({ error: 'Stripe is not configured. Contact support.' });
         }
 
         // Resolve tier price from config
@@ -1317,15 +1322,8 @@ app.post('/api/checkout/create-product-session', express.json(), async (req: Req
 
         // Check if Stripe is properly configured (not placeholder key)
         if (!secretKey || secretKey === 'sk_test_123') {
-            return res.json({
-                isMock: true,
-                sessionId: `mock_product_${Date.now()}`,
-                items: items.map((item: any) => ({
-                    name: item.material?.name || 'Unknown',
-                    quantity: item.quantity,
-                    totalCost: item.totalCost
-                }))
-            });
+            // ponytail: return clear error, not silent mock
+            return res.status(503).json({ error: 'Stripe is not configured. Contact support.' });
         }
 
         const baseUrl = req.headers.origin || `https://${req.headers.host}` || 'https://buildingapp.us';
@@ -1421,6 +1419,28 @@ function rateLimit(req: Request, res: Response, next: Function) {
 
 // Apply rate limiting to API routes
 app.use('/api/', rateLimit);
+
+// Stricter rate limit for expensive AI endpoints (5 req/min per IP)
+const AI_RATE_LIMIT = 5;
+const aiRateStore = new Map<string, { count: number; resetTime: number }>();
+
+function aiRateLimit(req: Request, res: Response, next: Function) {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const record = aiRateStore.get(ip);
+    if (!record || now > record.resetTime) {
+        aiRateStore.set(ip, { count: 1, resetTime: now + RATE_WINDOW });
+        return next();
+    }
+    if (record.count >= AI_RATE_LIMIT) {
+        console.warn(`[AI RATE LIMIT] ${ip} exceeded AI limit`);
+        return res.status(429).json({ error: 'Too many AI requests. Wait a minute.' });
+    }
+    record.count++;
+    next();
+}
+
+app.use('/api/ai/', aiRateLimit);
 
 // Request tracking for admin dashboard + error alerts
 app.use((req: Request, res: Response, next) => {

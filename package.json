@@ -40,13 +40,13 @@
     "sharp": "^0.34.5",
     "stripe": "^22.1.1",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
     "vite": "^6.2.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.1",
     "@types/bcryptjs": "^2.4.6",
     "basic-ftp": "^6.0.1",
-    "esbuild": "^0.25.12"
+    "esbuild": "^0.25.12",
+    "typescript": "^7.0.2"
   }
 }

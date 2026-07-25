@@ -1,0 +1,33 @@
+=== DESCRIPCIÓN CORTA ===
+Visualiza materiales arquitectónicos con IA. 300+ materiales, cotizaciones instantáneas.
+
+=== DESCRIPCIÓN COMPLETA ===
+Building Innovation AI te permite visualizar materiales arquitectónicos en tus paredes en segundos.
+
+Toma una foto de cualquier espacio — interior o exterior — y nuestra IA analiza instantáneamente el área, detecta paredes, muebles y obstáculos. Luego elige entre más de 300 materiales (láminas de PVC, laminados, pisos, adhesivos y más) y observa cómo la IA superpone la textura, color y patrón exactos en tu pared, manteniendo todo lo demás perfectamente intacto.
+
+POR QUÉ BUILDING INNOVATION AI:
+• Análisis de Habitación con IA — detecta paredes, ventanas, puertas, muebles y accesorios de techo con enmascaramiento poligonal preciso
+• Renderizado Fotorrealista — los materiales se integran con iluminación, sombras y perspectiva reales
+• Catálogo de 300+ Materiales — láminas de PVC, laminados, pisos, adhesivos de pared, materiales de cielo raso de fabricantes colombianos
+• Cotizaciones Instantáneas — selecciona materiales, obtén estimaciones de cantidad, agrega al carrito y genera cotizaciones PDF profesionales
+• Funciona en Interiores y Exteriores — fachadas exteriores, habitaciones interiores, espacios comerciales
+• Español e Inglés — cambia de idioma en cualquier momento, compatible con unidades métricas (m/cm) e imperiales (ft/in)
+• Plan Gratuito — 5 renders gratis. Actualiza para renders ilimitados.
+
+PERFECTO PARA:
+• Propietarios planeando renovaciones
+• Contratistas presentando opciones a clientes
+• Arquitectos visualizando combinaciones de materiales
+• Minoristas de materiales de construcción mostrando productos en espacios reales
+• Diseñadores de interiores creando mood boards
+
+CÓMO FUNCIONA:
+1. Toma o sube una foto de la habitación
+2. La IA escanea la habitación (paredes, muebles, ventanas — todo detectado automáticamente)
+3. Explora 300+ materiales por categoría
+4. Toca un material, luego "Visualizar en Mi Espacio"
+5. La IA renderiza el material en tu pared en ~30 segundos
+6. Agrega al carrito, genera un PDF de cotización o guarda para después
+
+No se necesitan habilidades de diseño. Sin Photoshop. Solo una foto de tu espacio.

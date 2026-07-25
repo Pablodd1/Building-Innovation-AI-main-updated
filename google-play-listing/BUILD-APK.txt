@@ -1,0 +1,32 @@
+BUILDING THE APK/AAB FOR GOOGLE PLAY
+======================================
+
+OPTION 1: GitHub Actions (recommended — no local Android SDK needed)
+  1. Push to main branch
+  2. Add these GitHub Secrets:
+     - KEYSTORE_BASE64: base64 -w0 building-innovation.keystore
+     - KEYSTORE_PASSWORD: (your keystore password)
+     - KEYSTORE_ALIAS: buildinginnovation
+  3. Run workflow: Actions → Build Mobile → Run workflow
+  4. Download APK/AAB from artifacts
+
+OPTION 2: Local build (requires Android Studio)
+  1. Install Android Studio: developer.android.com/studio
+  2. Set ANDROID_HOME environment variable
+  3. cd android && ./gradlew assembleRelease
+  4. Output: android/app/build/outputs/apk/release/app-release.apk
+
+OPTION 3: Build on Hostinger (requires Android SDK install)
+  Not recommended — Hostinger shared hosting doesn't support Android SDK.
+
+WHAT TO UPLOAD TO GOOGLE PLAY:
+  - AAB file (preferred): android/app/build/outputs/bundle/release/app-release.aab
+  - OR APK file: android/app/build/outputs/apk/release/app-release.apk
+
+IMPORTANT: Use the SAME keystore for every update. Lost keystore = new app listing.
+
+FILES TO DOWNLOAD:
+  - store-listing-en.txt: English store description
+  - store-listing-es.txt: Spanish store description  
+  - app-info.txt: App metadata, links, keystore info
+  - privacy-policy.txt: Privacy policy URL and data safety

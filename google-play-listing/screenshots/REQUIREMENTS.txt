@@ -1,0 +1,22 @@
+GOOGLE PLAY SCREENSHOT REQUIREMENTS:
+- Minimum 2 screenshots (max 8)
+- JPEG or 24-bit PNG
+- 16:9 or 9:16 aspect ratio
+- Minimum: 320px
+- Maximum: 3840px
+- Recommended: 1080x1920 (portrait phone)
+
+REQUIRED SCREENSHOTS (7 total):
+1. Landing/home screen showing Interior/Exterior options
+2. Camera capture screen
+3. Catalog browsing with material grid
+4. Material detail / Probe modal
+5. Room with analyzed wall detection overlay
+6. BEFORE/AFTER render comparison
+7. Quote/cart screen
+
+HOW TO CAPTURE:
+- Open https://buildingapp.us on your phone
+- Take screenshots (Power + Volume Down on Android)
+- Or use Chrome DevTools: Device Toolbar → iPhone 12 Pro → Capture screenshot
+- Run: adb shell screencap -p /sdcard/screenshot.png && adb pull /sdcard/screenshot.png
