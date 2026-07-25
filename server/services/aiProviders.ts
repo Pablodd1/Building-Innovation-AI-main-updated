@@ -687,6 +687,10 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     const mimeType = getMimeType(req.originalImage ?? (req as any).image);
     const { prompt: finalPrompt } = buildOverlayPrompt(req);
     const productRef = await getImageBase64(req.material?.imageUrl);
+    if (!productRef && req.material?.imageUrl) {
+        // ponytail: explicit error instead of silent text-only fallback
+        throw new Error(`Failed to load product image from ${req.material.imageUrl}. Check Drive URL or proxy.`);
+    }
     const hasProductImage = !!productRef;
 
     const parts: any[] = [{ inlineData: { data: base64Data, mimeType } }];
@@ -1128,6 +1132,10 @@ DIRECTIVES (execute exactly these 4, nothing else):
     // which is why renders "looked recreated but not like the original product".
     let imageInput: any;
     const productRef = await getImageBase64(req.material?.imageUrl);
+    if (!productRef && req.material?.imageUrl) {
+        // ponytail: explicit error instead of silent text-only fallback
+        throw new Error(`Failed to load product image from ${req.material.imageUrl}. Check Drive URL or proxy.`);
+    }
     if (productRef) {
         imageInput = [
             imagePart,

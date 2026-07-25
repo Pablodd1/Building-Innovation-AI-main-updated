@@ -1957,42 +1957,8 @@ const getMimeType = (dataURI: string) => {
     return match ? match[1] : "image/jpeg";
 };
 
-const getImageBase64 = async (urlPath: string): Promise<{ data: string; mimeType: string } | null> => {
-    try {
-        if (!urlPath) return null;
-        
-        // Handle HTTP/HTTPS URLs
-        if (urlPath.startsWith('http://') || urlPath.startsWith('https://')) {
-            const response = await fetch(urlPath);
-            if (!response.ok) throw new Error(`Failed to fetch remote image: ${response.statusText}`);
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const mimeType = response.headers.get('content-type') || 'image/jpeg';
-            return { data: buffer.toString('base64'), mimeType };
-        }
-
-        // Handle local paths
-        const cleanPath = urlPath.startsWith('/') ? urlPath.substring(1) : urlPath;
-        const possiblePaths = [
-            path.join(process.cwd(), 'public', cleanPath),
-            path.join(process.cwd(), cleanPath),
-            path.resolve(cleanPath)
-        ];
-
-        for (const fullPath of possiblePaths) {
-            if (fs.existsSync(fullPath)) {
-                const data = fs.readFileSync(fullPath);
-                const ext = path.extname(fullPath).toLowerCase().replace('.', '');
-                const mimeType = ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg';
-                return { data: data.toString('base64'), mimeType };
-            }
-        }
-        return null;
-    } catch (e) {
-        console.warn(`Could not load image: ${urlPath}`, e);
-        return null;
-    }
-};
+// ponytail: getImageBase64 removed — duplicate of aiProviders.ts version.
+// Use import from ./services/aiProviders.js instead.
 
 const getErrorMessage = (error: any): string => {
     if (typeof error === "string") return error;

@@ -5152,7 +5152,12 @@ const App: React.FC = () => {
                             <Button
                                 onClick={() => {
                                     setShowProbeModal(false);
-                                    setView(AppView.CAMERA);
+                                    // ponytail: if user already has a room photo, skip camera and go straight to editor
+                                    if (originalImage) {
+                                        setView(AppView.EDITOR);
+                                    } else {
+                                        setView(AppView.CAMERA);
+                                    }
                                 }}
                                 className="uppercase text-xs font-bold"
                             >
