@@ -10,3 +10,4 @@ data/config.json
 .env*.local
 data/config.json
 .env*
+.chrome-profile/
