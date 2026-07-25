@@ -123227,7 +123227,7 @@ async function sendPurchaseNotifications(params) {
 var import_crypto2 = __toESM(require("crypto"), 1);
 
 // server/buildInfo.ts
-var BUILD_COMMIT = "unknown";
+var BUILD_COMMIT = "${GITHUB_SHA:-unknown}";
 var BUILD_TIME = (/* @__PURE__ */ new Date()).toISOString();
 
 // server/index.ts
