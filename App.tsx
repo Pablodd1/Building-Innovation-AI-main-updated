@@ -2015,18 +2015,18 @@ const App: React.FC = () => {
                     setLang("en");
                     logUserBehavior("CHANGE_LANGUAGE", { lang: "en" });
                 }}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
+                className={`px-3 py-2 text-xs font-bold rounded transition-colors min-h-[44px] flex items-center ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
-                EN {unitSystem === "usa" && " (ft/in)"}
+                EN {unitSystem === "usa" && "(ft/in)"}
             </button>
             <button
                 onClick={() => {
                     setLang("es");
                     logUserBehavior("CHANGE_LANGUAGE", { lang: "es" });
                 }}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
+                className={`px-3 py-2 text-xs font-bold rounded transition-colors min-h-[44px] flex items-center ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
-                ES {unitSystem === "latam" && " (m/cm)"}
+                ES {unitSystem === "latam" && "(m/cm)"}
             </button>
         </div>
     );
@@ -4453,59 +4453,62 @@ const App: React.FC = () => {
     const renderGallery = () => {
         return (
             <div className="min-h-screen bg-gray-100 flex flex-col">
-                <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-gray-300 p-4">
-                    <div className="max-w-7xl mx-auto flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Button
-                                variant="ghost"
-                                onClick={() => setView(AppView.LANDING)}
-                                className="p-2 -ml-2"
-                            >
-                                <svg
-                                    className="w-6 h-6"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-gray-300 p-3">
+                    <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-0 sm:justify-between">
+                        <div className="flex items-center gap-3 w-full sm:w-auto justify-between">
+                            <div className="flex items-center gap-3">
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => setView(AppView.LANDING)}
+                                    className="p-2 -ml-2"
                                 >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M15 19l-7-7 7-7"
-                                    />
-                                </svg>
-                            </Button>
-                            <h2 className="text-xl font-bold text-gray-700 uppercase tracking-wider">
-                                {t.gallery.collection}
-                            </h2>
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                </Button>
+                                <h2 className="text-lg font-bold text-gray-700 uppercase tracking-wider">
+                                    {t.gallery.collection}
+                                </h2>
+                            </div>
+                            <div className="flex sm:hidden items-center gap-2">
+                                {currentUser && (
+                                    <button onClick={() => setShowSubscriptionModal(true)}
+                                        className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-full">
+                                        <span className="text-[9px] font-bold text-blue-700 uppercase">
+                                            {getTierLimit(currentUser.tier || 'Free') === 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)}
+                                        </span>
+                                    </button>
+                                )}
+                                <LanguageToggle />
+                            </div>
                         </div>
-                        <div className="flex gap-4 items-center">
-                            {currentUser && (
-                                <button 
-                                    onClick={() => setShowSubscriptionModal(true)}
-                                    className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-full transition-all group"
-                                >
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
-                                        {getTierLimit(currentUser.tier || 'Free') === 9999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
-                                    </span>
-                                    <svg className="w-3 h-3 text-blue-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
-                                </button>
-                            )}
-                            <LanguageToggle />
+                        <div className="flex gap-2 items-center w-full sm:w-auto">
                             <input
                                 type="text"
                                 placeholder={lang === "es" ? "Buscar..." : "Search..."}
-                                className="w-28 sm:w-auto bg-gray-200 border-none rounded-full px-3 py-2 text-xs sm:text-sm text-gray-700 focus:ring-2 focus:ring-blue-500"
+                                className="flex-1 sm:w-48 bg-gray-200 border-none rounded-full px-3 py-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
+                            <div className="hidden sm:flex gap-2 items-center">
+                                {currentUser && (
+                                    <button onClick={() => setShowSubscriptionModal(true)}
+                                        className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-full transition-all group">
+                                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                        <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
+                                            {getTierLimit(currentUser.tier || 'Free') === 9999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
+                                        </span>
+                                        <svg className="w-3 h-3 text-blue-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                    </button>
+                                )}
+                                <LanguageToggle />
+                            </div>
                         </div>
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto p-4 md:p-6">
-                    <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
+                    <div className="max-w-7xl mx-auto grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
                         {filteredMaterials.map((material) => (
                             <ProductCard
                                 key={material.id}
@@ -5756,7 +5759,7 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700">
+        <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700 overflow-x-hidden w-full max-w-full">
             {/* Floating Toast Notification */}
             {toast && (
                 <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] animate-bounce-in">
@@ -5851,7 +5854,7 @@ const App: React.FC = () => {
             {/* ── Bottom Navigation Bar ── */}
             {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART].includes(view) && (
                 <nav className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100/95 backdrop-blur-md border-t border-gray-300 safe-area-bottom">
-                    <div className="flex justify-around items-center h-16 max-w-lg mx-auto px-2">
+                    <div className="flex justify-around items-center h-[72px] max-w-lg mx-auto px-2 pb-[env(safe-area-inset-bottom,8px)]">
                         {/* Home */}
                         <button
                             onClick={() => setView(AppView.LANDING)}
@@ -5860,7 +5863,7 @@ const App: React.FC = () => {
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.LANDING ? 2.5 : 1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                             </svg>
-                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Inicio' : 'Home'}</span>
+                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Inicio' : 'Home'}</span>
                         </button>
 
                         {/* Gallery */}
@@ -5871,7 +5874,7 @@ const App: React.FC = () => {
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.GALLERY ? 2.5 : 1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Catálogo' : 'Catalog'}</span>
+                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Catálogo' : 'Catalog'}</span>
                         </button>
 
                         {/* Camera */}
@@ -5887,7 +5890,7 @@ const App: React.FC = () => {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CAMERA ? 2.5 : 1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CAMERA ? 2.5 : 1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
-                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Cámara' : 'Camera'}</span>
+                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Cámara' : 'Camera'}</span>
                         </button>
 
                         {/* Admin (only if admin) */}
@@ -5900,7 +5903,7 @@ const App: React.FC = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.ADMIN ? 2.5 : 1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.ADMIN ? 2.5 : 1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                 </svg>
-                                <span className="text-[10px] font-semibold">{lang === 'es' ? 'Admin' : 'Admin'}</span>
+                                <span className="text-[11px] font-semibold">{lang === 'es' ? 'Admin' : 'Admin'}</span>
                             </button>
                         )}
 
@@ -5917,7 +5920,7 @@ const App: React.FC = () => {
                                     {cartCount}
                                 </span>
                             )}
-                            <span className="text-[10px] font-semibold">{lang === 'es' ? 'Cotizar' : 'Quote'}</span>
+                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Cotizar' : 'Quote'}</span>
                         </button>
                     </div>
                 </nav>
@@ -5925,7 +5928,7 @@ const App: React.FC = () => {
 
             {/* Safe area padding for bottom nav */}
             {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART].includes(view) && (
-                <div className="h-20" />
+                <div className="h-24" />
             )}
         </div>
     );
