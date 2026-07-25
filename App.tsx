@@ -4545,7 +4545,7 @@ const App: React.FC = () => {
 
     const renderEditor = () => {
         return (
-            <div className="h-screen bg-slate-950 flex flex-col md:flex-row overflow-hidden">
+            <div className="h-screen h-[100dvh] bg-slate-950 flex flex-col md:flex-row overflow-hidden">
                 {/* Main Viewport */}
                 <div className="flex-1 relative flex items-center justify-center bg-black/50 overflow-hidden">
                     {(generationState.isGenerating || generationState.isRealisticGenerating || generationState.isAnalyzing) && (
@@ -4605,7 +4605,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Mobile-Optimised Controls Panel */}
-                <div className="w-full md:w-96 bg-white border-l border-gray-300 flex flex-col h-[50vh] md:h-full z-20 shadow-2xl">
+                <div className="w-full md:w-96 bg-white border-l border-gray-300 flex flex-col h-[52vh] md:h-full z-20 shadow-2xl pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                     {/* Top bar */}
                     <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0">
                         <Button
@@ -5849,12 +5849,12 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
             {view === AppView.ADMIN && renderAdmin()}
             {view === AppView.GALLERY && renderGallery()}
             {view === AppView.CAMERA && (
-                <div className="h-screen flex flex-col bg-black">
-                    <div className="p-4 flex justify-between items-center z-10">
+                <div className="h-screen h-[100dvh] flex flex-col bg-black pb-[env(safe-area-inset-bottom)]">
+                    <div className="p-4 flex justify-between items-center z-10 pt-[max(1rem,env(safe-area-inset-top))]">
                         <Button
                             variant="ghost"
                             onClick={() => setView(AppView.GALLERY)}
-                            className="text-gray-700"
+                            className="text-white hover:text-white/80 font-bold"
                         >
                             ← {t.common.back}
                         </Button>

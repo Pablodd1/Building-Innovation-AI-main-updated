@@ -35,14 +35,14 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({
                     decoding="async"
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-2 flex flex-col justify-end">
-                    <div className="text-[8px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent p-2.5 flex flex-col justify-end">
+                    <div className="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
                         {material.category}
                     </div>
-                    <div className="text-gray-700 text-[11px] font-bold leading-tight mb-0.5 line-clamp-2">
+                    <div className="text-white text-[11px] font-bold leading-tight mb-0.5 line-clamp-2 drop-shadow-sm">
                         {material.name}
                     </div>
-                    <div className="text-[8px] text-gray-500">
+                    <div className="text-[9px] text-gray-300">
                         {material.dimensions.width}x{material.dimensions.length}cm
                     </div>
                 </div>
@@ -53,7 +53,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({
                     e.stopPropagation();
                     onAddToCart(material);
                 }}
-                className="absolute bottom-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1"
+                className="absolute bottom-2 right-2 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1 active:scale-95"
                 title={lang === "es" ? "Añadir al carrito" : "Add to cart"}
             >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,7 +67,7 @@ const ProductCardComponent: React.FC<ProductCardProps> = ({
                     e.stopPropagation();
                     onEstimate(material);
                 }}
-                className="absolute bottom-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1"
+                className="absolute bottom-2 left-2 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-green-600 hover:bg-green-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-lg flex items-center gap-1 active:scale-95"
                 title={lang === "es" ? "Cotizar" : "Estimate"}
             >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
