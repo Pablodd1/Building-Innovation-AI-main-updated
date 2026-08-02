@@ -1371,9 +1371,17 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
     let maskWidth = 0, maskHeight = 0;
     let maskSource = "none";
 
-    // Try SAM 3 first for pixel-accurate wall geometry
-    try {
-        const { segmentRoomSurfaces, buildBinaryMaskFromAlphas, binaryMaskToPng } = await import("./segmentationService.js");
+    // SAM 3 pixel-accurate segmentation is OPT-IN via SAM3_ENABLED env var.
+    // Default: OFF — uses the proven gpt-4o rectangle mask (9/10 on test image).
+    // Enable: set SAM3_ENABLED=true on Hostinger when you want pixel-accurate
+    // wall geometry for rooms with complex angles/alcoves. SAM 3 produces
+    // tighter masks than gpt-4o's rectangles — more accurate on complex rooms
+    // but slightly less "generous" coverage on simple rectangular rooms.
+    // A/B test on real customer photos before enabling in production.
+    const sam3Enabled = process.env.SAM3_ENABLED === "true";
+
+    // Try SAM 3 first for pixel-accurate wall geometry (only when enabled)
+    if (sam3Enabled) try {
 
         // Get the room photo dimensions for the SAM 3 call
         const sharp = (await import("sharp")).default;
