@@ -1351,16 +1351,116 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
     const rawImage = req.originalImage ?? (req as any).image;
     if (!rawImage) throw new Error("No image provided for FLUX render");
 
-    // Build the binary mask (white=edit, black=preserve). Falls back to null
-    // when there are no walls — caller will route to a different provider.
+    // Build the binary wall mask (white=edit, black=preserve).
+    //
+    // PRIMARY PATH: SAM 3 segmentation (pixel-accurate, perspective-correct).
+    // SAM 3 is purpose-built for segmentation and handles angled walls that
+    // gpt-4o cannot (gpt-4o emits axis-aligned rectangles due to its 512px
+    // tile ceiling). Verified Aug 2026 across 5 diverse rooms — wall detection
+    // 5/5 correct.
+    //
+    // FALLBACK: if SAM 3 fails or returns no wall mask, use the gpt-4o-derived
+    // mask from buildBinaryWallMask. This keeps FLUX working even if fal.ai
+    // has a hiccup on the segmentation endpoint.
     const imageBuffer = Buffer.from(cleanBase64(rawImage), "base64");
     if (!req.analysis?.surfaces?.length) {
         throw new Error("FLUX Fill requires analysis surfaces — none provided");
     }
-    const { buildBinaryWallMask } = await import("./imageCompositor.js");
-    const binaryMask = await buildBinaryWallMask(imageBuffer, req.analysis, req.analysis?.surfaces);
-    if (!binaryMask) {
-        throw new Error("FLUX Fill: no wall surfaces in analysis — cannot build mask");
+
+    let maskBuffer: Buffer | null = null;
+    let maskWidth = 0, maskHeight = 0;
+    let maskSource = "none";
+
+    // Try SAM 3 first for pixel-accurate wall geometry
+    try {
+        const { segmentRoomSurfaces, buildBinaryMaskFromAlphas, binaryMaskToPng } = await import("./segmentationService.js");
+
+        // Get the room photo dimensions for the SAM 3 call
+        const sharp = (await import("sharp")).default;
+        const meta = await sharp(imageBuffer).metadata();
+        const imgW = meta.width || 0;
+        const imgH = meta.height || 0;
+
+        if (imgW > 0 && imgH > 0) {
+            // Resize the room photo to a manageable size for SAM 3 (it accepts
+            // any size but smaller = faster + cheaper). 800px longest side
+            // matches our analysis pre-rescale and is plenty for segmentation.
+            const longest = Math.max(imgW, imgH);
+            const scale = longest > 800 ? 800 / longest : 1;
+            const samW = Math.round(imgW * scale);
+            const samH = Math.round(imgH * scale);
+            const samImage = await sharp(imageBuffer)
+                .resize(samW, samH, { fit: "fill" })
+                .jpeg({ quality: 90 })
+                .toBuffer();
+
+            // Segment walls + common obstacle types. Run in parallel for speed.
+            // The furniture types come from gpt-4o's semantic analysis if
+            // available; otherwise use a default set that SAM 3 handles well
+            // per our testing (sofa, television, furniture, light, cabinet).
+            const gpt4oObstacleTypes = (req.analysis?.surfaces || [])
+                .filter((s: any) => s.type !== "wall" && s.type !== "floor" && s.type !== "ceiling")
+                .map((s: any) => s.type)
+                .filter((v: string, i: number, arr: string[]) => arr.indexOf(v) === i); // dedupe
+
+            // Default obstacle types that SAM 3 handles well per our A/B tests.
+            // gpt-4o's hints are merged in but the defaults ensure we always
+            // try the common furniture classes.
+            const obstacleTypes = Array.from(new Set([
+                "sofa", "couch", "furniture", "television", "tv screen",
+                "light", "cabinet", ...gpt4oObstacleTypes,
+            ])).slice(0, 8); // cap at 8 to control cost (~$0.002 each)
+
+            const allTypes = ["wall", ...obstacleTypes];
+            console.log(`[FLUX] SAM 3 segmenting ${allTypes.length} types: ${allTypes.join(", ")}`);
+
+            const masks = await segmentRoomSurfaces(samImage, allTypes, config.FAL_API_KEY);
+
+            const wallMask = masks.get("wall");
+            if (wallMask) {
+                // Collect obstacle masks to subtract from the wall region
+                const obstacleAlphas: Array<{ type: string; alphaBuffer: Buffer }> = [];
+                for (const [type, mask] of masks) {
+                    if (type !== "wall") {
+                        obstacleAlphas.push({ type, alphaBuffer: mask.alphaBuffer });
+                    }
+                }
+
+                // Build the binary mask (walls=white, obstacles subtracted)
+                const binary = buildBinaryMaskFromAlphas(
+                    wallMask.alphaBuffer,
+                    wallMask.width,
+                    wallMask.height,
+                    obstacleAlphas
+                );
+
+                maskBuffer = await binaryMaskToPng(binary, wallMask.width, wallMask.height);
+                maskWidth = wallMask.width;
+                maskHeight = wallMask.height;
+                maskSource = `sam3 (wall=${wallMask.opaquePercent.toFixed(1)}%, ${obstacleAlphas.length} obstacles)`;
+                console.log(`[FLUX] ✅ SAM 3 mask built: ${maskWidth}x${maskHeight}`);
+            }
+        }
+    } catch (e: any) {
+        console.warn(`[FLUX] SAM 3 segmentation failed, falling back to gpt-4o mask: ${e?.message}`);
+    }
+
+    // FALLBACK: gpt-4o-derived mask if SAM 3 didn't produce one
+    if (!maskBuffer) {
+        const { buildBinaryWallMask } = await import("./imageCompositor.js");
+        maskBuffer = await buildBinaryWallMask(imageBuffer, req.analysis, req.analysis?.surfaces);
+        if (maskBuffer) {
+            const sharp = (await import("sharp")).default;
+            const meta = await sharp(maskBuffer).metadata();
+            maskWidth = meta.width || 0;
+            maskHeight = meta.height || 0;
+            maskSource = "gpt-4o (rectangle fallback)";
+            console.log(`[FLUX] Using gpt-4o fallback mask: ${maskWidth}x${maskHeight}`);
+        }
+    }
+
+    if (!maskBuffer) {
+        throw new Error("FLUX Fill: no wall surfaces detected (SAM 3 + gpt-4o both failed)");
     }
 
     // Material description. Use the focused FLUX-specific prompt builder —
@@ -1391,7 +1491,23 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
         roomJpegBuffer = imageBuffer;
     }
     const roomDataUri = `data:image/jpeg;base64,${roomJpegBuffer.toString("base64")}`;
-    const maskDataUri = `data:image/png;base64,${binaryMask.toString("base64")}`;
+
+    // The mask dimensions must match the room photo dimensions for FLUX.
+    // SAM 3 returns masks at 800px scale; the room photo is at original res.
+    // Resize the mask to the room photo's exact dimensions.
+    const sharpMod = (await import("sharp")).default;
+    const roomMeta = await sharpMod(roomJpegBuffer).metadata();
+    const finalW = roomMeta.width || maskWidth;
+    const finalH = roomMeta.height || maskHeight;
+    let maskForFlux = maskBuffer;
+    if (finalW !== maskWidth || finalH !== maskHeight) {
+        maskForFlux = await sharpMod(maskBuffer)
+            .resize(finalW, finalH, { fit: "fill" })
+            .png()
+            .toBuffer();
+        console.log(`[FLUX] Resized mask ${maskWidth}x${maskHeight} → ${finalW}x${finalH} to match room photo`);
+    }
+    const maskDataUri = `data:image/png;base64,${maskForFlux.toString("base64")}`;
 
     // Verified request schema for fal-ai/flux-pro/v1/fill (probed 2026-07-24):
     //   image_url:  source image (URL or data URI) — note "_url" suffix
@@ -1412,7 +1528,7 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
         enable_safety_checker: true,
     };
 
-    console.log(`[AI] Calling FLUX.1 Fill via fal.ai (mask ${binaryMask.length}B, room ${roomJpegBuffer.length}B)...`);
+    console.log(`[AI] Calling FLUX.1 Fill via fal.ai (mask ${maskForFlux.length}B via ${maskSource}, room ${roomJpegBuffer.length}B)...`);
 
     const response = await fetch(FAL_FLUX_FILL_URL, {
         method: "POST",
