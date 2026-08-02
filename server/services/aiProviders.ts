@@ -517,6 +517,115 @@ OUTPUT: A single photorealistic image, identical to the original photo except th
     return { prompt, isFurniture };
 }
 
+/**
+ * FLUX-specific prompt builder. Unlike buildOverlayPrompt (which is verbose and
+ * frames the task as "architectural visualization"), FLUX.1 Fill inpainting
+ * responds best to a LITERAL description of the texture/material that should
+ * appear in the masked region. FLUX treats long creative briefs as a license
+ * to redecorate — it replaced furniture and floors in early tests because the
+ * prompt mentioned "photorealistic room after renovation".
+ *
+ * Key principles (verified against fal.ai docs + A/B tests):
+ *   - Describe ONLY what goes in the masked region, not the whole scene.
+ *   - The unmasked region is preserved by the mask itself — no need to tell
+ *     FLUX to "preserve furniture" (it has no choice; the mask enforces it).
+ *   - Use technical descriptors: color, finish, pattern name, repeat scale.
+ *   - Keep it short. Diffusion prompts >60 words drift.
+ */
+function buildFluxFillPrompt(req: OverlayRequest, textureDescription?: string): string {
+    const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
+
+    if (isFurniture) {
+        // Furniture mode is different — it's a placement task, not a surface finish.
+        // Keep the verbose prompt for that case.
+        return buildOverlayPrompt(req).prompt;
+    }
+
+    // Prefer the gpt-4o-vision-generated texture description when available —
+    // it describes the ACTUAL product image in literal English, which is what
+    // FLUX needs. Fall back to a name-based description if vision failed.
+    if (textureDescription) {
+        return `${textureDescription} Apply as a flat seamless wall finish.` +
+            (req.userInstruction ? ` ${req.userInstruction}` : "");
+    }
+
+    // Fallback: derive a description from the product name + category.
+    const name = req.material?.name || "the selected material";
+    const category = req.material?.category || "panels";
+    const colorHints: Record<string, string> = {
+        "NEGRO": "black", "BLANCO": "white", "GRIS": "gray",
+        "MARRON": "brown", "ROJO": "red", "AZUL": "blue",
+        "VERDE": "green", "NATURAL": "natural wood tone",
+        "MADERA": "wood grain", "MARMOL": "marble",
+    };
+    let colorHint = "";
+    for (const [es, en] of Object.entries(colorHints)) {
+        if (name.toUpperCase().includes(es)) { colorHint = en; break; }
+    }
+    const desc = colorHint
+        ? `${colorHint} ${category.toLowerCase()} wall surface`
+        : `${category.toLowerCase()} wall surface`;
+    return `${desc} using ${name}. Flat seamless finish, photorealistic material texture.` +
+        (req.userInstruction ? ` ${req.userInstruction}` : "");
+}
+
+/**
+ * Use gpt-4o vision to generate a literal English description of the product's
+ * texture from its image. This is what FLUX Fill needs — a description of the
+ * SURFACE (color, finish, pattern, scale), not a creative brief.
+ *
+ * Returns null if the product image can't be fetched or vision fails — caller
+ * falls back to the name-based description in buildFluxFillPrompt.
+ *
+ * Cost: ~$0.01 per call (gpt-4o-mini vision, ~100 output tokens). Worth it
+ * because the texture description is the single biggest factor in FLUX render
+ * quality — without it, Spanish product names are opaque to FLUX.
+ */
+async function describeProductTexture(
+    imageUrl: string | undefined,
+    productName: string | undefined,
+    config: AIConfig
+): Promise<string | null> {
+    if (!imageUrl || !config.OPENAI_API_KEY) return null;
+
+    const productRef = await getImageBase64(imageUrl);
+    if (!productRef) {
+        console.warn(`[describeProductTexture] could not fetch product image from ${imageUrl}`);
+        return null;
+    }
+
+    const ai = getOpenAISDK(config.OPENAI_API_KEY);
+    const prompt = `Describe this building material's surface texture in literal English, in under 30 words. ` +
+        `Focus ONLY on: base color, finish (matte/satin/gloss/metallic), and any visible pattern ` +
+        `(geometric grid, wood grain, water-drop relief, diamond motif, panel seams, smooth). ` +
+        `Do NOT describe the room or suggest application — just describe the material itself. ` +
+        `Example output: "Deep matte black foam board with silver water-drop hemispheres in a regular grid pattern." ` +
+        `Product name for context: ${productName || "unknown"}. ` +
+        `Reply with only the description, no preamble.`;
+
+    try {
+        const completion = await ai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{
+                role: "user",
+                content: [
+                    { type: "image_url", image_url: { url: `data:${productRef.mimeType};base64,${productRef.data}`, detail: "low" } },
+                    { type: "text", text: prompt },
+                ],
+            }],
+            max_tokens: 100,
+            temperature: 0.3,
+        } as any);
+        const desc = completion.choices[0]?.message?.content?.trim() || "";
+        if (desc.length < 10) return null;
+        console.log(`[describeProductTexture] ${productName || "(unknown)"} → "${desc.slice(0, 100)}"`);
+        return desc;
+    } catch (e: any) {
+        console.warn(`[describeProductTexture] vision call failed: ${e?.message}`);
+        return null;
+    }
+}
+
 const ANALYSIS_PROMPT = `You are a precision architectural scanner. Your output drives an automated material-overlay system: every surface you return becomes a renderable region, and every obstacle you return becomes a protected mask. Errors are visible to customers.
 
 ═══════════════════════════════════════════════════════════════
@@ -1232,7 +1341,7 @@ DIRECTIVES (execute exactly these 4, nothing else):
 // strong material description from buildOverlayPrompt. Output is a JPEG
 // data URI like the OpenAI path returns.
 
-const FAL_FLUX_FILL_URL = "https://fal.run/fal-ai/flux-pro/v1.1/fill";
+const FAL_FLUX_FILL_URL = "https://fal.run/fal-ai/flux-pro/v1/fill";
 
 async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, startTime: number): Promise<GenerationResult> {
     if (!config.FAL_API_KEY) {
@@ -1254,36 +1363,48 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
         throw new Error("FLUX Fill: no wall surfaces in analysis — cannot build mask");
     }
 
-    // Material description. Reuse the same prompt builder as the OpenAI path
-    // for consistency in voice and rules.
-    const { prompt } = buildOverlayPrompt(req);
+    // Material description. Use the focused FLUX-specific prompt builder —
+    // FLUX inpainting responds best to a LITERAL texture description, not the
+    // verbose "architectural visualization specialist" brief used for OpenAI.
+    // Early tests with buildOverlayPrompt caused FLUX to redecorate the whole
+    // room (replaced furniture, floor) because the prompt read as creative.
+    //
+    // CRITICAL: first ask gpt-4o vision to describe the ACTUAL product image
+    // in literal English. This is what makes FLUX render the correct texture —
+    // without it, Spanish product names like "FOAM BOARD GOTAS DE AGUA NEGRO"
+    // are opaque to FLUX and it renders a flat color instead of the silver
+    // water-drop pattern. ~$0.01/call, worth it for the fidelity gain.
+    const textureDescription = await describeProductTexture(
+        req.material?.imageUrl, req.material?.name, config
+    );
+    const prompt = buildFluxFillPrompt(req, textureDescription);
 
     // Send the room photo and mask as data URIs. fal.ai accepts both URLs and
     // base64 data URIs; data URI avoids an extra upload round-trip and keeps
     // the request self-contained. Re-encode the room as JPEG to strip any
     // alpha channel (FLUX expects RGB) and keep payload size in check.
-    const inputMime = getMimeType(rawImage);
     let roomJpegBuffer: Buffer;
     try {
         roomJpegBuffer = await sharp(imageBuffer).flatten({ background: "#ffffff" }).jpeg({ quality: 95 }).toBuffer();
     } catch {
         // sharp failed — fall back to the raw original.
-        roomJpegBuffer = inputMime === "image/jpeg" ? imageBuffer : imageBuffer;
+        roomJpegBuffer = imageBuffer;
     }
     const roomDataUri = `data:image/jpeg;base64,${roomJpegBuffer.toString("base64")}`;
     const maskDataUri = `data:image/png;base64,${binaryMask.toString("base64")}`;
 
-    // FLUX Fill docs (https://fal.ai/models/fal-ai/flux-pro/v1.1/fill):
-    //   image:  source image (URL or data URI)
-    //   mask:   white = fill, black = keep (standard diffusion convention)
-    //   prompt: description of what should appear in the masked region
-    //   strength: 0.0-1.0, how strongly to apply the prompt (1.0 = full replace)
+    // Verified request schema for fal-ai/flux-pro/v1/fill (probed 2026-07-24):
+    //   image_url:  source image (URL or data URI) — note "_url" suffix
+    //   mask_url:   binary mask, white=fill/black=keep (data URI ok)
+    //   prompt:     description of what should appear in the masked region
+    //   strength:   0.0-1.0, how strongly to apply the prompt (1.0 = full replace)
     //   num_images: 1
     //   output_format: "jpeg" | "png"
     //   enable_safety_checker: boolean
+    // Response shape: { images: [{ url, width, height, content_type }], timings, seed, ... }
     const body = {
-        image: roomDataUri,
-        mask: maskDataUri,
+        image_url: roomDataUri,
+        mask_url: maskDataUri,
         prompt,
         strength: 0.98,
         num_images: 1,
@@ -1291,7 +1412,7 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
         enable_safety_checker: true,
     };
 
-    console.log(`[AI] Calling FLUX.1 Fill via fal.ai (mask size ${binaryMask.length}B, room ${roomJpegBuffer.length}B)...`);
+    console.log(`[AI] Calling FLUX.1 Fill via fal.ai (mask ${binaryMask.length}B, room ${roomJpegBuffer.length}B)...`);
 
     const response = await fetch(FAL_FLUX_FILL_URL, {
         method: "POST",
@@ -1308,25 +1429,18 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
     }
 
     const data = await response.json() as any;
-    // fal.ai response shape: { images: [{ url: "https://..." }], ... }
-    // Sometimes also returns base64. Handle both.
+    // fal.ai response shape: { images: [{ url, width, height, content_type }], timings, seed, has_nsfw_concepts }
     const imageUrl = data?.images?.[0]?.url;
-    const imageB64 = data?.images?.[0]?.base64;
-    if (!imageUrl && !imageB64) {
-        throw new Error(`FLUX Fill: no image in response (keys=${Object.keys(data || {}).join(",")})`);
+    if (!imageUrl) {
+        throw new Error(`FLUX Fill: no image URL in response (keys=${Object.keys(data || {}).join(",")})`);
     }
 
     // Fetch the URL to embed as data URI (so the rest of the pipeline — which
-    // expects base64 — works unchanged).
-    let image: string;
-    if (imageB64) {
-        image = `data:image/jpeg;base64,${imageB64}`;
-    } else {
-        const imgResp = await fetch(imageUrl);
-        if (!imgResp.ok) throw new Error(`FLUX Fill: could not fetch result image (${imgResp.status})`);
-        const imgBuf = Buffer.from(await imgResp.arrayBuffer());
-        image = `data:image/jpeg;base64,${imgBuf.toString("base64")}`;
-    }
+    // expects base64 — works unchanged). fal.ai returns a hosted URL, not base64.
+    const imgResp = await fetch(imageUrl);
+    if (!imgResp.ok) throw new Error(`FLUX Fill: could not fetch result image (${imgResp.status})`);
+    const imgBuf = Buffer.from(await imgResp.arrayBuffer());
+    const image = `data:image/jpeg;base64,${imgBuf.toString("base64")}`;
 
     recordSuccess("flux");
     const durationMs = Date.now() - startTime;
@@ -1792,9 +1906,11 @@ export async function testAIConnection(config: AIConfig): Promise<any> {
             GEMINI_API_KEY_len: config.GEMINI_API_KEY ? config.GEMINI_API_KEY.length : 0,
             OPENAI_API_KEY_len: config.OPENAI_API_KEY ? config.OPENAI_API_KEY.length : 0,
             OPENROUTER_API_KEY_len: config.OPENROUTER_API_KEY ? config.OPENROUTER_API_KEY.length : 0,
+            FAL_API_KEY_len: config.FAL_API_KEY ? config.FAL_API_KEY.length : 0,
             GEMINI_API_KEY_masked: config.GEMINI_API_KEY ? `${config.GEMINI_API_KEY.slice(0, 5)}...${config.GEMINI_API_KEY.slice(-4)}` : "missing",
             OPENAI_API_KEY_masked: config.OPENAI_API_KEY ? `${config.OPENAI_API_KEY.slice(0, 5)}...${config.OPENAI_API_KEY.slice(-4)}` : "missing",
             OPENROUTER_API_KEY_masked: config.OPENROUTER_API_KEY ? `${config.OPENROUTER_API_KEY.slice(0, 5)}...${config.OPENROUTER_API_KEY.slice(-4)}` : "missing",
+            FAL_API_KEY_masked: config.FAL_API_KEY ? `${config.FAL_API_KEY.slice(0, 8)}...${config.FAL_API_KEY.slice(-4)}` : "missing",
         }
     };
 
