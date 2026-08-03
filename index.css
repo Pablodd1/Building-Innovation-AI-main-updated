@@ -1,18 +1,24 @@
 /* ConstructViz AI — Global Styles */
 
-/* Safe area padding for notched phones */
-.safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0);
+/* Tailwind v3 build-time generation.
+   Replaces the old cdn.tailwindcss.com runtime, which only scanned the
+   initial DOM and missed responsive classes (md:, sm:, lg:) on views
+   that React rendered after navigation. With build-time PostCSS, every
+   className in App.tsx + components/ is scanned and its CSS generated
+   into the final stylesheet — responsive layouts now work correctly. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ───────────────────────────────────────────────────── */
+body {
+    font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
 }
 
 /* Smooth scrolling */
 html {
     scroll-behavior: smooth;
-}
-
-/* Prevent horizontal overflow */
-body {
-    overflow-x: hidden;
 }
 
 /* Tap highlight for mobile */
@@ -25,7 +31,66 @@ button, a, input, select, textarea {
     touch-action: manipulation;
 }
 
-/* Mobile-safe bottom spacing */
+/* ── Safe area (notched phones) ─────────────────────────────── */
+.safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
 .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* ── Custom scrollbar hiding ────────────────────────────────── */
+.hide-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.hide-scroll {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* ── Print Styles for PDF Generation ────────────────────────── */
+@media print {
+    @page { margin: 0.5cm; size: A4 portrait; }
+    body {
+        background-color: white !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Hide everything by default */
+    body * {
+        visibility: hidden;
+    }
+
+    /* Only show the print area */
+    #print-area, #print-area * {
+        visibility: visible;
+    }
+
+    #print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 20px;
+        background-color: white !important;
+        color: black !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Hide buttons and interactive elements in print view */
+    .no-print {
+        display: none !important;
+    }
+
+    /* Force text colors for print */
+    .print\:text-black { color: #000 !important; }
+    .print\:text-slate-600 { color: #475569 !important; }
+    .print\:border-black { border-color: #000 !important; }
+    .print\:bg-white { background-color: #fff !important; }
 }

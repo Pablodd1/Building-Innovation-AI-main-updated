@@ -67,75 +67,10 @@
     <!-- App Icons -->
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=3" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=3" />
     <link rel="apple-touch-icon" href="/icon-192.png?v=3" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=3" />
     <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png?v=3" />
-    <script>
-      // Suppress CDN Tailwind warning in production
-      const origWarn = console.warn;
-      console.warn = function(...args) {
-        if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
-        origWarn.apply(console, args);
-      };
-    </script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-    <style>
-      body { font-family: 'Inter', sans-serif; }
-      /* Custom scrollbar for gallery */
-      .hide-scroll::-webkit-scrollbar {
-        display: none;
-      }
-      .hide-scroll {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
-
-      /* Print Styles for PDF Generation */
-      @media print {
-        @page { margin: 0.5cm; size: A4 portrait; }
-        body { 
-          background-color: white !important; 
-          color: black !important; 
-          -webkit-print-color-adjust: exact !important; 
-          print-color-adjust: exact !important;
-        }
-        
-        /* Hide everything by default */
-        body * {
-          visibility: hidden;
-        }
-        
-        /* Only show the print area */
-        #print-area, #print-area * {
-          visibility: visible;
-        }
-        
-        #print-area {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          margin: 0;
-          padding: 20px;
-          background-color: white !important;
-          color: black !important;
-          border: none !important;
-          box-shadow: none !important;
-        }
-
-        /* Hide buttons and interactive elements in print view */
-        .no-print {
-          display: none !important;
-        }
-        
-        /* Force text colors for print */
-        .print\:text-black { color: #000 !important; }
-        .print\:text-slate-600 { color: #475569 !important; }
-        .print\:border-black { border-color: #000 !important; }
-        .print\:bg-white { background-color: #fff !important; }
-      }
-    </style>
 </head>
   <body class="bg-slate-900 text-white">
     <div id="root"></div>
