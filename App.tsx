@@ -1707,7 +1707,9 @@ const App: React.FC = () => {
                 renderOptions,
                 lang,
                 currentUser?.id,
-                generationState.analysis
+                generationState.analysis,
+                undefined,  // mode (default = compositor)
+                currentUser?.session_token,
             );
 
             const newHistoryItem: HistoryItem = {
@@ -1866,7 +1868,8 @@ const App: React.FC = () => {
                 lang,
                 currentUser?.id,
                 generationState.analysis,
-                "inpaint"  // <-- the new mode
+                "inpaint",  // <-- the new mode
+                currentUser?.session_token,
             );
 
             const newHistoryItem: HistoryItem = {
@@ -1953,6 +1956,7 @@ const App: React.FC = () => {
                 originalImage,
                 currentUser?.id,
                 lang,
+                currentUser?.session_token,
             );
             setGenerationState((prev) => ({
                 ...prev,

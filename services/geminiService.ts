@@ -18,7 +18,8 @@ const getErrorMessage = (error: any): string => {
 export const generateRoomAnalysis = async (
     imageBase64: string,
     userId?: number,
-    lang: string = "en"
+    lang: string = "en",
+    sessionToken?: string
 ): Promise<RoomAnalysisResult> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000); // 45s timeout
@@ -26,7 +27,14 @@ export const generateRoomAnalysis = async (
     try {
         const res = await fetch("/api/ai/analyze-room", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                // P0 security: server requires auth on AI routes (requireAuth middleware).
+                // Without this header, the call gets 401 and the user sees
+                // "Analysis service is temporarily unavailable" — which was the
+                // root cause of the "app not analyzing" bug.
+                ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+            },
             body: JSON.stringify({ image: imageBase64, userId, lang }),
             signal: controller.signal,
         });
@@ -66,7 +74,8 @@ export const generateMaterialOverlay = async (
     lang?: string,
     userId?: number,
     analysis?: any,
-    mode?: "compositor" | "inpaint"
+    mode?: "compositor" | "inpaint",
+    sessionToken?: string
 ): Promise<string> => {
     const controller = new AbortController();
     // Inpaint mode calls OpenAI gpt-image which can take 30-60s — extend the
@@ -77,7 +86,11 @@ export const generateMaterialOverlay = async (
     try {
         const res = await fetch("/api/ai/generate-overlay", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                // P0 security: server requires auth on AI routes (requireAuth middleware).
+                ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+            },
             body: JSON.stringify({
                 originalImage: originalImageBase64,
                 material,
