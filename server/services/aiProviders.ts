@@ -550,6 +550,12 @@ function buildFluxFillPrompt(req: OverlayRequest, textureDescription?: string): 
     }
 
     // Fallback: derive a description from the product name + category.
+    // This is a BEST-EFFORT approximation — the color is guessed from the
+    // Spanish product name and may not match the actual product image. For
+    // accurate results, describeProductTexture() (gpt-4o-mini vision) should
+    // be available via OPENAI_API_KEY. If the product image's actual color
+    // differs from the name (e.g. "BURDEO" product is actually dark charcoal),
+    // this fallback will produce a mismatch.
     const name = req.material?.name || "the selected material";
     const category = req.material?.category || "panels";
     const colorHints: Record<string, string> = {
@@ -557,6 +563,9 @@ function buildFluxFillPrompt(req: OverlayRequest, textureDescription?: string): 
         "MARRON": "brown", "ROJO": "red", "AZUL": "blue",
         "VERDE": "green", "NATURAL": "natural wood tone",
         "MADERA": "wood grain", "MARMOL": "marble",
+        "BURDEO": "deep burgundy wine", "CREMA": "cream", "BEIGE": "beige",
+        "DORADO": "gold", "PLATEADO": "silver", "ROSA": "pink",
+        "NARANJA": "orange", "VIOLETA": "violet", "TERRACOTA": "terracotta",
     };
     let colorHint = "";
     for (const [es, en] of Object.entries(colorHints)) {
@@ -565,8 +574,10 @@ function buildFluxFillPrompt(req: OverlayRequest, textureDescription?: string): 
     const desc = colorHint
         ? `${colorHint} ${category.toLowerCase()} wall surface`
         : `${category.toLowerCase()} wall surface`;
-    return `${desc} using ${name}. Flat seamless finish, photorealistic material texture.` +
+    const fallbackPrompt = `${desc} using ${name}. Flat seamless finish, photorealistic material texture.` +
         (req.userInstruction ? ` ${req.userInstruction}` : "");
+    console.log(`[FLUX] ⚠️ Using fallback prompt (no gpt-4o-mini texture description — OPENAI_API_KEY missing or image fetch failed). Fallback may not match actual product color. Prompt: "${fallbackPrompt}"`);
+    return fallbackPrompt;
 }
 
 /**
@@ -1517,23 +1528,27 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
     }
     const maskDataUri = `data:image/png;base64,${maskForFlux.toString("base64")}`;
 
-    // Verified request schema for fal-ai/flux-pro/v1/fill (probed 2026-07-24):
-    //   image_url:  source image (URL or data URI) — note "_url" suffix
-    //   mask_url:   binary mask, white=fill/black=keep (data URI ok)
-    //   prompt:     description of what should appear in the masked region
-    //   strength:   0.0-1.0, how strongly to apply the prompt (1.0 = full replace)
-    //   num_images: 1
-    //   output_format: "jpeg" | "png"
-    //   enable_safety_checker: boolean
-    // Response shape: { images: [{ url, width, height, content_type }], timings, seed, ... }
+    // Verified request schema for fal-ai/flux-pro/v1/fill (docs Aug 2026):
+    //   image_url:          source image (URL or data URI) — note "_url" suffix
+    //   mask_url:           binary mask, white=fill/black=keep (data URI ok)
+    //   prompt:             description of what should appear in the masked region
+    //   num_images:         1
+    //   output_format:      "jpeg" | "png"
+    //   safety_tolerance:   "1" (strict) to "6" (permissive) — default "2"
+    //   seed:               integer (optional)
+    //   enhance_prompt:     boolean (optional)
+    //   sync_mode:          boolean (optional)
+    // NOTE: "strength" and "enable_safety_checker" do NOT exist in the API.
+    //   They were silently ignored previously, causing FLUX to use defaults.
+    //   safety_tolerance "2" (default) may block decorative color edits — use "4".
+    // Response shape: { images: [{ url, width, height, content_type }], timings, seed, has_nsfw_concepts }
     const body = {
         image_url: roomDataUri,
         mask_url: maskDataUri,
         prompt,
-        strength: 0.98,
         num_images: 1,
         output_format: "jpeg",
-        enable_safety_checker: true,
+        safety_tolerance: "4",
     };
 
     console.log(`[AI] Calling FLUX.1 Fill via fal.ai (mask ${maskForFlux.length}B via ${maskSource}, room ${roomJpegBuffer.length}B)...`);
@@ -1554,6 +1569,13 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
 
     const data = await response.json() as any;
     // fal.ai response shape: { images: [{ url, width, height, content_type }], timings, seed, has_nsfw_concepts }
+    // Log safety filter status. NOTE: has_nsfw_concepts is a per-image DETECTION
+    // flag, NOT a block — FLUX still processes and returns the image even when
+    // this is true. It's informational only (verified by pixel-diff analysis:
+    // wall regions ARE modified when this flag is set).
+    if (data?.has_nsfw_concepts) {
+        console.log(`[AI] ℹ️ FLUX Fill: has_nsfw_concepts=true (detection warning, edit was NOT blocked)`);
+    }
     const imageUrl = data?.images?.[0]?.url;
     if (!imageUrl) {
         throw new Error(`FLUX Fill: no image URL in response (keys=${Object.keys(data || {}).join(",")})`);
