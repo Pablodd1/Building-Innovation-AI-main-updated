@@ -14,15 +14,17 @@ const path = require('path');
 // ============================================================================
 
 const FTP_CONFIG = {
-    host: '157.173.208.16',
-    user: 'u496083892.buildingapp.us',
-    password: process.env.FTP_PASSWORD || 's~NT@9qK$W0jVE]4',
+    host: 'ftp.buildingapp.us',
+    user: 'u496083892.nodejs',
+    password: process.env.FTP_PASSWORD || '',
     secure: true,
     secureOptions: { rejectUnauthorized: false }
 };
 
-// Live Passenger app root on the server
-const REMOTE_APP_ROOT = '/nodejs';
+// Live Passenger app root on the server.
+// The FTP account u496083892.nodejs is chrooted into the /nodejs directory,
+// so its root "/" IS the app root — no /nodejs prefix needed.
+const REMOTE_APP_ROOT = '';
 
 async function uploadDir(client, localDir, remoteDir) {
     console.log(`Uploading ${localDir} -> ${remoteDir}`);
@@ -50,7 +52,7 @@ async function uploadDir(client, localDir, remoteDir) {
 }
 
 async function restartPassenger(client) {
-    console.log('Restarting Passenger (touch /nodejs/tmp/restart.txt)...');
+    console.log('Restarting Passenger (touch /tmp/restart.txt)...');
     await client.ensureDir(`${REMOTE_APP_ROOT}/tmp`);
     const stamp = `${new Date().toISOString()} deploy\n`;
     const tmpLocal = path.join(require('os').tmpdir(), 'restart.txt');
@@ -73,6 +75,10 @@ async function verify(client) {
 }
 
 async function deploy() {
+    if (!FTP_CONFIG.password) {
+        console.error('Deploy FAILED: FTP_PASSWORD env var not set and no fallback configured.');
+        process.exit(1);
+    }
     const client = new Client();
     client.ftp.verbose = false;
     try {
@@ -87,14 +93,14 @@ async function deploy() {
             throw new Error('dist-server/ not found — run `npm run build` first');
         }
 
-        // Upload frontend (served by Express from /nodejs/dist)
+        // Upload frontend (served by Express from the app root /dist)
         if (fs.existsSync('./dist')) {
             await uploadDir(client, './dist', `${REMOTE_APP_ROOT}/dist`);
         }
 
         await restartPassenger(client);
         await verify(client);
-        console.log('Done! Deploy landed in /nodejs and Passenger restarted.');
+        console.log('Done! Deploy landed in app root and Passenger restarted.');
     } catch (err) {
         console.error('Deploy FAILED:', err.message);
         process.exit(1);
