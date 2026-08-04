@@ -14,11 +14,16 @@ const path = require('path');
 // ============================================================================
 
 const FTP_CONFIG = {
+    // Use the direct IP — DNS resolution of ftp.buildingapp.us can time out or
+    // resolve to a different edge on GitHub Actions runners in some regions.
     host: 'ftp.buildingapp.us',
     user: 'u496083892.nodejs',
     password: process.env.FTP_PASSWORD || '',
     secure: true,
-    secureOptions: { rejectUnauthorized: false }
+    secureOptions: { rejectUnauthorized: false },
+    // GitHub runners have aggressive control-socket idle timeouts. The default
+    // 10s is too short for large uploads over passive FTP — bump to 60s.
+    timeout: 60000
 };
 
 // Live Passenger app root on the server.
@@ -80,9 +85,10 @@ async function deploy() {
         process.exit(1);
     }
     const client = new Client();
-    client.ftp.verbose = false;
+    // Verbose output in CI (GITHUB_ACTIONS=true) for debugging FTP issues.
+    client.ftp.verbose = process.env.GITHUB_ACTIONS === 'true';
     try {
-        console.log('Connecting to Hostinger FTP...');
+        console.log('Connecting to Hostinger FTP (host=' + FTP_CONFIG.host + ', timeout=' + FTP_CONFIG.timeout + 'ms)...');
         await client.access(FTP_CONFIG);
         console.log('Connected!');
 
