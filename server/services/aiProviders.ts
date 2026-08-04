@@ -545,7 +545,11 @@ function buildFluxFillPrompt(req: OverlayRequest, textureDescription?: string): 
     // it describes the ACTUAL product image in literal English, which is what
     // FLUX needs. Fall back to a name-based description if vision failed.
     if (textureDescription) {
-        return `${textureDescription} Apply as a flat seamless wall finish.` +
+        return `Texture to reproduce on wall: ${textureDescription}. ` +
+            `REPRODUCE this exact texture faithfully — same color, pattern scale, finish, and surface relief. ` +
+            `Tile/repeat the pattern naturally across the wall surface. ` +
+            `Preserve the room's original lighting, shadows, and perspective. ` +
+            `Do NOT invent patterns, change colors, or flatten the texture.` +
             (req.userInstruction ? ` ${req.userInstruction}` : "");
     }
 
@@ -574,7 +578,7 @@ function buildFluxFillPrompt(req: OverlayRequest, textureDescription?: string): 
     const desc = colorHint
         ? `${colorHint} ${category.toLowerCase()} wall surface`
         : `${category.toLowerCase()} wall surface`;
-    const fallbackPrompt = `${desc} using ${name}. Flat seamless finish, photorealistic material texture.` +
+    const fallbackPrompt = `${desc} using ${name}. Photorealistic material surface — reproduce the color and texture faithfully. Preserve room lighting and perspective.` +
         (req.userInstruction ? ` ${req.userInstruction}` : "");
     console.log(`[FLUX] ⚠️ Using fallback prompt (no gpt-4o-mini texture description — OPENAI_API_KEY missing or image fetch failed). Fallback may not match actual product color. Prompt: "${fallbackPrompt}"`);
     return fallbackPrompt;
@@ -606,13 +610,21 @@ async function describeProductTexture(
     }
 
     const ai = getOpenAISDK(config.OPENAI_API_KEY);
-    const prompt = `Describe this building material's surface texture in literal English, in under 30 words. ` +
-        `Focus ONLY on: base color, finish (matte/satin/gloss/metallic), and any visible pattern ` +
-        `(geometric grid, wood grain, water-drop relief, diamond motif, panel seams, smooth). ` +
-        `Do NOT describe the room or suggest application — just describe the material itself. ` +
-        `Example output: "Deep matte black foam board with silver water-drop hemispheres in a regular grid pattern." ` +
+    // CRITICAL: use "high" detail so gpt-4o-mini sees the full-resolution product
+    // image. "low" downsamples to ~512px which loses fine texture patterns
+    // (e.g. water-drop relief, grain direction, emboss depth). Product fidelity
+    // requires the model to see every surface detail.
+    const prompt = `You are a material scientist describing a building material sample for an exact digital reproduction. ` +
+        `Describe ONLY the surface of this material — what you see, not what you imagine. ` +
+        `Be EXHAUSTIVE and PRECISE. Include ALL of these in your description:\n` +
+        `1. BASE COLOR: exact color name + approximate RGB hex. Is it uniform or does it vary across the sample?\n` +
+        `2. FINISH: matte / satin / gloss / metallic / textured / embossed. How reflective is the surface?\n` +
+        `3. PATTERN: describe every visible pattern element — geometric shapes, organic forms, lines, dots, relief, grain, veining, grid spacing. Include pattern scale (e.g. "5mm grid", "2cm diamond repeat").\n` +
+        `4. TEXTURE DEPTH: is the surface completely flat, or does it have 3D relief? If relief, how pronounced?\n` +
+        `5. EDGE/TRANSITION: any visible panel seams, tile gaps, or joint lines?\n` +
+        `Do NOT describe the room, lighting, shadows, or suggest where to apply it. ` +
         `Product name for context: ${productName || "unknown"}. ` +
-        `Reply with only the description, no preamble.`;
+        `Reply with ONLY the material description, 40-80 words. No preamble.`;
 
     try {
         const completion = await ai.chat.completions.create({
@@ -620,16 +632,16 @@ async function describeProductTexture(
             messages: [{
                 role: "user",
                 content: [
-                    { type: "image_url", image_url: { url: `data:${productRef.mimeType};base64,${productRef.data}`, detail: "low" } },
+                    { type: "image_url", image_url: { url: `data:${productRef.mimeType};base64,${productRef.data}`, detail: "high" } },
                     { type: "text", text: prompt },
                 ],
             }],
-            max_tokens: 100,
-            temperature: 0.3,
+            max_tokens: 200,
+            temperature: 0.2,
         } as any);
         const desc = completion.choices[0]?.message?.content?.trim() || "";
-        if (desc.length < 10) return null;
-        console.log(`[describeProductTexture] ${productName || "(unknown)"} → "${desc.slice(0, 100)}"`);
+        if (desc.length < 15) return null;
+        console.log(`[describeProductTexture] ${productName || "(unknown)"} → "${desc.slice(0, 150)}"`);
         return desc;
     } catch (e: any) {
         console.warn(`[describeProductTexture] vision call failed: ${e?.message}`);
@@ -637,46 +649,63 @@ async function describeProductTexture(
     }
 }
 
-const ANALYSIS_PROMPT = `You are a precision architectural scanner. Your output drives an automated material-overlay system: every surface you return becomes a renderable region, and every obstacle you return becomes a protected mask. Errors are visible to customers.
+const ANALYSIS_PROMPT = `You are a precision architectural scanner. Your output drives an automated material-overlay system: every wall surface you return becomes a region that will be INPAINTED with a new material, and every obstacle you return becomes a permanently protected mask. Fake objects create visible artifacts in the final render. Only report what you can ACTUALLY SEE in this specific photograph.
 
 ═══════════════════════════════════════════════════════════════
-THE TWO FAILURE MODES — BOTH ARE EQUALLY BAD
+FAILURE MODE CALIBRATION — HALLUCINATION IS THE WORSE FAILURE
 ═══════════════════════════════════════════════════════════════
-You are balancing between two opposite failure modes. Calibrate to the middle:
-  FAILURE A — HALLUCINATION: returning an object that is not actually in the photo, or coordinates that don't match the pixels.
-  FAILURE B — OMISSION: failing to return an object that IS clearly visible in the photo.
-Both destroy the render. Do not swing to either extreme. If you can see a chair, a TV, a painting, or a lamp in the photo, you MUST emit it as an obstacle — that is not hallucination, that is the job.
+You must balance two failure modes, but they are NOT equal in cost:
+
+  FAILURE A — HALLUCINATION (MUCH WORSE): returning an object that does not exist in the photo, or placing an object at wrong coordinates. A fake obstacle creates a black hole in the wall mask that permanently preserves the old texture — this is visible to customers and cannot be fixed by the inpainting model.
+  FAILURE B — OMISSION (LESS BAD): failing to return an object that IS in the photo. A missed obstacle means a small area gets painted over — the inpainting model handles this gracefully because it preserves context from surrounding pixels.
+
+RULE: When uncertain, OMIT rather than invent. A false negative is recoverable; a false positive is permanent. If you cannot see clear edges, a distinct shape, or identifiable features for an object, DO NOT include it. Shadows, reflections, color patches, and vague shapes are NOT objects.
+
+═══════════════════════════════════════════════════════════════
+ANTI-HALLUCINATION RULES (enforced strictly)
+═══════════════════════════════════════════════════════════════
+1. VISUAL PROOF REQUIREMENT: Every obstacle MUST have at least TWO identifying visual features visible in the photo (e.g. "rectangular dark screen with visible stand base at bottom" for a TV, or "four legs visible, cushioned seat in blue fabric" for a chair). A single vague feature (e.g. "dark area on wall") is NOT sufficient.
+2. DO NOT infer objects from context. A living room photo does NOT guarantee a TV exists. A bedroom does NOT guarantee a nightstand exists. Report only what the pixels show.
+3. DO NOT fill in expected objects. If the room has 2 visible walls and you think there might be a door on the hidden third wall, do NOT include it — you cannot see it.
+4. DO NOT extrapolate from partial data. If you see the edge of something at the image border but cannot identify what it is, either omit it or mark confidence ≤ 0.5 with evidence "only partial edge visible at image border, type uncertain".
+5. Common hallucination traps to AVOID:
+   - Assuming every room has a light fixture (only report if you can see one)
+   - Inventing furniture that "should be there" for the room type
+   - Reporting reflections or shadows as physical objects
+   - Splitting one object into multiple surfaces (one TV, not "screen" + "mount" + "cables")
+   - Reporting texture or color variations on a wall as separate objects
 
 ═══════════════════════════════════════════════════════════════
 WORK IN THIS ORDER (mandatory)
 ═══════════════════════════════════════════════════════════════
-Fill the "reasoning" object FIRST, then build "surfaces" from it. The reasoning field is where you commit to what you actually see before writing any coordinates.
+Fill the "reasoning" object FIRST, then build "surfaces" from it.
 
 reasoning.vanishingPoint: [x, y] — approximate normalized location where wall/ceiling/floor lines converge. If the photo is a flat-on view with no perspective, write [0.5, 0.5].
-reasoning.observedObjects: list EVERY discrete object you can see, as a one-line cue. Examples: "yellow armchair at center-left, lower third", "wall-mounted TV upper-right, dark rectangle", "wooden floor lower third". A real furnished room typically has 4-10 of these. Be exhaustive — this list IS your detection list.
+reasoning.observedObjects: list ONLY objects you can CLEARLY see with identifiable features. For each, include: type, position, and TWO visual features that confirm its identity. Example: "TV — mounted on back wall at c4-c6/r2-r4, dark rectangular screen with visible thin bezel and mounted below a white rectangular shelf". If you are not sure something exists, move it to reasoning.ambiguous instead.
 reasoning.wallPlanes: one short sentence per visible wall plane, naming direction + the corner cue.
-reasoning.ambiguous: anything you were unsure about and how you called it, or "none".
+reasoning.ambiguous: list ANY object you considered but were not confident enough to confirm. This is NOT a failure — it is honest analysis. Example: "dark shape at c1/r7 could be a chair or a shadow — omitted due to insufficient features".
 
-EVERY object you list in reasoning.observedObjects MUST appear as a surface (type "furniture" or its specific type) with matching bounds. Skipping an observed object is FAILURE B.
+You do NOT need to promote every reasoning.observedObjects entry into a surface. If upon coordinate inspection you realize an object is too ambiguous, you may drop it — just note it in reasoning.ambiguous.
 
 ═══════════════════════════════════════════════════════════════
-ANTI-HALLUCINATION CONTRACT (applies to every coordinate)
+COORDINATE PRECISION RULES
 ═══════════════════════════════════════════════════════════════
 - You are describing THIS photograph, not a generic room. Every surface must correspond to pixels you can point to.
-- DO NOT GUESS COORDINATES. Before writing any polygon or bounds, locate the object visually relative to the image frame (e.g. "starts 10% from the left edge", "top edge aligns with the ceiling line", "bottom edge sits on the floor").
+- DO NOT GUESS COORDINATES. Before writing any polygon or bounds, locate the object visually relative to the image frame AND the grid overlay.
 - Calibration anchors — the ENTIRE image is the unit square [0,1] x [0,1] with (0,0) at top-left:
     x=0   → left edge of photo      x=1   → right edge of photo
     y=0   → top edge of photo        y=1   → bottom edge of photo
     x=0.5 → vertical centerline      y=0.5 → horizontal centerline
-- Each surface MUST include an "evidence" string citing the specific visual cue that places it there (e.g. "yellow chair seat at y≈0.55, backrest reaches y≈0.35, occupies x≈0.18 to x≈0.40"). Generic phrases like "the wall" are not acceptable evidence.
+- Each surface MUST include an "evidence" string citing TWO specific visual cues with approximate coordinates. Example: "yellow chair seat at y≈0.55, x≈0.20-0.38; brown wooden backrest reaches y≈0.35 with visible vertical slats". Generic phrases like "visible on the wall" are not acceptable evidence.
 
 ═══════════════════════════════════════════════════════════════
 SCANNING METHODOLOGY
 ═══════════════════════════════════════════════════════════════
 1. Identify vanishing point(s) — where do wall edges, ceiling lines, and floor lines converge?
-2. Trace EACH wall plane corner-to-corner. Most rooms in a single photo contain 2-3 visible wall planes (left, back/center, right). Add a 4th only if there is a clear alcove, niche, or protruding section.
+2. Trace EACH wall plane corner-to-corner. Most rooms in a single photo contain 2-3 visible wall planes (left, back/center, right). Add a 4th only if there is a clear alcove, niche, or protruding section with VISIBLE edges.
 3. For each wall, follow where it physically meets the ceiling, floor, and adjacent walls. Walls in perspective are TRAPEZOIDS — their top and bottom edges converge toward the vanishing point, they are NOT horizontal and NOT simple rectangles. If your wall polygon is a rectangle, you are NOT tracing perspective — redo it.
-4. Then SCAN FOR OBSTACLES (do this BEFORE finalizing walls so walls don't absorb obstacles): ceiling fixtures → wall-mounted items (cabinets, shelves, art, mirrors, sconces, TVs) → door frames and windows → freestanding furniture touching or in front of the wall. Each discrete obstacle gets its own surface entry.
+4. Then SCAN FOR OBSTACLES (do this BEFORE finalizing walls so walls don't absorb obstacles): ceiling fixtures → wall-mounted items (cabinets, shelves, art, mirrors, sconces, TVs) → door frames and windows → freestanding furniture touching or in front of the wall.
+5. For EACH potential obstacle, apply the VISUAL PROOF TEST: Can I see at least 2 identifying features? If NO → skip it (note in reasoning.ambiguous). If YES → emit as a surface.
 
 ═══════════════════════════════════════════════════════════════
 OUTPUT SCHEMA — return EXACTLY this JSON, nothing else
@@ -684,9 +713,9 @@ OUTPUT SCHEMA — return EXACTLY this JSON, nothing else
 {
   "reasoning": {
     "vanishingPoint": [<x>, <y>],
-    "observedObjects": ["<one line per visible object: type + position + cue>"],
+    "observedObjects": ["<type — position — 2 visual features>"],
     "wallPlanes": ["<one short sentence per wall plane>"],
-    "ambiguous": ["<resolved ambiguities, or 'none'>"]
+    "ambiguous": ["<considered objects with uncertain identity, or 'none'>"]
   },
   "text": "≤60 word professional summary of THIS specific room (cite at least 2 concrete objects you can see)",
   "dimensions": { "width": <cm>, "height": <cm>, "areaM2": <m²> },
@@ -696,7 +725,7 @@ OUTPUT SCHEMA — return EXACTLY this JSON, nothing else
   "surfaces": [
     {
       "type": "wall",
-      "evidence": "<specific visual cue with anchor coordinates>",
+      "evidence": "<2 specific visual cues with anchor coordinates>",
       "bounds": { "x": <0-1>, "y": <0-1>, "width": <0-1>, "height": <0-1> },
       "polygon": [[<x>,<y>], [<x>,<y>], [<x>,<y>], [<x>,<y>]],
       "confidence": <0-1>
@@ -705,50 +734,51 @@ OUTPUT SCHEMA — return EXACTLY this JSON, nothing else
 }
 
 ═══════════════════════════════════════════════════════════════
-POLYGON GEOMETRY (this matters — rectangles are wrong for perspective walls)
+POLYGON GEOMETRY — perspective walls are trapezoids, not rectangles
 ═══════════════════════════════════════════════════════════════
 - 4 corners in clockwise order starting top-left: TL → TR → BR → BL.
 - Trace the ACTUAL visible wall edges, including perspective angles.
 - A receding wall's far edge is SHORTER than its near edge (trapezoid).
 - HARD RULE: a wall polygon is INVALID if TL.x == BL.x AND TR.x == BR.x (axis-aligned rectangle). Walls in real photos are NEVER perfect rectangles — perspective always angles at least one edge. If your polygon is a rectangle, you have not traced perspective, you have written a lazy bbox. Redo it.
-- The grid overlay you see (10x10 cells labeled c0-c9 across the top, r0-r9 down the left) is there to help you anchor coordinates. Use it: a corner "at column 3, row 2" is x=0.3, y=0.2.
 - All coordinates normalized [0.0-1.0], (0,0) = top-left of image.
 
 ═══════════════════════════════════════════════════════════════
-GRID OVERLAY (the yellow labels on the image)
+GRID OVERLAY — use for coordinate anchoring
 ═══════════════════════════════════════════════════════════════
-- The image you are analyzing has a 10x10 grid drawn over it for calibration.
-- Yellow "c0"-"c9" labels along the top edge = column indices (x direction).
-- Yellow "r0"-"r9" labels along the left edge = row indices (y direction).
-- When estimating a coordinate, anchor it to a grid cell: "the chair seat is centered around column 2, row 6 → x=0.25, y=0.62". This dramatically improves your precision.
-- The grid is just an aid — your final coordinates must still be normalized floats in [0,1], not cell references.
+- The image has a 10x10 grid overlay with yellow labels for calibration.
+- "c0"-"c9" along the top = column indices (x direction). "r0"-"r9" along the left = row indices (y direction).
+- Anchor coordinates to grid cells: "corner at column 3, row 2 → x=0.3, y=0.2".
+- Your final coordinates must be normalized floats in [0,1], not cell references.
 
 ═══════════════════════════════════════════════════════════════
 SURFACE TYPES — return one entry per distinct surface
 ═══════════════════════════════════════════════════════════════
-- "wall" — each wall plane is a SEPARATE entry (never merge two walls).
+- "wall" — each wall plane is a SEPARATE entry (never merge two walls). Walls must NOT overlap each other significantly (< 5% overlap allowed at edges).
 - "floor" — the visible floor surface (omit if not visible).
 - "ceiling" — the visible ceiling surface (omit if not visible).
-- Obstacles (MANDATORY for every visible object): "window" | "door" | "television" | "cabinet" | "shelf" | "picture_frame" | "mirror" | "fireplace" | "light_fixture" | "radiator" | "furniture"
-  - For unfamiliar shapes, use "furniture" with a precise evidence string.
-  - A chair, sofa, table, lamp, plant, or rug ALWAYS counts as an obstacle.
+- Obstacles (only for objects that pass the visual proof test): "window" | "door" | "television" | "cabinet" | "shelf" | "picture_frame" | "mirror" | "fireplace" | "light_fixture" | "radiator" | "furniture"
+  - For unfamiliar shapes, use "furniture" with a precise evidence string citing 2 features.
+  - One physical object = one surface entry. Do NOT split a single TV into "screen" + "bezel" + "mount".
 
 ═══════════════════════════════════════════════════════════════
-CONFIDENCE CALIBRATION (be honest, but do not omit what you can see)
+CONFIDENCE CALIBRATION (accuracy over coverage)
 ═══════════════════════════════════════════════════════════════
-- 0.9-1.0: object is unambiguous, edges clearly visible.
-- 0.7-0.89: object is clearly present but one edge is partially occluded.
-- 0.5-0.69: object is clearly present but its exact bounds are uncertain (still return it — better to have an approximate mask than none).
-- Below 0.5: only for objects you are not sure exist at all. If you can see it, confidence ≥ 0.5.
+- 0.9-1.0: object is unambiguous, all edges clearly visible, identity certain.
+- 0.7-0.89: object is clearly present with identifiable features, but one edge is partially occluded or cropped.
+- 0.5-0.69: object appears to be present but you lack full visual confirmation — include only if at least 1 clear feature is visible.
+- Below 0.5: do NOT emit as a surface. Move to reasoning.ambiguous instead.
+Default to LOWER confidence when uncertain. Overconfident wrong coordinates are worse than low-confidence correct ones.
 
 ═══════════════════════════════════════════════════════════════
 QUALITY GATES (self-check before returning)
 ═══════════════════════════════════════════════════════════════
 - Wall count ≥ 2 for any 3D room photo (1 wall = you merged planes, re-scan).
-- Obstacle count must EQUAL the count of objects you listed in reasoning.observedObjects. If they don't match, you forgot to promote an observation to a surface — go back.
 - Each wall polygon has exactly 4 corners that form a non-degenerate quadrilateral (area > 0.01 of the image).
-- Wall bounds should NOT cover the entire image — if a wall bounds covers > 60% of the image area, you have included obstacles inside the wall. Cut them out.
-- Every "evidence" string cites a specific visual cue with approximate coordinates.
+- No two wall polygons may overlap by more than 5% of their area — if they do, trim the overlap.
+- Each wall's bounds should NOT cover the entire image — if a wall bounds covers > 55% of the image area, you have included too much. Trim to the actual visible wall surface.
+- Every obstacle's "evidence" string cites at least 2 specific visual features with approximate coordinates.
+- Every surface entry has confidence ≥ 0.5. If lower, move to reasoning.ambiguous.
+- Final surface count check: compare reasoning.observedObjects to surfaces[]. They should be close. If surfaces has fewer entries, the difference should be explained in reasoning.ambiguous.
 
 DIMENSIONS: estimate real-world width × height in centimeters; areaM2 = (w × h) / 10000.`;
 
