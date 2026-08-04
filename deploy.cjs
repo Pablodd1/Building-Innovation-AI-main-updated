@@ -57,14 +57,22 @@ async function uploadDir(client, localDir, remoteDir) {
 }
 
 async function restartPassenger(client) {
-    // Passenger watches for restart.txt at the APP ROOT, not /tmp/.
-    // The chrooted FTP account root "/" IS the app root (previously /nodejs/),
-    // so we upload restart.txt directly to "/" — NOT to /tmp/.
-    console.log('Restarting Passenger (touch /restart.txt at app root)...');
+    // Upload restart.txt to BOTH the app root and /tmp/ — Hostinger Passenger
+    // checks tmp/restart.txt relative to the app root, but the exact path depends
+    // on the hPanel Node.js configuration. Belt-and-suspenders: write to both.
+    console.log('Restarting Passenger (touch restart.txt + tmp/restart.txt)...');
     const stamp = `${new Date().toISOString()} deploy\n`;
     const tmpLocal = path.join(require('os').tmpdir(), 'restart.txt');
     fs.writeFileSync(tmpLocal, stamp);
-    await client.uploadFrom(tmpLocal, `${REMOTE_APP_ROOT}/restart.txt`);
+    // /tmp/restart.txt — standard Passenger convention
+    try { await client.ensureDir(`${REMOTE_APP_ROOT}/tmp`); } catch (e) {}
+    try { await client.uploadFrom(tmpLocal, `${REMOTE_APP_ROOT}/tmp/restart.txt`); } catch (e) {
+        console.warn(`  ⚠️  Could not upload to /tmp/restart.txt: ${e.message}`);
+    }
+    // /restart.txt — app root fallback
+    try { await client.uploadFrom(tmpLocal, `${REMOTE_APP_ROOT}/restart.txt`); } catch (e) {
+        console.warn(`  ⚠️  Could not upload to /restart.txt: ${e.message}`);
+    }
     console.log('Passenger will restart on next request.');
 }
 
