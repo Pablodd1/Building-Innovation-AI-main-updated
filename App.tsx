@@ -2392,7 +2392,7 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center w-24">
                                     <span className="text-[9px] font-bold text-blue-600 uppercase">{currentUser.tier}</span>
                                     <span className="text-[9px] font-bold text-blue-400">
-                                        {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') >= 99999999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
+                                        {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') >= 999999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
                                     </span>
                                 </div>
                                 {currentUser.tier_expires_at && currentUser.tier?.toUpperCase() !== 'FREE' && (
@@ -4493,7 +4493,7 @@ const App: React.FC = () => {
                                     <button onClick={() => setShowSubscriptionModal(true)}
                                         className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-full">
                                         <span className="text-[9px] font-bold text-blue-700 uppercase">
-                                            {getTierLimit(currentUser.tier || 'Free') >= 99999999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)}
+                                            {getTierLimit(currentUser.tier || 'Free') >= 999999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)}
                                         </span>
                                     </button>
                                 )}
@@ -4514,7 +4514,7 @@ const App: React.FC = () => {
                                         className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-full transition-all group">
                                         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                                         <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
-                                            {getTierLimit(currentUser.tier || 'Free') >= 99999999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
+                                            {getTierLimit(currentUser.tier || 'Free') >= 999999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
                                         </span>
                                         <svg className="w-3 h-3 text-blue-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                     </button>
