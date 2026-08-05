@@ -250,12 +250,22 @@ const App: React.FC = () => {
             PREMIUM: { name: 'Tier 3 (Premium)', limit: 1000 },
             LUXURY: { name: 'Tier 4 (Luxury)', limit: 999999 }
         };
-        const normalizedTier = tierName.toLowerCase();
-        const matched = Object.values(tiers).find(
-            (t: any) => t.name.toLowerCase() === normalizedTier || 
-                       t.name.toLowerCase().includes(normalizedTier) ||
-                       (t.name.split(' ')[0].toLowerCase() === normalizedTier)
-        ) || (tiers as any)[tierName.toUpperCase()] || tiers.FREE;
+        const normalizedTier = (tierName || 'Free').toLowerCase();
+        // Map server tier names to config keys — server uses Enterprise/STANDARD/PREMIUM/Free
+        // while the tier config uses Tier 1-4 naming. Also handle direct key lookup.
+        const tierKeyMap: Record<string, string> = {
+            'enterprise': 'LUXURY', 'luxury': 'LUXURY',
+            'premium': 'PREMIUM', 'tier 3': 'PREMIUM', 'tier 4 (premium)': 'PREMIUM',
+            'standard': 'STANDARD', 'pro': 'STANDARD', 'tier 2': 'STANDARD',
+            'free': 'FREE', 'gratis': 'FREE', 'tier 1': 'FREE',
+        };
+        const mappedKey = tierKeyMap[normalizedTier] || tierName?.toUpperCase();
+        const matched = (tiers as any)[mappedKey] ||
+            Object.values(tiers).find(
+                (t: any) => t.name.toLowerCase() === normalizedTier ||
+                           t.name.toLowerCase().includes(normalizedTier) ||
+                           (t.name.split(' ')[0].toLowerCase() === normalizedTier)
+            ) || tiers.FREE;
         return matched.limit ?? 10;
     };
 
@@ -2193,7 +2203,7 @@ const App: React.FC = () => {
                     <button
                         type="submit"
                         disabled={authLoading}
-                        className="w-full bg-gray-400 hover:bg-gray-500 text-gray-700 py-4 rounded-lg text-base font-semibold transition-colors disabled:opacity-50"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-lg text-base font-semibold transition-colors disabled:opacity-50 shadow-lg"
                     >
                         {authLoading
                             ? "..."
@@ -2382,7 +2392,7 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center w-24">
                                     <span className="text-[9px] font-bold text-blue-600 uppercase">{currentUser.tier}</span>
                                     <span className="text-[9px] font-bold text-blue-400">
-                                        {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') === 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
+                                        {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') >= 99999999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
                                     </span>
                                 </div>
                                 {currentUser.tier_expires_at && currentUser.tier?.toUpperCase() !== 'FREE' && (
@@ -3970,7 +3980,7 @@ const App: React.FC = () => {
                                                         <span className={`text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider ${badgeStyle}`}>
                                                             {tierKey}
                                                         </span>
-                                                        {tierData.limit >= 9999 ? (
+                                                        {tierData.limit >= 999999 ? (
                                                             <span className="text-[10px] bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-full border border-green-200">
                                                                 Unlimited Limit
                                                             </span>
@@ -4483,7 +4493,7 @@ const App: React.FC = () => {
                                     <button onClick={() => setShowSubscriptionModal(true)}
                                         className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-full">
                                         <span className="text-[9px] font-bold text-blue-700 uppercase">
-                                            {getTierLimit(currentUser.tier || 'Free') === 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)}
+                                            {getTierLimit(currentUser.tier || 'Free') >= 99999999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)}
                                         </span>
                                     </button>
                                 )}
@@ -4504,7 +4514,7 @@ const App: React.FC = () => {
                                         className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-full transition-all group">
                                         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                                         <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">
-                                            {getTierLimit(currentUser.tier || 'Free') === 9999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
+                                            {getTierLimit(currentUser.tier || 'Free') >= 99999999 ? 'Unlimited' : `${getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders`}
                                         </span>
                                         <svg className="w-3 h-3 text-blue-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                     </button>
@@ -4629,7 +4639,7 @@ const App: React.FC = () => {
                                     className="flex items-center gap-2 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"
                                 >
                                     <span className="text-[9px] font-black text-blue-600 uppercase">
-                                        {getTierLimit(currentUser.tier || 'Free') >= 9999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders
+                                        {getTierLimit(currentUser.tier || 'Free') >= 999999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)} Renders
                                     </span>
                                 </button>
                             )}
@@ -4898,7 +4908,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                     const used = currentUser?.generations_used || 0;
                     const limit = getTierLimit(tier);
                     const remaining = Math.max(0, limit - used);
-                    const isUnlimited = limit >= 9999;
+                    const isUnlimited = limit >= 999999;
                     const pct = isUnlimited ? 100 : Math.max(0, Math.min(100, Math.round((remaining / Math.max(1, limit)) * 100)));
                     const tierNames: Record<string, string> = {
                         FREE: t.cart.tierFree, STANDARD: 'STANDARD', PREMIUM: 'PREMIUM', LUXURY: 'LUXURY'
@@ -5744,7 +5754,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                 key: 'FREE',
                 name: config.FREE?.name || 'FREE', 
                 price: config.FREE?.price === 0 ? 'SIN COSTO' : `${config.FREE?.price} USD`, 
-                limit: config.FREE?.limit >= 9999 ? 'ILIMITADOS' : (config.FREE?.limit ?? 10),
+                limit: config.FREE?.limit >= 999999 ? 'ILIMITADOS' : (config.FREE?.limit ?? 10),
                 features: ['10 creditos para fotos', 'Usabilidad en 1 dispositivo'],
                 color: 'gray' 
             },
@@ -5752,7 +5762,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                 key: 'STANDARD',
                 name: config.STANDARD?.name || 'STANDARD', 
                 price: `${config.STANDARD?.price ?? 4.99} USD`, 
-                limit: config.STANDARD?.limit >= 9999 ? 'ILIMITADOS' : (config.STANDARD?.limit ?? 500),
+                limit: config.STANDARD?.limit >= 999999 ? 'ILIMITADOS' : (config.STANDARD?.limit ?? 500),
                 features: ['1 mes de Servicio', 'Descarga de imagen HD', '500 creditos para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 2 dispositivos'],
                 color: 'blue' 
             },
@@ -5760,7 +5770,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                 key: 'PREMIUM',
                 name: config.PREMIUM?.name || 'PREMIUM', 
                 price: `${config.PREMIUM?.price ?? 24.99} USD`, 
-                limit: config.PREMIUM?.limit >= 9999 ? 'ILIMITADOS' : (config.PREMIUM?.limit ?? 1000),
+                limit: config.PREMIUM?.limit >= 999999 ? 'ILIMITADOS' : (config.PREMIUM?.limit ?? 1000),
                 features: ['6 meses de Servicio', 'Descarga de imagen HD', '1000 creditos para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 2 dispositivos'],
                 color: 'purple',
                 featured: true
@@ -5769,7 +5779,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                 key: 'LUXURY',
                 name: config.LUXURY?.name || 'LUXURY', 
                 price: `${config.LUXURY?.price ?? 49.99} USD`, 
-                limit: config.LUXURY?.limit >= 9999 ? 'ILIMITADOS' : (config.LUXURY?.limit ?? 999999),
+                limit: config.LUXURY?.limit >= 999999 ? 'ILIMITADOS' : (config.LUXURY?.limit ?? 999999),
                 features: ['12 meses de Servicio', 'Descarga de imagen HD', 'Creditos ILIMITADOS para fotos', 'Generacion cotizacion PDF', 'Usabilidad en 3 dispositivos'],
                 color: 'amber' 
             },
