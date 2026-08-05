@@ -97,8 +97,12 @@ async function deploy() {
     const client = new Client();
     // Verbose output in CI (GITHUB_ACTIONS=true) for debugging FTP issues.
     client.ftp.verbose = process.env.GITHUB_ACTIONS === 'true';
+    // Set control socket timeout directly — basic-ftp v6 doesn't always honor
+    // the access() timeout option for the control channel. 120s for slow CI runners.
+    client.ftp.timeout = 120000;
+    // Also set on the socket after connection via the access() options.
     try {
-        console.log('Connecting to Hostinger FTP (host=' + FTP_CONFIG.host + ', timeout=' + FTP_CONFIG.timeout + 'ms)...');
+        console.log('Connecting to Hostinger FTP (host=' + FTP_CONFIG.host + ', timeout=120000ms)...');
         await client.access(FTP_CONFIG);
         console.log('Connected!');
 
