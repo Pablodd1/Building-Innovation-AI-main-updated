@@ -2042,23 +2042,28 @@ export async function generateOverlay(
     const errors: string[] = [];
 
     // ─── Provider chain selection ─────────────────────────────────────
-    // For inpaint mode with surfaces + a fal.ai key, FLUX.1 Fill is preferred.
-    // It is a real diffusion inpainter — unmasked pixels are composited back
-    // 1:1, which solves the gpt-image-1.5 "soft-mask full regen" problem
-    // (OpenAI staff confirmed limitation: community.openai.com/t/1244275).
-    // If FLUX is unavailable (no key, not inpaint mode, no surfaces), fall
-    // back to the gpt-image-1.5 path which always works but softens texture.
+    // OpenAI is the PRIMARY renderer for inpaint mode. Unlike FLUX Fill
+    // (which only receives a TEXT description of the product and hallucinates
+    // a generic texture — including fake watermarks from training data),
+    // OpenAI images.edit receives the ACTUAL product photo as a second input
+    // image, so it reproduces the real texture/pattern/finish faithfully.
+    // The hard pixel-lock compositing step in generateOverlayOpenAI guarantees
+    // non-wall pixels are byte-identical to the original, solving OpenAI's
+    // known "soft-mask full regen" limitation.
+    // FLUX is kept as a fallback in case OpenAI is unavailable (rate limits,
+    // outage). Generic sharp/compositor is the last resort.
     const isInpaint = (req as any).mode === "inpaint" && !!req.analysis?.surfaces?.length;
-    const wantFlux = isInpaint && !!config.FAL_API_KEY;
+    const hasFlux = !!config.FAL_API_KEY;
     // Debug/testing escape hatch: explicit forceProvider on the request bypasses
-    // the automatic FLUX-preference so we can A/B compare providers on the same
-    // photo+material without touching the FAL_API_KEY config. Not exposed in
-    // the normal client flow — only used for manual QA via direct API calls.
+    // the automatic chain so we can A/B compare providers on the same
+    // photo+material. Not exposed in the normal client flow — admin-only.
     const forced = (req as any).forceProvider as AIProvider | undefined;
     const providerChain: AIProvider[] = forced
         ? [forced, "generic"]
-        : wantFlux
-            ? ["flux", "openai", "generic"]
+        : isInpaint
+            ? hasFlux
+                ? ["openai", "flux", "generic"]
+                : ["openai", "generic"]
             : ["openai", "generic"];
 
     console.log(`[AI] Image generation provider chain: ${providerChain.join(" → ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);

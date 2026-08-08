@@ -106037,9 +106037,9 @@ async function generateOverlay(req, preferredProvider, config) {
   const start = Date.now();
   const errors = [];
   const isInpaint = req.mode === "inpaint" && !!req.analysis?.surfaces?.length;
-  const wantFlux = isInpaint && !!config.FAL_API_KEY;
+  const hasFlux = !!config.FAL_API_KEY;
   const forced = req.forceProvider;
-  const providerChain = forced ? [forced, "generic"] : wantFlux ? ["flux", "openai", "generic"] : ["openai", "generic"];
+  const providerChain = forced ? [forced, "generic"] : isInpaint ? hasFlux ? ["openai", "flux", "generic"] : ["openai", "generic"] : ["openai", "generic"];
   console.log(`[AI] Image generation provider chain: ${providerChain.join(" \u2192 ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);
   for (const provider of providerChain) {
     try {
