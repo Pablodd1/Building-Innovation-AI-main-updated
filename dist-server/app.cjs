@@ -106038,7 +106038,8 @@ async function generateOverlay(req, preferredProvider, config) {
   const errors = [];
   const isInpaint = req.mode === "inpaint" && !!req.analysis?.surfaces?.length;
   const wantFlux = isInpaint && !!config.FAL_API_KEY;
-  const providerChain = wantFlux ? ["flux", "openai", "generic"] : ["openai", "generic"];
+  const forced = req.forceProvider;
+  const providerChain = forced ? [forced, "generic"] : wantFlux ? ["flux", "openai", "generic"] : ["openai", "generic"];
   console.log(`[AI] Image generation provider chain: ${providerChain.join(" \u2192 ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);
   for (const provider of providerChain) {
     try {
@@ -125093,8 +125094,10 @@ Auto-downgraded to Free.`
   app.post("/api/ai/generate-overlay", requireAuth, async (req, res) => {
     try {
       const authenticatedUserId = req.user?.id;
-      const { originalImage, material, userInstruction, renderOptions, lang, provider: userProvider, analysis, mode } = req.body;
+      const authenticatedUserRole = req.user?.role;
+      const { originalImage, material, userInstruction, renderOptions, lang, provider: userProvider, analysis, mode, forceProvider } = req.body;
       const userId = authenticatedUserId;
+      const debugForceProvider = authenticatedUserRole === "admin" ? forceProvider : void 0;
       if (!originalImage || typeof originalImage !== "string") {
         return res.status(400).json({ error: "originalImage is required and must be a string" });
       }
@@ -125147,7 +125150,8 @@ Auto-downgraded to Free.`
             userInstruction: userInstruction || "",
             renderOptions,
             mode: "inpaint",
-            analysis
+            analysis,
+            forceProvider: debugForceProvider
           }, "openai", config);
           pushGenerationLog({
             timestamp: (/* @__PURE__ */ new Date()).toISOString(),

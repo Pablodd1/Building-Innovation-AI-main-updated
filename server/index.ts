@@ -2021,8 +2021,13 @@ const getServerApiKey = (): string => {
 app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Response) => {
     try {
         const authenticatedUserId = (req as any).user?.id;
-        const { originalImage, material, userInstruction, renderOptions, lang, provider: userProvider, analysis, mode } = req.body;
+        const authenticatedUserRole = (req as any).user?.role;
+        const { originalImage, material, userInstruction, renderOptions, lang, provider: userProvider, analysis, mode, forceProvider } = req.body;
         const userId = authenticatedUserId;
+        // Debug escape hatch (see aiProviders.ts generateOverlay) — admin-only,
+        // used for manual QA A/B comparisons between FLUX/OpenAI on the same
+        // photo+material. Never honored for regular customer requests.
+        const debugForceProvider = authenticatedUserRole === "admin" ? forceProvider : undefined;
 
         // Input validation: image must be a valid data URL and under 5MB
         if (!originalImage || typeof originalImage !== 'string') {
@@ -2092,6 +2097,7 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
                     renderOptions,
                     mode: "inpaint",
                     analysis,
+                    forceProvider: debugForceProvider,
                 } as any, "openai", config);
 
                 pushGenerationLog({

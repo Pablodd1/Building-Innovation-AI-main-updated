@@ -2050,9 +2050,16 @@ export async function generateOverlay(
     // back to the gpt-image-1.5 path which always works but softens texture.
     const isInpaint = (req as any).mode === "inpaint" && !!req.analysis?.surfaces?.length;
     const wantFlux = isInpaint && !!config.FAL_API_KEY;
-    const providerChain: AIProvider[] = wantFlux
-        ? ["flux", "openai", "generic"]
-        : ["openai", "generic"];
+    // Debug/testing escape hatch: explicit forceProvider on the request bypasses
+    // the automatic FLUX-preference so we can A/B compare providers on the same
+    // photo+material without touching the FAL_API_KEY config. Not exposed in
+    // the normal client flow — only used for manual QA via direct API calls.
+    const forced = (req as any).forceProvider as AIProvider | undefined;
+    const providerChain: AIProvider[] = forced
+        ? [forced, "generic"]
+        : wantFlux
+            ? ["flux", "openai", "generic"]
+            : ["openai", "generic"];
 
     console.log(`[AI] Image generation provider chain: ${providerChain.join(" → ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);
 
