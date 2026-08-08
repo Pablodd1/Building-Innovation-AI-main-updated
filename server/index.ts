@@ -1037,10 +1037,19 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
 };
 
 // Middleware + Monitoring + Security
-const allowedOrigins = ['https://buildingapp.us', 'https://www.buildingapp.us', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost', 'https://localhost', 'capacitor://localhost', 'ionic://localhost'];
+const allowedOrigins = [
+    'https://buildingapp.us', 'https://www.buildingapp.us',
+    'https://building-innovation.us', 'https://www.building-innovation.us',
+    'https://buildinginnovation.us', 'https://www.buildinginnovation.us',
+    'https://chocolate-crocodile-376817.hostingersite.com',
+    'http://localhost:5173', 'http://localhost:3000', 'http://localhost', 'https://localhost',
+    'capacitor://localhost', 'ionic://localhost'
+];
+// ponytail: allow all hostingersite.com subdomains + all vercel previews
+const dynamicOriginPatterns = [/\.hostingersite\.com$/i, /\.vercel\.app$/i];
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/i.test(origin)) {
+        if (!origin || allowedOrigins.includes(origin) || dynamicOriginPatterns.some(re => re.test(origin))) {
             callback(null, true);
         } else {
             console.error('[CORS Blocked] Origin:', origin);
