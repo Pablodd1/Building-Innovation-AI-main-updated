@@ -11,21 +11,38 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [error, setError] = useState<string | null>(null);
+    // 'environment' = back/rear camera (default — better for scanning rooms),
+    // 'user' = front/selfie camera. Toggled by the flip button below.
+    const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+    const [hasMultipleCameras, setHasMultipleCameras] = useState(true);
 
-    const startCamera = async () => {
+    const stopStream = (s: MediaStream | null) => {
+        s?.getTracks().forEach((track) => track.stop());
+    };
+
+    const startCamera = async (mode: 'user' | 'environment' = facingMode) => {
         setError(null);
+        // Stop any existing stream before requesting a new one — switching
+        // facingMode requires a fresh getUserMedia call; browsers do not let
+        // you swap the camera on a live track.
+        stopStream(stream);
         try {
-            // Try with preferred constraints first
             let mediaStream: MediaStream;
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 1280, height: 720, facingMode: 'user' }
+                    video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: { ideal: mode } }
                 });
             } catch (constrainedErr) {
-                // Fallback: relax constraints — some laptops reject width/height/facingMode
-                // but accept a bare video:true request (e.g. NotReadableError, OverconstrainedError)
-                console.warn('[Webcam] Constrained request failed, retrying with video:true:', constrainedErr?.name);
-                mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                // Fallback: some laptops/older Android WebViews reject width/height/facingMode
+                // constraints outright (NotReadableError, OverconstrainedError). Retry with a
+                // bare video:true request so the camera still opens even without facingMode control.
+                console.warn('[Webcam] Constrained request failed, retrying with basic facingMode:', constrainedErr?.name);
+                try {
+                    mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
+                } catch {
+                    mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    setHasMultipleCameras(false);
+                }
             }
             setStream(mediaStream);
             if (videoRef.current) {
@@ -50,16 +67,31 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
         }
     };
 
+    // Detect if the device actually has more than one camera (some tablets/
+    // laptops only have one). Skips showing a flip button that would do nothing.
     useEffect(() => {
-        startCamera();
+        navigator.mediaDevices?.enumerateDevices?.()
+            .then((devices) => {
+                const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+                setHasMultipleCameras(videoInputs.length > 1);
+            })
+            .catch(() => setHasMultipleCameras(true)); // assume yes if we can't detect
+    }, []);
+
+    useEffect(() => {
+        startCamera(facingMode);
         // Cleanup stream on unmount
         return () => {
-            if (stream) {
-                stream.getTracks().forEach((track) => track.stop());
-            }
+            stopStream(stream);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lang]);
+
+    const handleFlipCamera = () => {
+        const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+        setFacingMode(nextMode);
+        startCamera(nextMode);
+    };
 
     const handleCapture = () => {
         if (!videoRef.current) return;
@@ -71,6 +103,13 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
 
         const ctx = canvas.getContext('2d');
         if (ctx) {
+            // Only mirror the preview for the front/selfie camera — the rear
+            // camera should capture un-mirrored (what you actually see through
+            // the lens), which is what users expect for room/wall photos.
+            if (facingMode === 'user') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             canvas.toBlob((blob) => {
                 if (blob) {
@@ -93,7 +132,7 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
                 {/* Header */}
                 <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
                     <h3 className="text-white font-semibold">
-                        {lang === 'es' ? 'Tomar Foto (Cámara)' : 'Take Photo (Webcam)'}
+                        {lang === 'es' ? 'Tomar Foto (Cámara)' : 'Take Photo (Camera)'}
                     </h3>
                     <button
                         onClick={onClose}
@@ -125,19 +164,43 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
                                 {lang === 'es' ? 'Subir Foto del Dispositivo' : 'Upload Photo from Device'}
                             </button>
                             <button
-                                onClick={startCamera}
+                                onClick={() => startCamera(facingMode)}
                                 className="w-full px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-gray-300 font-semibold text-sm transition-colors"
                             >
                                 {lang === 'es' ? 'Reintentar Cámara' : 'Retry Camera'}
                             </button>
                         </div>
                     ) : (
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            className="w-full h-full object-cover scale-x-[-1]"
-                        />
+                        <>
+                            <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                muted
+                                className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                            />
+                            {/* Flip camera button — top-right corner, always visible when streaming.
+                                Works on iOS Safari 14.3+ and all modern Android Chrome/WebView via
+                                getUserMedia facingMode constraint — no dependency on OS-level camera
+                                app UI, so it's consistent across every Android and iPhone model. */}
+                            {hasMultipleCameras && (
+                                <button
+                                    onClick={handleFlipCamera}
+                                    aria-label={lang === 'es' ? 'Cambiar cámara' : 'Flip camera'}
+                                    className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white transition-colors"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                </button>
+                            )}
+                            {/* Current camera indicator */}
+                            <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-[10px] font-semibold uppercase tracking-wide">
+                                {facingMode === 'environment'
+                                    ? (lang === 'es' ? 'Trasera' : 'Back')
+                                    : (lang === 'es' ? 'Frontal' : 'Front')}
+                            </div>
+                        </>
                     )}
                 </div>
 

@@ -1,7 +1,7 @@
 // Service Worker — Building Innovation
 // Cache-first strategy for static assets
 
-const CACHE_NAME = 'building-innovation-v3';
+const CACHE_NAME = 'building-innovation-v5';
 const ASSETS = [
   '/',
   '/index.html',

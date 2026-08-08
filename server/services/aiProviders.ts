@@ -652,6 +652,13 @@ async function describeProductTexture(
 const ANALYSIS_PROMPT = `You are a precision architectural scanner. Your output drives an automated material-overlay system: every wall surface you return becomes a region that will be INPAINTED with a new material, and every obstacle you return becomes a permanently protected mask. Fake objects create visible artifacts in the final render. Only report what you can ACTUALLY SEE in this specific photograph.
 
 ═══════════════════════════════════════════════════════════════
+YOUR JOB IN ONE SENTENCE
+═══════════════════════════════════════════════════════════════
+Read this ONE room slowly and completely — every wall plane, every piece of furniture, every fixture — so that later, when a new material is painted onto the walls, every object that is NOT a wall (furniture, TV, windows, doors, art, plants, people, floor, ceiling) is left 100% untouched and the final image is indistinguishable from the original EXCEPT for the wall material itself.
+
+Do NOT rush. Do NOT skim. A fast, shallow scan produces incomplete obstacle lists, which is the single biggest cause of bad renders (furniture gets painted over, product textures bleed onto objects that should have stayed the same). Take the time to trace every wall edge and identify every object before answering.
+
+═══════════════════════════════════════════════════════════════
 FAILURE MODE CALIBRATION — HALLUCINATION IS THE WORSE FAILURE
 ═══════════════════════════════════════════════════════════════
 You must balance two failure modes, but they are NOT equal in cost:
@@ -753,10 +760,11 @@ GRID OVERLAY — use for coordinate anchoring
 ═══════════════════════════════════════════════════════════════
 SURFACE TYPES — return one entry per distinct surface
 ═══════════════════════════════════════════════════════════════
-- "wall" — each wall plane is a SEPARATE entry (never merge two walls). Walls must NOT overlap each other significantly (< 5% overlap allowed at edges).
+- "wall" — each wall plane is a SEPARATE entry (never merge two walls). Applies to BOTH interior walls and EXTERIOR facades/exterior walls — the same rules apply whether this is a living room or a house exterior. Walls must NOT overlap each other significantly (< 5% overlap allowed at edges).
 - "floor" — the visible floor surface (omit if not visible).
 - "ceiling" — the visible ceiling surface (omit if not visible).
 - Obstacles (only for objects that pass the visual proof test): "window" | "door" | "television" | "cabinet" | "shelf" | "picture_frame" | "mirror" | "fireplace" | "light_fixture" | "radiator" | "furniture"
+  - For EXTERIOR photos, use "furniture" as the catch-all for anything that is not the facade itself and must be preserved: plants/landscaping, trees, cars/vehicles, fences, gates, outdoor lighting fixtures, gutters, roof sections, people, signage, mailboxes, garage doors, patio furniture, and sky/background. Each still needs a precise evidence string citing 2 visual features.
   - For unfamiliar shapes, use "furniture" with a precise evidence string citing 2 features.
   - One physical object = one surface entry. Do NOT split a single TV into "screen" + "bezel" + "mount".
 
@@ -1306,6 +1314,31 @@ DIRECTIVES (execute exactly these 4, nothing else):
     const IMAGE_MODELS = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"];
     let lastError: any = null;
 
+    // ─── Aspect-ratio-correct output size ──────────────────────────────
+    // BUGFIX: previously hardcoded to "1024x1024" (square) for every render.
+    // Most room photos are landscape (phone camera default) or portrait
+    // (rotated). Forcing square output silently stretched/cropped the
+    // result, which is what customers were seeing as "wrong representation"
+    // — walls, furniture, and the product itself came out distorted because
+    // the model had to squeeze a 4:3 or 16:9 photo into a 1:1 canvas.
+    // gpt-image-1/1.5 support exactly three edit sizes: 1024x1024 (square),
+    // 1536x1024 (landscape), 1024x1536 (portrait). Pick the one closest to
+    // the ORIGINAL photo's real aspect ratio so nothing gets stretched.
+    let outputSize: "1024x1024" | "1536x1024" | "1024x1536" = "1024x1024";
+    try {
+        const sharpMod = (await import("sharp")).default;
+        const meta = await sharpMod(imageBuffer).metadata();
+        const w = meta.width || 1;
+        const h = meta.height || 1;
+        const ratio = w / h;
+        if (ratio > 1.15) outputSize = "1536x1024";       // landscape
+        else if (ratio < 0.87) outputSize = "1024x1536";  // portrait
+        // else stays square — genuinely near-square photo
+        logInfo(`[AI] Original photo ${w}x${h} (ratio ${ratio.toFixed(2)}) → output size ${outputSize}`);
+    } catch (e: any) {
+        logInfo(`[AI] Could not read image dimensions for aspect-ratio sizing, defaulting to square: ${e?.message}`);
+    }
+
     for (const model of IMAGE_MODELS) {
         try {
             logInfo(`[AI] Trying OpenAI image model: ${model} (inpaint: ${useInpaint && !!maskPart ? "yes" : "no"})...`);
@@ -1316,7 +1349,7 @@ DIRECTIVES (execute exactly these 4, nothing else):
                 model,
                 prompt: finalPrompt,
                 image: imageInput,
-                size: "1024x1024",
+                size: outputSize,
             };
             if (maskPart) {
                 editParams.mask = maskPart;
@@ -1331,10 +1364,108 @@ DIRECTIVES (execute exactly these 4, nothing else):
             if (!b64 && !url) {
                 throw new Error("OpenAI returned no image data");
             }
-            const image = b64 ? `data:image/png;base64,${b64}` : url;
+
+            // ─── Hard pixel-lock for preserved regions ──────────────────────
+            // gpt-image-1/1.5's "mask" is a SOFT hint, not a hard guarantee —
+            // OpenAI staff have confirmed the model can still regenerate pixels
+            // outside the transparent region ("soft-mask with total image
+            // recreation", see comment above generateOverlayOpenAI). This is
+            // the root cause of furniture/objects subtly shifting, recoloring,
+            // or losing detail even when a mask was supplied. To make "only the
+            // wall changes, everything else stays exactly the same" an actual
+            // guarantee (not a prompt request), recomposite at the raw-pixel
+            // level: take the model's output ONLY inside the wall mask, and
+            // paste back the ORIGINAL photo pixels everywhere else.
+            //
+            // Implemented as a manual per-pixel blend over raw RGBA buffers
+            // (not sharp's composite blend-modes) so the exact semantics are
+            // unambiguous and easy to verify: mask value 0 = 100% original,
+            // mask value 255 = 100% model output, with a few pixels of
+            // feathering at the boundary (Gaussian blur on the mask) so the
+            // seam isn't a hard jagged edge.
+            let finalImageDataUrl = b64 ? `data:image/png;base64,${b64}` : (url as string);
+            if (maskPart && useInpaint) {
+                try {
+                    const sharpMod = (await import("sharp")).default;
+                    let modelOutputBuffer: Buffer;
+                    if (b64) {
+                        modelOutputBuffer = Buffer.from(b64, "base64");
+                    } else {
+                        const resp = await fetch(url as string);
+                        modelOutputBuffer = Buffer.from(await resp.arrayBuffer());
+                    }
+                    const outMeta = await sharpMod(modelOutputBuffer).metadata();
+                    const outW = outMeta.width || 1024;
+                    const outH = outMeta.height || 1024;
+
+                    // Rebuild the wall mask AT THE OUTPUT RESOLUTION (the mask we
+                    // sent to OpenAI was sized to the ORIGINAL photo, which may
+                    // differ from gpt-image's fixed output canvas).
+                    const { buildOpenAIWallMask } = await import("./imageCompositor.js");
+                    // Resize original room photo to the output canvas so pixel
+                    // positions line up 1:1 with the model's output.
+                    const originalResizedBuffer = await sharpMod(imageBuffer)
+                        .resize(outW, outH, { fit: "fill" })
+                        .toBuffer();
+                    const maskAtOutputRes = await buildOpenAIWallMask(originalResizedBuffer, req.analysis, req.analysis?.surfaces);
+
+                    if (maskAtOutputRes) {
+                        // buildOpenAIWallMask() returns an RGBA PNG where R=G=B=0
+                        // always, and the ALPHA channel encodes the mask:
+                        //   alpha=0   → wall / editable region (what we sent to OpenAI as "transparent, edit here")
+                        //   alpha=255 → preserved region (opaque, keep original)
+                        // Extract the alpha channel and INVERT it so we get a
+                        // "wall weight" value: 255 = wall (use model output),
+                        // 0 = preserve (use original). Feather 1.5px so the
+                        // wall/preserved boundary doesn't show a hard pixel seam.
+                        const wallWeight = await sharpMod(maskAtOutputRes)
+                            .extractChannel(3)  // alpha channel
+                            .negate()           // alpha=0 (wall) → 255 (wall weight), alpha=255 (preserve) → 0
+                            .blur(1.5)
+                            .raw()
+                            .toBuffer();
+
+                        const modelRaw = await sharpMod(modelOutputBuffer)
+                            .resize(outW, outH, { fit: "fill" }) // safety: force exact match if model returned slightly different dims
+                            .ensureAlpha()
+                            .raw()
+                            .toBuffer();
+                        const originalRaw = await sharpMod(originalResizedBuffer)
+                            .ensureAlpha()
+                            .raw()
+                            .toBuffer();
+
+                        const pixelCount = outW * outH;
+                        const lockedRaw = Buffer.alloc(pixelCount * 4);
+                        for (let i = 0; i < pixelCount; i++) {
+                            // wallWeight: 0 = preserve original, 255 = use model output (wall)
+                            const maskVal = wallWeight[i] / 255;
+                            const srcOff = i * 4;
+                            for (let c = 0; c < 4; c++) {
+                                const modelPx = modelRaw[srcOff + c];
+                                const origPx = originalRaw[srcOff + c];
+                                lockedRaw[srcOff + c] = Math.round(modelPx * maskVal + origPx * (1 - maskVal));
+                            }
+                        }
+
+                        const locked = await sharpMod(lockedRaw, { raw: { width: outW, height: outH, channels: 4 } })
+                            .png()
+                            .toBuffer();
+                        finalImageDataUrl = `data:image/png;base64,${locked.toString("base64")}`;
+                        logInfo(`[AI] ✅ Hard pixel-lock applied — non-wall regions guaranteed identical to original (${outW}x${outH})`);
+                    } else {
+                        logInfo(`[AI] Hard pixel-lock skipped — could not rebuild mask at output resolution`);
+                    }
+                } catch (lockErr: any) {
+                    // Never fail the whole render because the safety compositing
+                    // step had an issue — fall back to the model's raw output.
+                    console.warn(`[AI] Hard pixel-lock failed, using model output as-is: ${lockErr?.message}`);
+                }
+            }
+
             recordSuccess("openai");
             logInfo(`[AI] ✅ OpenAI success with model: ${model}`);
-            return { image, model, durationMs: Date.now() - startTime, provider: "openai" };
+            return { image: finalImageDataUrl, model, durationMs: Date.now() - startTime, provider: "openai" };
         } catch (error: any) {
             lastError = error;
             const msg = error?.message || String(error);

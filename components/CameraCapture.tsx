@@ -15,12 +15,19 @@ const GalleryIcon = () => (
     </svg>
 );
 
-export const CameraCapture: React.FC<{ 
+export const CameraCapture: React.FC<{
     onImageCapture: (file: File) => void;
     lang: 'en' | 'es';
 }> = ({ onImageCapture, lang }) => {
-    const cameraRef = React.useRef<HTMLInputElement>(null);
     const galleryRef = React.useRef<HTMLInputElement>(null);
+    // ponytail/mobile-fix: previously mobile used <input capture="environment">
+    // which delegates to the OS native camera app. That app's own front/back
+    // switch button is manufacturer-dependent (missing entirely on many
+    // Android OEM skins, and Safari/iOS PWA camera intents don't expose it
+    // reliably either) — so users had NO way to pick front camera on a lot of
+    // real devices. Using the SAME in-app WebcamCapture (getUserMedia +
+    // facingMode) on every platform guarantees a working, visible flip
+    // button on all Android and iPhone models, consistently.
     const [showWebcam, setShowWebcam] = useState(false);
 
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -33,32 +40,23 @@ export const CameraCapture: React.FC<{
         takePhoto: lang === 'es' ? 'Tomar Foto' : 'Take Photo',
         chooseFromGallery: lang === 'es' ? 'Elegir de Galería' : 'Choose from Gallery',
         or: lang === 'es' ? 'o' : 'or',
-        captureHint: lang === 'es' 
-            ? 'Abre la cámara para capturar el espacio en tiempo real.' 
-            : 'Opens your camera to capture the space in real time.',
+        captureHint: lang === 'es'
+            ? 'Abre la cámara para capturar el espacio en tiempo real. Toca el ícono de cambio para alternar entre cámara frontal y trasera.'
+            : 'Opens your camera to capture the space in real time. Tap the flip icon to switch between front and back camera.',
         galleryHint: lang === 'es'
             ? 'Selecciona una foto existente de tu dispositivo.'
             : 'Pick an existing photo from your device gallery.',
     };
-
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
     return (
         <div className="flex flex-col items-center gap-6 p-6">
             <h3 className="text-white text-lg font-semibold">
                 {lang === 'es' ? 'Capturar Espacio' : 'Capture Space'}
             </h3>
-            
-            {/* Hidden file inputs */}
-            <input
-                ref={cameraRef}
-                type="file"
-                accept="image/*"
-                {...(isMobile ? { capture: 'environment' } : {})}
-                onChange={handleFile}
-                className="hidden"
-                id="camera-input"
-            />
+
+            {/* Hidden file input — gallery picker only. Camera capture now
+                always goes through WebcamCapture (in-app, with flip button)
+                on every device, so there's no separate native-camera input. */}
             <input
                 ref={galleryRef}
                 type="file"
@@ -68,15 +66,10 @@ export const CameraCapture: React.FC<{
                 id="gallery-input"
             />
 
-            {/* Take Photo button — opens camera or webcam overlay */}
+            {/* Take Photo button — opens in-app camera overlay with front/back flip,
+                identical behavior on Android, iPhone, and desktop. */}
             <button
-                onClick={() => {
-                    if (isMobile) {
-                        cameraRef.current?.click();
-                    } else {
-                        setShowWebcam(true);
-                    }
-                }}
+                onClick={() => setShowWebcam(true)}
                 className="w-full max-w-xs flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-semibold transition-colors shadow-lg shadow-blue-600/25"
             >
                 <CameraIcon />
@@ -101,7 +94,7 @@ export const CameraCapture: React.FC<{
             </button>
             <p className="text-gray-400 text-xs text-center -mt-2">{t.galleryHint}</p>
 
-            {/* Webcam Overlay for Desktop/Laptop browsers */}
+            {/* In-app Camera Overlay — used for ALL platforms (mobile + desktop) */}
             {showWebcam && (
                 <WebcamCapture
                     onCapture={(file) => {

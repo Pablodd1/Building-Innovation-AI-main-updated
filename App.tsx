@@ -5942,7 +5942,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
             {renderProbeModal()}
 
             {/* ── Bottom Navigation Bar ── */}
-            {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART].includes(view) && (
+            {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART, AppView.CAMERA].includes(view) && (
                 <nav className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100/95 backdrop-blur-md border-t border-gray-300 safe-area-bottom">
                     <div className="flex justify-around items-center h-[72px] max-w-lg mx-auto px-2 pb-[env(safe-area-inset-bottom,8px)]">
                         {/* Home */}
@@ -6017,7 +6017,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
             )}
 
             {/* Safe area padding for bottom nav */}
-            {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART].includes(view) && (
+            {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART, AppView.CAMERA].includes(view) && (
                 <div className="h-24" />
             )}
         </div>
