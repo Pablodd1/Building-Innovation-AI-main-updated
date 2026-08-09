@@ -105448,11 +105448,33 @@ SURFACE TYPES \u2014 return one entry per distinct surface
 \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 - "wall" \u2014 each wall plane is a SEPARATE entry (never merge two walls). Applies to BOTH interior walls and EXTERIOR facades/exterior walls \u2014 the same rules apply whether this is a living room or a house exterior. Walls must NOT overlap each other significantly (< 5% overlap allowed at edges).
 - "floor" \u2014 the visible floor surface (omit if not visible).
-- "ceiling" \u2014 the visible ceiling surface (omit if not visible).
+- "ceiling" \u2014 the visible interior ceiling surface (omit if not visible).
+- "roof" \u2014 ONLY for EXTERIOR photos. The visible roof surface (tiles, shingles, metal, etc.) is a SEPARATE entry from any wall planes. A gable roof is typically two trapezoids meeting at a ridge; a flat roof is a single rectangle in perspective.
 - Obstacles (only for objects that pass the visual proof test): "window" | "door" | "television" | "cabinet" | "shelf" | "picture_frame" | "mirror" | "fireplace" | "light_fixture" | "radiator" | "furniture"
   - For EXTERIOR photos, use "furniture" as the catch-all for anything that is not the facade itself and must be preserved: plants/landscaping, trees, cars/vehicles, fences, gates, outdoor lighting fixtures, gutters, roof sections, people, signage, mailboxes, garage doors, patio furniture, and sky/background. Each still needs a precise evidence string citing 2 visual features.
   - For unfamiliar shapes, use "furniture" with a precise evidence string citing 2 features.
   - One physical object = one surface entry. Do NOT split a single TV into "screen" + "bezel" + "mount".
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+WALL vs WINDOW vs DOOR \u2014 geometry rules (read carefully)
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+This is the #1 cause of bad renders. The model is a wall-INPAINTER \u2014 it paints new material ONLY on surfaces you label "wall". Everything else stays untouched. So the geometry of each "wall" surface MUST EXCLUDE every window, door, picture frame, mirror, cabinet, fireplace opening, and any other opening/obstacle on that wall.
+
+RULES:
+1. A WINDOW is NOT part of the wall \u2014 it is a hole/opening cut into the wall. The wall surface STOPS at the window frame edge on all four sides. The window itself is a separate "window" obstacle that will be subtracted from the wall mask. Do NOT include the window glass area inside any wall polygon.
+   - If a wall has one large window covering 60% of it, the wall polygon should cover the remaining 40% (the strips above, below, and beside the window).
+   - If a wall has 3 windows in a row, the wall polygon is split into multiple strips, OR one continuous polygon that traces AROUND each window (more accurate but harder). Either is acceptable as long as the glass areas are NOT inside the wall.
+2. A DOOR is NOT part of the wall \u2014 same rule as window. The door frame defines where the wall ends. The door is a separate "door" obstacle.
+3. A FIREPLACE OPENING is NOT part of the wall \u2014 the wall stops at the mantel/surround edge. The fireplace itself (mantel, opening, hearth) is one "fireplace" obstacle.
+4. PICTURE FRAMES, MIRRORS, CABINETS MOUNTED ON THE WALL \u2014 these are NOT part of the wall. The wall traces around them. They are separate obstacles.
+5. The wall polygon MUST be a real shape that excludes openings. Do NOT draw a wall bbox that simply contains a window inside it \u2014 the window will get painted over with your product material.
+
+Examples of CORRECT wall polygons (illustrative, not literal):
+- Wall with one centered window: wall polygon = U-shape around the window (top strip + left strip + right strip + bottom strip as separate polygons, or one polygon that traces around the window with extra vertices).
+- Wall with no openings: standard trapezoid following the wall edges.
+- Wall half-covered by a tall cabinet: wall polygon stops at the cabinet edges.
+
+The downstream mask builder SUBTRACTS obstacles from walls, so even if your wall polygon accidentally contains an obstacle, it will be carved out. But the cleaner your wall geometry is, the better the final render.
 
 \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 CONFIDENCE CALIBRATION (accuracy over coverage)
