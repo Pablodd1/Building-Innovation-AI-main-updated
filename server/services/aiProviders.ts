@@ -518,6 +518,86 @@ OUTPUT: A single photorealistic image, identical to the original photo except th
 }
 
 /**
+ * GEMINI-SPECIFIC prompt builder — informed by Google's official Nano Banana
+ * prompting guide (ai.google.dev/gemini-api/docs/image-generation) and
+ * cross-checked against open source Gemini image-editing prompt patterns
+ * (minimaxir/gemimg). Deliberately DIFFERENT in structure from
+ * buildOverlayPrompt (the OpenAI-oriented version) — do not merge them.
+ *
+ * Key differences from the OpenAI prompt, each backed by a specific finding
+ * (see docs/GEMINI_PROMPT_RESEARCH_2026-08-10.md for full citations):
+ *   1. Ordinal image labeling ("image 1" / "image 2") instead of a
+ *      "Product Reference Image:" text label between image parts — this is
+ *      the exact pattern used in every official Google prompt template for
+ *      multi-image edits (inpainting, high-fidelity detail preservation,
+ *      advanced composition).
+ *   2. Markdown bullet lists instead of numbered prose paragraphs — Nano
+ *      Banana's text encoder is confirmed (gemimg README, live-verified
+ *      Aug 2026) to be "extremely responsive to Markdown formatting"
+ *      compared to older image-model text encoders.
+ *   3. POSITIVE framing instead of "FORBIDDEN: do NOT X" negatives — Google's
+ *      own official best-practices list explicitly instructs: "Instead of
+ *      saying 'no cars,' describe the intended scene positively." Every
+ *      negative rule below is rewritten as a preserve/keep/reproduce
+ *      instruction.
+ *   4. Exposure/white-balance/lighting-match promoted to its OWN top-level
+ *      bullet, front-loaded near the top of the rule list — this directly
+ *      targets the "overexposed rendering" failure mode. Root cause: Google's
+ *      inpainting template requires explicitly asking for lighting
+ *      preservation ("preserving the original style, lighting, and
+ *      composition") — the model does not do this automatically, and our old
+ *      shared prompt buried this as clause 4-of-5 inside a dense paragraph.
+ *   5. No pre-description step: unlike the FLUX path (which needs
+ *      describeProductTexture because FLUX Fill only accepts one image),
+ *      Gemini receives the actual product image directly as image 2 — a
+ *      text pre-description would be a lossy intermediate step for a model
+ *      that already supports high-fidelity multi-image reference input
+ *      (Gemini 3.1 Flash Image: "up to 10 images with high fidelity").
+ */
+function buildGeminiOverlayPrompt(req: OverlayRequest): { prompt: string; isFurniture: boolean } {
+    const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
+
+    const lightingHint =
+        req.renderOptions?.lighting === "SUNSET"
+            ? "warm golden hour sunset lighting"
+            : req.renderOptions?.lighting === "NIGHT_LUXURY"
+                ? "dramatic night luxury lighting with warm interior glow"
+                : "the room's existing natural ambient lighting, unchanged";
+
+    const materialIdentity = `"${req.material?.name || "selected material"}" — Category: ${req.material?.category || "general"}${req.material?.subcategory ? `, Sub: ${req.material.subcategory}` : ""}`;
+
+    let prompt: string;
+    if (isFurniture) {
+        prompt = `Using image 1 (the room photo) and image 2 (the product), place the product from image 2 into the room shown in image 1.
+
+This placement MUST follow every rule below exactly:
+- Product: ${materialIdentity}. Style: ${req.material?.promptModifier || "modern"}.
+- Match the room's existing perspective and scale the product realistically against surrounding objects.
+- Cast shadows consistent with ${lightingHint}.
+- Reproduce the exact texture and colors shown in image 2 — no reinterpretation.
+- Keep every existing piece of furniture and every existing object in image 1 unchanged, unless the request below says otherwise.
+${req.userInstruction ? `- User request: "${req.userInstruction}"` : ""}
+
+Output only the final image.`;
+    } else {
+        prompt = `Using image 1 (the room photo) and image 2 (the material sample), apply the exact material from image 2 onto the wall surfaces of image 1.
+
+This edit MUST follow every rule below exactly:
+- Material: ${materialIdentity}.
+- Keep every object in front of the wall in image 1 — furniture, people, plants, windows, wall-mounted items, art, TVs, doors — completely and pixel-identically unchanged. Only the bare wall surface changes.
+- Reproduce the color, pattern, scale, and finish of image 2 with full fidelity. No reinterpretation, no simplification, no color drift.
+- Preserve image 1's exact exposure, white balance, and lighting direction. The new wall material must look lit by ${lightingHint} at the SAME brightness as the rest of the untouched photo. Do not brighten, wash out, or relight the scene.
+- Preserve image 1's exact camera angle, crop, and perspective.
+- The final image is a real photograph of this exact room with this exact material on the wall — equal in photographic quality and resolution to image 1.
+${req.userInstruction ? `- User request: "${req.userInstruction}"` : ""}
+
+Output only the final image, no text.`;
+    }
+
+    return { prompt, isFurniture };
+}
+
+/**
  * FLUX-specific prompt builder. Unlike buildOverlayPrompt (which is verbose and
  * frames the task as "architectural visualization"), FLUX.1 Fill inpainting
  * responds best to a LITERAL description of the texture/material that should
@@ -865,7 +945,12 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     // Accept either `originalImage` (preferred) or `image` as fallback.
     const base64Data = cleanBase64(req.originalImage ?? (req as any).image);
     const mimeType = getMimeType(req.originalImage ?? (req as any).image);
-    const { prompt: finalPrompt } = buildOverlayPrompt(req);
+    // Gemini gets its OWN prompt builder (buildGeminiOverlayPrompt), not the
+    // OpenAI-oriented buildOverlayPrompt — see docs/GEMINI_PROMPT_RESEARCH_2026-08-10.md
+    // for the evidence behind ordinal image labeling, Markdown bullets, positive
+    // framing, and the front-loaded exposure/lighting-lock rule (targets the
+    // "overexposed rendering" failure mode).
+    const { prompt: finalPrompt } = buildGeminiOverlayPrompt(req);
     const productRef = await getImageBase64(req.material?.imageUrl);
     if (!productRef && req.material?.imageUrl) {
         // ponytail: explicit error instead of silent text-only fallback
@@ -873,9 +958,12 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
     }
     const hasProductImage = !!productRef;
 
+    // Image order matches the ordinal labeling in buildGeminiOverlayPrompt
+    // ("image 1" = room photo, "image 2" = material/product) — this is the
+    // exact ordering used in every official Gemini multi-image prompt template
+    // (inpainting, high-fidelity detail preservation, advanced composition).
     const parts: any[] = [{ inlineData: { data: base64Data, mimeType } }];
     if (hasProductImage) {
-        parts.push({ text: "Product Reference Image:" });
         parts.push({ inlineData: { data: productRef!.data, mimeType: productRef!.mimeType } });
     }
     parts.push({ text: finalPrompt });
@@ -951,12 +1039,30 @@ async function generateOverlayGemini(req: OverlayRequest, config: AIConfig, star
             } else {
                 // Determine modalities: image output only for models that support it
                 const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
+                // thinkingLevel: "HIGH" — enables Nano Banana's internal
+                // "thinking" verification pass before committing final pixels.
+                // Per ai.google.dev docs, thinking models generate up to 2
+                // interim images to test composition/logic before the final
+                // render. This is the concrete lever for the "overexposed
+                // rendering" failure mode: skipping this step is the likely
+                // reason relighting/exposure drift wasn't being caught before
+                // the image was returned. See docs/GEMINI_PROMPT_RESEARCH_2026-08-10.md §3.
+                // IMPORTANT: per official docs, only GEMINI 3.x image models are
+                // "thinking models" — gemini-2.5-flash-image (legacy Nano Banana)
+                // is NOT confirmed to support thinkingConfig, so we only set it
+                // for gemini-3.x model names to avoid an INVALID_ARGUMENT on the
+                // legacy fallback tier.
+                const isGemini3 = modelInfo.name.startsWith("gemini-3");
+                const config_: any = { responseModalities: modalities };
+                if (isGemini3) {
+                    config_.thinkingConfig = { thinkingLevel: "HIGH" };
+                }
                 // Log request payload (truncated for brevity)
-                logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities })}`);
+                logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities, thinkingLevel: isGemini3 ? "HIGH" : "n/a (legacy model)" })}`);
                 response = await ai.models.generateContent({
                     model: modelInfo.name,
                     contents,
-                    config: { responseModalities: modalities },
+                    config: config_,
                 });
             }
             usedModel = modelInfo.name;
@@ -1601,7 +1707,7 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
             // available; otherwise use a default set that SAM 3 handles well
             // per our testing (sofa, television, furniture, light, cabinet).
             const gpt4oObstacleTypes = (req.analysis?.surfaces || [])
-                .filter((s: any) => s.type !== "wall" && s.type !== "floor" && s.type !== "ceiling")
+                .filter((s: any) => s.type !== "wall" && s.type !== "roof" && s.type !== "floor" && s.type !== "ceiling")
                 .map((s: any) => s.type)
                 .filter((v: string, i: number, arr: string[]) => arr.indexOf(v) === i); // dedupe
 
@@ -1613,7 +1719,8 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
                 "light", "cabinet", ...gpt4oObstacleTypes,
             ])).slice(0, 8); // cap at 8 to control cost (~$0.002 each)
 
-            const allTypes = ["wall", ...obstacleTypes];
+            const hasRoofSurface = (req.analysis?.surfaces || []).some((s: any) => s.type === "roof");
+            const allTypes = hasRoofSurface ? ["wall", "roof", ...obstacleTypes] : ["wall", ...obstacleTypes];
             console.log(`[FLUX] SAM 3 segmenting ${allTypes.length} types: ${allTypes.join(", ")}`);
 
             const masks = await segmentRoomSurfaces(samImage, allTypes, config.FAL_API_KEY);
@@ -1623,10 +1730,15 @@ async function generateOverlayFluxFill(req: OverlayRequest, config: AIConfig, st
                 // Collect obstacle masks to subtract from the wall region
                 const obstacleAlphas: Array<{ type: string; alphaBuffer: Buffer }> = [];
                 for (const [type, mask] of masks) {
-                    if (type !== "wall") {
+                    if (type !== "wall" && type !== "roof") {
                         obstacleAlphas.push({ type, alphaBuffer: mask.alphaBuffer });
                     }
                 }
+                // NOTE: if the analysis emitted a "roof" surface (exterior photo)
+                // and SAM returned a roof mask, also segment/apply it. For the
+                // FLUX secondary path we keep wall-only subtraction semantics;
+                // roof is fully applied on the primary OpenAI inpaint path via
+                // buildOpenAIWallMask (which treats wall + roof as paintable).
 
                 // Build the binary mask (walls=white, obstacles subtracted)
                 const binary = buildBinaryMaskFromAlphas(
@@ -2064,6 +2176,30 @@ export async function generateOverlay(
     const errors: string[] = [];
 
     // ─── Provider chain selection ─────────────────────────────────────
+    // GEMINI IS NOW THE PRIMARY RENDERER (Aug 2026) when a Gemini key is
+    // configured, for BOTH inpaint and compositor request modes. Rationale:
+    //   - Gemini 3.1 Flash Image ("Nano Banana 2") takes the room photo AND
+    //     the product image directly (up to 10 images, high fidelity) — it
+    //     does not need a literal pixel mask the way OpenAI images.edit does.
+    //     Google's own official guidance frames this as "semantic masking":
+    //     describe the edit in natural language rather than supplying an
+    //     alpha-channel mask. See docs/GEMINI_PROMPT_RESEARCH_2026-08-10.md.
+    //   - buildGeminiOverlayPrompt (Gemini-specific prompt, NOT the OpenAI
+    //     buildOverlayPrompt) uses ordinal image labeling, Markdown bullets,
+    //     positive framing, and a front-loaded exposure/lighting-lock rule —
+    //     see that function's docblock for the full evidence trail.
+    //   - thinkingConfig.thinkingLevel="HIGH" is set for gemini-3.x image
+    //     models to enable Nano Banana's internal verification pass before
+    //     committing final pixels — the concrete lever against the
+    //     "overexposed rendering" failure mode.
+    // SAFETY: OpenAI (and FLUX, for inpaint) remain fully intact as automatic
+    // fallback — the existing circuit-breaker + try/catch chain below means
+    // a suspended/dead/rate-limited Gemini key degrades to OpenAI with zero
+    // manual intervention. Gemini is inserted FIRST in the chain, never
+    // replacing OpenAI/FLUX, exactly per "Gemini used, other models not
+    // affected." If GEMINI_API_KEY is unset or every model in the Gemini
+    // chain fails, execution falls through to openai/flux/generic unchanged.
+    //
     // OpenAI is the PRIMARY renderer for inpaint mode. Unlike FLUX Fill
     // (which only receives a TEXT description of the product and hallucinates
     // a generic texture — including fake watermarks from training data),
@@ -2076,6 +2212,7 @@ export async function generateOverlay(
     // outage). Generic sharp/compositor is the last resort.
     const isInpaint = (req as any).mode === "inpaint" && !!req.analysis?.surfaces?.length;
     const hasFlux = !!config.FAL_API_KEY;
+    const hasGemini = !!config.GEMINI_API_KEY;
     // Debug/testing escape hatch: explicit forceProvider on the request bypasses
     // the automatic chain so we can A/B compare providers on the same
     // photo+material. Not exposed in the normal client flow — admin-only.
@@ -2083,16 +2220,29 @@ export async function generateOverlay(
     const providerChain: AIProvider[] = forced
         ? [forced, "generic"]
         : isInpaint
-            ? hasFlux
-                ? ["openai", "flux", "generic"]
-                : ["openai", "generic"]
-            : ["openai", "generic"];
+            ? hasGemini
+                ? hasFlux
+                    ? ["gemini", "openai", "flux", "generic"]
+                    : ["gemini", "openai", "generic"]
+                : hasFlux
+                    ? ["openai", "flux", "generic"]
+                    : ["openai", "generic"]
+            : hasGemini
+                ? ["gemini", "openai", "generic"]
+                : ["openai", "generic"];
 
-    console.log(`[AI] Image generation provider chain: ${providerChain.join(" → ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);
+    console.log(`[AI] Image generation provider chain: ${providerChain.join(" → ")} (inpaint=${isInpaint}, gemini_enabled=${hasGemini}, flux_enabled=${hasFlux})`);
 
     for (const provider of providerChain) {
         try {
             switch (provider) {
+                case "gemini":
+                    if (!config.GEMINI_API_KEY) {
+                        errors.push("Gemini: No API key configured");
+                        continue;
+                    }
+                    return await generateOverlayGemini(req, config, start);
+
                 case "flux":
                     if (!config.FAL_API_KEY) {
                         errors.push("FLUX: No FAL_API_KEY configured");

@@ -4,11 +4,20 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e2) {
+    throw err = [e2], e2;
+  }
 };
 var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e2) {
+    throw mod = 0, e2;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -16805,7 +16814,7 @@ var require_shams = __commonJS({
         return true;
       }
       var obj = {};
-      var sym = Symbol("test");
+      var sym = /* @__PURE__ */ Symbol("test");
       var symObj = Object(sym);
       if (typeof sym === "string") {
         return false;
@@ -16864,7 +16873,7 @@ var require_has_symbols = __commonJS({
       if (typeof origSymbol("foo") !== "symbol") {
         return false;
       }
-      if (typeof Symbol("bar") !== "symbol") {
+      if (typeof /* @__PURE__ */ Symbol("bar") !== "symbol") {
         return false;
       }
       return hasSymbolSham();
@@ -27417,8 +27426,8 @@ var require_split2 = __commonJS({
     "use strict";
     var { Transform } = require("stream");
     var { StringDecoder } = require("string_decoder");
-    var kLast = Symbol("last");
-    var kDecoder = Symbol("decoder");
+    var kLast = /* @__PURE__ */ Symbol("last");
+    var kDecoder = /* @__PURE__ */ Symbol("decoder");
     function transform(chunk, enc, cb) {
       let list;
       if (this.overflow) {
@@ -31519,7 +31528,7 @@ var require_common2 = __commonJS({
     var extend_1 = __importDefault(require_extend());
     var util_cjs_1 = __importDefault(require_util());
     var pkg = util_cjs_1.default.pkg;
-    exports2.GAXIOS_ERROR_SYMBOL = Symbol.for(`${pkg.name}-gaxios-error`);
+    exports2.GAXIOS_ERROR_SYMBOL = /* @__PURE__ */ Symbol.for(`${pkg.name}-gaxios-error`);
     var GaxiosError = class _GaxiosError extends Error {
       config;
       response;
@@ -31975,7 +31984,7 @@ var require_dist4 = __commonJS({
     var http4 = __importStar(require("http"));
     var https_1 = require("https");
     __exportStar(require_helpers(), exports2);
-    var INTERNAL = Symbol("AgentBaseInternalState");
+    var INTERNAL = /* @__PURE__ */ Symbol("AgentBaseInternalState");
     var Agent = class extends http4.Agent {
       constructor(opts) {
         super(opts);
@@ -32546,11 +32555,11 @@ var require_ponyfill_es2018 = __commonJS({
           return front._elements[cursor];
         }
       }
-      const AbortSteps = Symbol("[[AbortSteps]]");
-      const ErrorSteps = Symbol("[[ErrorSteps]]");
-      const CancelSteps = Symbol("[[CancelSteps]]");
-      const PullSteps = Symbol("[[PullSteps]]");
-      const ReleaseSteps = Symbol("[[ReleaseSteps]]");
+      const AbortSteps = /* @__PURE__ */ Symbol("[[AbortSteps]]");
+      const ErrorSteps = /* @__PURE__ */ Symbol("[[ErrorSteps]]");
+      const CancelSteps = /* @__PURE__ */ Symbol("[[CancelSteps]]");
+      const PullSteps = /* @__PURE__ */ Symbol("[[PullSteps]]");
+      const ReleaseSteps = /* @__PURE__ */ Symbol("[[ReleaseSteps]]");
       function ReadableStreamReaderGenericInitialize(reader, stream) {
         reader._ownerReadableStream = stream;
         stream._reader = reader;
@@ -37614,7 +37623,7 @@ var init_body = __esm({
     init_base();
     init_is();
     pipeline = (0, import_node_util.promisify)(import_node_stream.default.pipeline);
-    INTERNALS = Symbol("Body internals");
+    INTERNALS = /* @__PURE__ */ Symbol("Body internals");
     Body = class {
       constructor(body, {
         size = 0
@@ -37984,7 +37993,7 @@ var init_headers = __esm({
       /**
        * For better console.log(headers) and also to convert Headers into Node.js Request compatible format
        */
-      [Symbol.for("nodejs.util.inspect.custom")]() {
+      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
         return [...this.keys()].reduce((result, key) => {
           const values = this.getAll(key);
           if (key === "host") {
@@ -38024,7 +38033,7 @@ var init_response = __esm({
     init_headers();
     init_body();
     init_is_redirect();
-    INTERNALS2 = Symbol("Response internals");
+    INTERNALS2 = /* @__PURE__ */ Symbol("Response internals");
     Response2 = class _Response extends Body {
       constructor(body = null, options = {}) {
         super(body, options);
@@ -38314,7 +38323,7 @@ var init_request = __esm({
     init_is();
     init_get_search();
     init_referrer();
-    INTERNALS3 = Symbol("Request internals");
+    INTERNALS3 = /* @__PURE__ */ Symbol("Request internals");
     isRequest = (object) => {
       return typeof object === "object" && typeof object[INTERNALS3] === "object";
     };
@@ -38495,7 +38504,7 @@ var init_request = __esm({
         path: parsedURL.pathname + search,
         // The following options are not expressed in the URL
         method: request.method,
-        headers: headers[Symbol.for("nodejs.util.inspect.custom")](),
+        headers: headers[/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")](),
         insecureHTTPParser: request.insecureHTTPParser,
         agent
       };
@@ -42586,8 +42595,8 @@ var require_authclient = __commonJS({
        * making an RPC call, for logging purposes, as well as a string ID that can be
        * used to correlate calls and responses.
        */
-      static RequestMethodNameSymbol = Symbol("request method name");
-      static RequestLogIdSymbol = Symbol("request log id");
+      static RequestMethodNameSymbol = /* @__PURE__ */ Symbol("request method name");
+      static RequestLogIdSymbol = /* @__PURE__ */ Symbol("request log id");
       constructor(opts = {}) {
         super();
         const options = (0, util_1.originalOrCamelOptions)(opts);
@@ -48724,10 +48733,10 @@ var require_constants = __commonJS({
       EMPTY_BUFFER: Buffer.alloc(0),
       GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
       hasBlob,
-      kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
-      kListener: Symbol("kListener"),
-      kStatusCode: Symbol("status-code"),
-      kWebSocket: Symbol("websocket"),
+      kForOnEventAttribute: /* @__PURE__ */ Symbol("kIsForOnEventAttribute"),
+      kListener: /* @__PURE__ */ Symbol("kListener"),
+      kStatusCode: /* @__PURE__ */ Symbol("status-code"),
+      kWebSocket: /* @__PURE__ */ Symbol("websocket"),
       NOOP: () => {
       }
     };
@@ -48813,8 +48822,8 @@ var require_buffer_util = __commonJS({
 var require_limiter = __commonJS({
   "node_modules/ws/lib/limiter.js"(exports2, module2) {
     "use strict";
-    var kDone = Symbol("kDone");
-    var kRun = Symbol("kRun");
+    var kDone = /* @__PURE__ */ Symbol("kDone");
+    var kRun = /* @__PURE__ */ Symbol("kRun");
     var Limiter = class {
       /**
        * Creates a new `Limiter`.
@@ -48869,11 +48878,11 @@ var require_permessage_deflate = __commonJS({
     var { kStatusCode } = require_constants();
     var FastBuffer = Buffer[Symbol.species];
     var TRAILER = Buffer.from([0, 0, 255, 255]);
-    var kPerMessageDeflate = Symbol("permessage-deflate");
-    var kTotalLength = Symbol("total-length");
-    var kCallback = Symbol("callback");
-    var kBuffers = Symbol("buffers");
-    var kError = Symbol("error");
+    var kPerMessageDeflate = /* @__PURE__ */ Symbol("permessage-deflate");
+    var kTotalLength = /* @__PURE__ */ Symbol("total-length");
+    var kCallback = /* @__PURE__ */ Symbol("callback");
+    var kBuffers = /* @__PURE__ */ Symbol("buffers");
+    var kError = /* @__PURE__ */ Symbol("error");
     var zlibLimiter;
     var PerMessageDeflate2 = class {
       /**
@@ -50088,7 +50097,7 @@ var require_sender = __commonJS({
     var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
     var { isBlob: isBlob2, isValidStatusCode } = require_validation();
     var { mask: applyMask, toBuffer } = require_buffer_util();
-    var kByteLength = Symbol("kByteLength");
+    var kByteLength = /* @__PURE__ */ Symbol("kByteLength");
     var maskBuffer = Buffer.alloc(4);
     var RANDOM_POOL_SIZE = 8 * 1024;
     var randomPool;
@@ -50573,14 +50582,14 @@ var require_event_target = __commonJS({
   "node_modules/ws/lib/event-target.js"(exports2, module2) {
     "use strict";
     var { kForOnEventAttribute, kListener } = require_constants();
-    var kCode = Symbol("kCode");
-    var kData = Symbol("kData");
-    var kError = Symbol("kError");
-    var kMessage = Symbol("kMessage");
-    var kReason = Symbol("kReason");
-    var kTarget = Symbol("kTarget");
-    var kType = Symbol("kType");
-    var kWasClean = Symbol("kWasClean");
+    var kCode = /* @__PURE__ */ Symbol("kCode");
+    var kData = /* @__PURE__ */ Symbol("kData");
+    var kError = /* @__PURE__ */ Symbol("kError");
+    var kMessage = /* @__PURE__ */ Symbol("kMessage");
+    var kReason = /* @__PURE__ */ Symbol("kReason");
+    var kTarget = /* @__PURE__ */ Symbol("kTarget");
+    var kType = /* @__PURE__ */ Symbol("kType");
+    var kWasClean = /* @__PURE__ */ Symbol("kWasClean");
     var Event = class {
       /**
        * Create a new `Event`.
@@ -50982,7 +50991,7 @@ var require_websocket = __commonJS({
     } = require_event_target();
     var { format, parse } = require_extension();
     var { toBuffer } = require_buffer_util();
-    var kAborted = Symbol("kAborted");
+    var kAborted = /* @__PURE__ */ Symbol("kAborted");
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
@@ -53486,7 +53495,7 @@ var require_cmp = __commonJS({
 var require_comparator = __commonJS({
   "node_modules/semver/classes/comparator.js"(exports2, module2) {
     "use strict";
-    var ANY = Symbol("SemVer ANY");
+    var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
         return ANY;
@@ -67490,7 +67499,7 @@ var require_column_definition = __commonJS({
           decimals: this.decimals
         };
       }
-      [Symbol.for("nodejs.util.inspect.custom")](depth, inspectOptions, inspect) {
+      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")](depth, inspectOptions, inspect) {
         const Types = require_types();
         const typeNames = [];
         for (const t2 in Types) {
@@ -105213,6 +105222,16 @@ function getOpenRouterSDK(apiKey) {
   _cachedOpenRouterKey = apiKey;
   return _cachedOpenRouter;
 }
+function extractGeminiImage(response) {
+  if (response.candidates?.[0]?.content?.parts) {
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+  }
+  throw new Error("No image generated in Gemini response.");
+}
 function buildOverlayPrompt(req) {
   const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
   const lightingHint = req.renderOptions?.lighting === "SUNSET" ? "warm golden hour sunset lighting" : req.renderOptions?.lighting === "NIGHT_LUXURY" ? "dramatic night luxury lighting with warm interior glow" : "natural ambient lighting";
@@ -105252,6 +105271,39 @@ FORBIDDEN (anti-hallucination \u2014 these are hard failures):
 - Do NOT alter the color, pattern, or finish of the Product Reference material.
 
 OUTPUT: A single photorealistic image, identical to the original photo except that the target wall surfaces now show the Product Reference material. Output ONLY the final image, no text, no explanation.`;
+  }
+  return { prompt, isFurniture };
+}
+function buildGeminiOverlayPrompt(req) {
+  const isFurniture = req.material?.category === "Muebles" || req.material?.usage === "Furniture";
+  const lightingHint = req.renderOptions?.lighting === "SUNSET" ? "warm golden hour sunset lighting" : req.renderOptions?.lighting === "NIGHT_LUXURY" ? "dramatic night luxury lighting with warm interior glow" : "the room's existing natural ambient lighting, unchanged";
+  const materialIdentity = `"${req.material?.name || "selected material"}" \u2014 Category: ${req.material?.category || "general"}${req.material?.subcategory ? `, Sub: ${req.material.subcategory}` : ""}`;
+  let prompt;
+  if (isFurniture) {
+    prompt = `Using image 1 (the room photo) and image 2 (the product), place the product from image 2 into the room shown in image 1.
+
+This placement MUST follow every rule below exactly:
+- Product: ${materialIdentity}. Style: ${req.material?.promptModifier || "modern"}.
+- Match the room's existing perspective and scale the product realistically against surrounding objects.
+- Cast shadows consistent with ${lightingHint}.
+- Reproduce the exact texture and colors shown in image 2 \u2014 no reinterpretation.
+- Keep every existing piece of furniture and every existing object in image 1 unchanged, unless the request below says otherwise.
+${req.userInstruction ? `- User request: "${req.userInstruction}"` : ""}
+
+Output only the final image.`;
+  } else {
+    prompt = `Using image 1 (the room photo) and image 2 (the material sample), apply the exact material from image 2 onto the wall surfaces of image 1.
+
+This edit MUST follow every rule below exactly:
+- Material: ${materialIdentity}.
+- Keep every object in front of the wall in image 1 \u2014 furniture, people, plants, windows, wall-mounted items, art, TVs, doors \u2014 completely and pixel-identically unchanged. Only the bare wall surface changes.
+- Reproduce the color, pattern, scale, and finish of image 2 with full fidelity. No reinterpretation, no simplification, no color drift.
+- Preserve image 1's exact exposure, white balance, and lighting direction. The new wall material must look lit by ${lightingHint} at the SAME brightness as the rest of the untouched photo. Do not brighten, wash out, or relight the scene.
+- Preserve image 1's exact camera angle, crop, and perspective.
+- The final image is a real photograph of this exact room with this exact material on the wall \u2014 equal in photographic quality and resolution to image 1.
+${req.userInstruction ? `- User request: "${req.userInstruction}"` : ""}
+
+Output only the final image, no text.`;
   }
   return { prompt, isFurniture };
 }
@@ -105521,6 +105573,123 @@ async function generateGenericOverlay(req) {
   console.warn("[AI] All providers failed. Using generic fallback response.");
   throw new Error("AI Generation Temporarily Unavailable: All providers failed or were unavailable.");
 }
+async function generateOverlayGemini(req, config, startTime) {
+  if (isCircuitOpen("gemini")) {
+    throw new Error("Gemini circuit breaker is open \u2014 skipping due to recent failures");
+  }
+  const ai = getGeminiSDK(config.GEMINI_API_KEY);
+  const base64Data = cleanBase642(req.originalImage ?? req.image);
+  const mimeType = getMimeType(req.originalImage ?? req.image);
+  const { prompt: finalPrompt } = buildGeminiOverlayPrompt(req);
+  const productRef = await getImageBase64(req.material?.imageUrl);
+  if (!productRef && req.material?.imageUrl) {
+    throw new Error(`Failed to load product image from ${req.material.imageUrl}. Check Drive URL or proxy.`);
+  }
+  const hasProductImage = !!productRef;
+  const parts = [{ inlineData: { data: base64Data, mimeType } }];
+  if (hasProductImage) {
+    parts.push({ inlineData: { data: productRef.data, mimeType: productRef.mimeType } });
+  }
+  parts.push({ text: finalPrompt });
+  const contents = [
+    {
+      role: "user",
+      parts
+    }
+  ];
+  const IMAGE_MODELS = [
+    { name: "gemini-3.1-flash-image", isImagen: false, supportsImageOutput: true, note: "Nano Banana 2 \u2014 primary image output" },
+    { name: "gemini-2.5-flash-image", isImagen: false, supportsImageOutput: true, note: "Nano Banana \u2014 legacy fallback" },
+    { name: "imagen-3.0-generate-002", isImagen: true, supportsImageOutput: true, note: "Imagen 3 \u2014 paid-tier last resort" }
+  ];
+  let response;
+  let usedModel = IMAGE_MODELS[0].name;
+  let lastError = null;
+  for (const modelInfo of IMAGE_MODELS) {
+    try {
+      logInfo(`[AI] Trying Gemini model: ${modelInfo.name} (${modelInfo.note})...`);
+      if (modelInfo.isImagen) {
+        logInfo(`[AI] Calling generateImages for ${modelInfo.name}`);
+        const imgResponse = await ai.models.generateImages({
+          model: modelInfo.name,
+          prompt: finalPrompt,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: "image/jpeg",
+            aspectRatio: "4:3"
+          }
+        });
+        const base64Bytes = imgResponse.generatedImages?.[0]?.image?.imageBytes;
+        if (!base64Bytes) {
+          throw new Error("No image returned from Imagen.");
+        }
+        response = {
+          candidates: [{
+            content: {
+              parts: [{
+                inlineData: {
+                  data: base64Bytes,
+                  mimeType: "image/jpeg"
+                }
+              }]
+            }
+          }]
+        };
+      } else {
+        const modalities = modelInfo.supportsImageOutput ? ["TEXT", "IMAGE"] : ["TEXT"];
+        const isGemini3 = modelInfo.name.startsWith("gemini-3");
+        const config_ = { responseModalities: modalities };
+        if (isGemini3) {
+          config_.thinkingConfig = { thinkingLevel: "HIGH" };
+        }
+        logInfo(`[AI] Gemini request payload for ${modelInfo.name}: ${JSON.stringify({ model: modelInfo.name, modalities, thinkingLevel: isGemini3 ? "HIGH" : "n/a (legacy model)" })}`);
+        response = await ai.models.generateContent({
+          model: modelInfo.name,
+          contents,
+          config: config_
+        });
+      }
+      usedModel = modelInfo.name;
+      logInfo(`[AI] \u2705 Gemini success with model: ${modelInfo.name}`);
+      recordSuccess("gemini");
+      break;
+    } catch (error) {
+      const msg = error?.message || String(error);
+      const status = error?.status || error?.code;
+      lastError = error;
+      const isModelError = msg.includes("not found") || msg.includes("not supported") || msg.includes("INVALID_ARGUMENT") || status === 404 || status === 400;
+      const isLastModel = modelInfo === IMAGE_MODELS[IMAGE_MODELS.length - 1];
+      if (isModelError && !isLastModel) {
+        console.warn(`[AI] \u26A0\uFE0F Gemini model ${modelInfo.name} failed (${msg}), trying next...`);
+        continue;
+      }
+      if ((status === 429 || status === 503 || msg.includes("UNAVAILABLE")) && isLastModel) {
+        console.warn(`[AI] \u23F3 Rate limited on ${modelInfo.name}, retrying after 2s...`);
+        await new Promise((r2) => setTimeout(r2, 2e3));
+        try {
+          response = await ai.models.generateContent({
+            model: modelInfo.name,
+            contents,
+            config: { responseModalities: ["TEXT"] }
+          });
+          usedModel = modelInfo.name;
+          recordSuccess("gemini");
+          break;
+        } catch (retryError) {
+          lastError = retryError;
+        }
+      }
+      recordFailure("gemini", error);
+      throw error;
+    }
+  }
+  if (!response) {
+    recordFailure("gemini", lastError);
+    throw new Error(`All Gemini image models failed. Last error: ${lastError?.message || "Unknown"}`);
+  }
+  const image = extractGeminiImage(response);
+  return { image, model: usedModel, durationMs: Date.now() - startTime, provider: "gemini" };
+}
 async function generateOverlayOpenAI(req, config, startTime) {
   if (!config.OPENAI_API_KEY) {
     throw new Error("OpenAI API key not configured");
@@ -105715,7 +105884,7 @@ async function generateOverlayFluxFill(req, config, startTime) {
       const samW = Math.round(imgW * scale);
       const samH = Math.round(imgH * scale);
       const samImage = await sharp3(imageBuffer).resize(samW, samH, { fit: "fill" }).jpeg({ quality: 90 }).toBuffer();
-      const gpt4oObstacleTypes = (req.analysis?.surfaces || []).filter((s2) => s2.type !== "wall" && s2.type !== "floor" && s2.type !== "ceiling").map((s2) => s2.type).filter((v, i2, arr) => arr.indexOf(v) === i2);
+      const gpt4oObstacleTypes = (req.analysis?.surfaces || []).filter((s2) => s2.type !== "wall" && s2.type !== "roof" && s2.type !== "floor" && s2.type !== "ceiling").map((s2) => s2.type).filter((v, i2, arr) => arr.indexOf(v) === i2);
       const obstacleTypes = Array.from(/* @__PURE__ */ new Set([
         "sofa",
         "couch",
@@ -105726,14 +105895,15 @@ async function generateOverlayFluxFill(req, config, startTime) {
         "cabinet",
         ...gpt4oObstacleTypes
       ])).slice(0, 8);
-      const allTypes = ["wall", ...obstacleTypes];
+      const hasRoofSurface = (req.analysis?.surfaces || []).some((s2) => s2.type === "roof");
+      const allTypes = hasRoofSurface ? ["wall", "roof", ...obstacleTypes] : ["wall", ...obstacleTypes];
       console.log(`[FLUX] SAM 3 segmenting ${allTypes.length} types: ${allTypes.join(", ")}`);
       const masks = await segmentRoomSurfaces(samImage, allTypes, config.FAL_API_KEY);
       const wallMask = masks.get("wall");
       if (wallMask) {
         const obstacleAlphas = [];
         for (const [type, mask] of masks) {
-          if (type !== "wall") {
+          if (type !== "wall" && type !== "roof") {
             obstacleAlphas.push({ type, alphaBuffer: mask.alphaBuffer });
           }
         }
@@ -106060,12 +106230,19 @@ async function generateOverlay(req, preferredProvider, config) {
   const errors = [];
   const isInpaint = req.mode === "inpaint" && !!req.analysis?.surfaces?.length;
   const hasFlux = !!config.FAL_API_KEY;
+  const hasGemini = !!config.GEMINI_API_KEY;
   const forced = req.forceProvider;
-  const providerChain = forced ? [forced, "generic"] : isInpaint ? hasFlux ? ["openai", "flux", "generic"] : ["openai", "generic"] : ["openai", "generic"];
-  console.log(`[AI] Image generation provider chain: ${providerChain.join(" \u2192 ")} (inpaint=${isInpaint}, flux_enabled=${!!config.FAL_API_KEY})`);
+  const providerChain = forced ? [forced, "generic"] : isInpaint ? hasGemini ? hasFlux ? ["gemini", "openai", "flux", "generic"] : ["gemini", "openai", "generic"] : hasFlux ? ["openai", "flux", "generic"] : ["openai", "generic"] : hasGemini ? ["gemini", "openai", "generic"] : ["openai", "generic"];
+  console.log(`[AI] Image generation provider chain: ${providerChain.join(" \u2192 ")} (inpaint=${isInpaint}, gemini_enabled=${hasGemini}, flux_enabled=${hasFlux})`);
   for (const provider of providerChain) {
     try {
       switch (provider) {
+        case "gemini":
+          if (!config.GEMINI_API_KEY) {
+            errors.push("Gemini: No API key configured");
+            continue;
+          }
+          return await generateOverlayGemini(req, config, start);
         case "flux":
           if (!config.FAL_API_KEY) {
             errors.push("FLUX: No FAL_API_KEY configured");
