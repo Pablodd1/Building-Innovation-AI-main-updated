@@ -2287,30 +2287,24 @@ export async function analyzeRoom(
     const start = Date.now();
     const errors: string[] = [];
 
-    // SIMPLIFIED July 2026: OpenAI (gpt-4o / gpt-4o-mini) is the only analysis
-    // provider. Per OpenAI docs, gpt-4o supports vision + JSON mode + image_url
-    // input — exactly what ANALYSIS_PROMPT needs. Rationale for dropping the
-    // others:
-    //   - Gemini: direct key is dead (401 ACCOUNT_STATE_INVALID on the service
-    //     account), and Gemini image-aware analysis uses the interactions
-    //     endpoint which we don't currently call correctly.
-    //   - OpenRouter: only useful as a Gemini proxy; was adding ~5s latency
-    //     on every analysis because it led with the shut-down
-    //     google/gemini-2.5-flash model before falling through to openai/gpt-4o.
-    // Single-provider = predictable cost, no failover latency, simpler ops.
-    const providerChain: AIProvider[] = ["openai", "generic"];
+    // Updated Aug 2026: Gemini is the sole analysis provider — mirrors the
+    // render path where Gemini is primary. Reason: user runs a Gemini-only
+    // stack. analyzeRoomGemini uses gemini-3.5-flash (GA) with gemini-3-flash
+    // fallback, inline image + ANALYSIS_PROMPT, JSON parse. OpenAI analysis is
+    // intentionally deprecated; only generic text fallback remains.
+    const providerChain: AIProvider[] = ["gemini", "generic"];
 
-    console.log(`[AI] Room analysis provider chain: ${providerChain.join(" → ")} (preferred=${preferredProvider} ignored — OpenAI-only since July 2026)`);
+    console.log(`[AI] Room analysis provider chain: ${providerChain.join(" → ")} (preferred=${preferredProvider} ignored — Gemini-only since Aug 2026)`);
 
     for (const provider of providerChain) {
         try {
             switch (provider) {
-                case "openai":
-                    if (!config.OPENAI_API_KEY) {
-                        errors.push("OpenAI: No API key configured");
+                case "gemini":
+                    if (!config.GEMINI_API_KEY) {
+                        errors.push("Gemini: No API key configured");
                         continue;
                     }
-                    return await analyzeRoomOpenAI(req, config);
+                    return await analyzeRoomGemini(req, config);
 
                 case "generic":
                     return {
@@ -2321,7 +2315,7 @@ export async function analyzeRoom(
                     };
 
                 default:
-                    errors.push(`${provider}: not in analysis chain (OpenAI-only)`);
+                    errors.push(`${provider}: not in analysis chain (Gemini-only)`);
             }
         } catch (error: any) {
             const msg = error?.message || String(error);

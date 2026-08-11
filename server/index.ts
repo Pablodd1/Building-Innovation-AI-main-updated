@@ -2287,14 +2287,13 @@ app.post("/api/ai/analyze-room", requireAuth, async (req: Request, res: Response
 
         const config = loadConfig();
 
-        // SIMPLIFIED July 2026: OpenAI is the sole analysis provider.
-        // (Both orchestrators ignore preferredProvider — see aiProviders.ts.)
-        // We still pass `provider` through for the response payload + logging,
-        // but it no longer controls which backend is called.
-        if (!config.OPENAI_API_KEY) {
-            return res.status(500).json({ error: "OpenAI API Key not configured. Analysis requires OpenAI." });
+        // Gemini is the sole analysis provider (Aug 2026) — the analyzeRoom
+        // orchestrator ignores preferredProvider and calls analyzeRoomGemini,
+        // so analysis requires a configured (non-suspended) GEMINI_API_KEY.
+        if (!config.GEMINI_API_KEY) {
+            return res.status(500).json({ error: "Gemini API Key not configured. Analysis requires Gemini." });
         }
-        const provider = (userProvider as AIProvider) || "openai";
+        const provider = (userProvider as AIProvider) || "gemini";
 
         const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
 
