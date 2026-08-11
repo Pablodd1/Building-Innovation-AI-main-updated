@@ -383,11 +383,16 @@ export function loadConfig(): AIConfig {
         try {
             const file = JSON.parse(fs.readFileSync(configPath, "utf8"));
             return {
+                // ENV VARS TAKE PRIORITY over data/config.json. This fixes the
+                // Hostinger workflow where the user updates the GEMINI_API_KEY
+                // env var in hPanel but the stale value in data/config.json
+                // keeps overriding it (file || env meant env never won).
+                // Order: env first, fall back to file, fall back to default.
                 AI_PROVIDER: defaults.GEMINI_API_KEY ? "gemini" : (file.AI_PROVIDER || defaults.AI_PROVIDER),
-                GEMINI_API_KEY: file.GEMINI_API_KEY || defaults.GEMINI_API_KEY,
-                OPENAI_API_KEY: file.OPENAI_API_KEY || defaults.OPENAI_API_KEY,
-                OPENROUTER_API_KEY: file.OPENROUTER_API_KEY || defaults.OPENROUTER_API_KEY,
-                FAL_API_KEY: file.FAL_API_KEY || defaults.FAL_API_KEY,
+                GEMINI_API_KEY: defaults.GEMINI_API_KEY || file.GEMINI_API_KEY || "",
+                OPENAI_API_KEY: defaults.OPENAI_API_KEY || file.OPENAI_API_KEY || "",
+                OPENROUTER_API_KEY: defaults.OPENROUTER_API_KEY || file.OPENROUTER_API_KEY || "",
+                FAL_API_KEY: defaults.FAL_API_KEY || file.FAL_API_KEY || "",
                 STRIPE_SECRET_KEY: file.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY || "",
                 STRIPE_WEBHOOK_SECRET: file.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET || "",
                 TELEGRAM_BOT_TOKEN: file.TELEGRAM_BOT_TOKEN || defaults.TELEGRAM_BOT_TOKEN,
