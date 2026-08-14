@@ -77,6 +77,8 @@ export interface GenerationState {
   isAnalyzing: boolean; // Subtle loading state for text analysis
   isRealisticGenerating: boolean; // Separate flag for the slower OpenAI inpaint path
   loadingStage: 'idle' | 'analyzing' | 'rendering' | 'enhancing'; // Drives the multi-stage overlay
+  progressPct: number; // 0-100 real progress for the visual bar (time-based, snaps to 100 on completion)
+  progressLabel: string; // human-readable step label shown under the bar
   error: string | null;
   resultImage: string | null; // Base64
   resultVideo: string | null; // URL

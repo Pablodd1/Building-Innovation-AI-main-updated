@@ -3,6 +3,7 @@ import React, {
     useEffect,
     useMemo,
     useCallback,
+    useRef,
     Suspense,
     lazy,
 } from "react";
@@ -301,6 +302,8 @@ const App: React.FC = () => {
         isAnalyzing: false,
         isRealisticGenerating: false,
         loadingStage: 'idle',
+        progressPct: 0,
+        progressLabel: '',
         error: null,
         resultImage: null,
         resultVideo: null,
@@ -1809,6 +1812,36 @@ const App: React.FC = () => {
     // Slower (~15-60s) and costs money per render, but visually superior to
     // the sharp compositor. Requires room analysis to be complete (the analysis
     // surfaces are what we build the mask from).
+    // ── Real progress tracking ──────────────────────────────────────────
+    // The server returns a single blob (no streaming), so we drive a honest,
+    // time-based percentage: it climbs smoothly to ~90% over the stage's
+    // expected duration, then snaps to 100% exactly when the response lands.
+    // Anti-jitter: never goes backward, never exceeds 100, resets to 0 on idle.
+    const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    useEffect(() => {
+        const stage = generationState.loadingStage;
+        if (stage === 'idle') {
+            if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
+            setGenerationState(prev => prev.progressPct === 0 ? prev : { ...prev, progressPct: 0, progressLabel: '' });
+            return;
+        }
+        const expectedMs = stage === 'analyzing' ? 10000 : stage === 'rendering' ? 40000 : 15000;
+        const startedAt = Date.now();
+        const tick = () => {
+            const elapsed = Date.now() - startedAt;
+            // asintotic rise toward 92% (never 100 — that's reserved for real completion)
+            const raw = 92 * (1 - Math.exp(-elapsed / (expectedMs * 0.45)));
+            const pct = Math.min(92, Math.max(2, Math.round(raw)));
+            setGenerationState(prev => {
+                if (prev.loadingStage !== stage) return prev; // stage changed mid-tick
+                return { ...prev, progressPct: Math.max(prev.progressPct, pct) };
+            });
+        };
+        tick();
+        progressTimerRef.current = setInterval(tick, 250);
+        return () => { if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; } };
+    }, [generationState.loadingStage]);
+
     const handleRealisticRender = async () => {
         if (!originalImage) {
             setGenerationState((prev) => ({
@@ -1901,6 +1934,8 @@ const App: React.FC = () => {
                 ...prev,
                 isRealisticGenerating: false,
                 loadingStage: 'idle',
+                progressPct: 100,
+                progressLabel: lang === "es" ? "¡Listo!" : "Done!",
                 resultImage: generatedImage,
             }));
 
@@ -1959,6 +1994,8 @@ const App: React.FC = () => {
             ...prev,
             isAnalyzing: true,
             loadingStage: 'analyzing',
+            progressPct: 0,
+            progressLabel: lang === "es" ? "Analizando la habitación..." : "Analyzing the room...",
             error: null,
         }));
         try {
@@ -1972,6 +2009,8 @@ const App: React.FC = () => {
                 ...prev,
                 isAnalyzing: false,
                 loadingStage: 'idle',
+                progressPct: 100,
+                progressLabel: lang === "es" ? "Análisis completo ✓" : "Analysis complete ✓",
                 analysis: analysisResult,
             }));
             logUserBehavior("ROOM_ANALYSIS", { analysisLength: analysisResult.text.length });
@@ -4566,12 +4605,21 @@ const App: React.FC = () => {
                         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
                             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
                             <div className="text-purple-200 font-mono text-sm animate-pulse mb-1">
-                                {generationState.loadingStage === 'analyzing' ? t.editor.loadingAnalyzing
+                                {generationState.progressLabel || (generationState.loadingStage === 'analyzing' ? t.editor.loadingAnalyzing
                                  : generationState.loadingStage === 'rendering' ? t.editor.loadingRendering
                                  : generationState.loadingStage === 'enhancing' ? t.editor.loadingEnhancing
-                                 : t.editor.processing}
+                                 : t.editor.processing)}
                             </div>
-                            <div className="text-slate-400 text-[10px]">{t.editor.loadingPleaseWait}</div>
+                            {/* Visual progress bar — real time-based % */}
+                            <div className="w-48 h-1.5 bg-slate-700 rounded-full overflow-hidden mt-2 mb-2">
+                                <div className="h-full rounded-full transition-all duration-300 ease-out"
+                                     style={{
+                                         width: `${generationState.progressPct}%`,
+                                         background: 'linear-gradient(90deg, #a855f7, #6366f1)'
+                                     }}
+                                />
+                            </div>
+                            <div className="text-slate-400 text-[10px]">{generationState.progressPct}% · {t.editor.loadingPleaseWait}</div>
                         </div>
                     )}
 
@@ -4751,13 +4799,22 @@ const App: React.FC = () => {
                                     <div className="flex items-center justify-center gap-2 mb-2">
                                         <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
                                         <span className="text-[11px] text-purple-200 font-medium">
-                                            {generationState.loadingStage === 'analyzing' ? t.editor.loadingAnalyzing
+                                            {generationState.progressLabel || (generationState.loadingStage === 'analyzing' ? t.editor.loadingAnalyzing
                                              : generationState.loadingStage === 'rendering' ? t.editor.loadingRendering
                                              : generationState.loadingStage === 'enhancing' ? t.editor.loadingEnhancing
-                                             : t.editor.loadingRendering}
+                                             : t.editor.loadingRendering)}
                                         </span>
                                     </div>
-                                    <div className="text-[9px] text-slate-400 leading-tight">{t.editor.loadingPleaseWait}</div>
+                                    {/* Progress bar — real time-based % */}
+                                    <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden mb-2">
+                                        <div className="h-full rounded-full transition-all duration-300 ease-out"
+                                             style={{
+                                                 width: `${generationState.progressPct}%`,
+                                                 background: 'linear-gradient(90deg, #a855f7, #6366f1)'
+                                             }}
+                                        />
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 leading-tight">{generationState.progressPct}% · {t.editor.loadingPleaseWait}</div>
                                 </div>
                             )}
 
