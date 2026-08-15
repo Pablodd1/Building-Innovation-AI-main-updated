@@ -1,7 +1,16 @@
 // Telegram alerts — configure TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for production
 
 let _botToken = process.env.TELEGRAM_BOT_TOKEN || '';
-let _chatId = process.env.TELEGRAM_CHAT_ID || '7838956683';
+// Authoritative chat ID: Jasmel's personal ID (7838956683). The .env on Hostinger
+// previously had the bot's OWN numeric id (7731333606) pasted into TELEGRAM_CHAT_ID,
+// which made every send fail with "bot can't send messages to the bot". We hardcode
+// the correct owner chat id as the fallback AND reject the known-bad value so a stale
+// Hostinger-injected env can never break delivery again.
+const OWNER_CHAT_ID = '7838956683';
+const BOT_ID = '7731333606';
+let _chatId = (process.env.TELEGRAM_CHAT_ID && process.env.TELEGRAM_CHAT_ID !== BOT_ID)
+    ? process.env.TELEGRAM_CHAT_ID
+    : OWNER_CHAT_ID;
 
 async function sendTelegramMessage(text: string, parse_mode?: string): Promise<boolean> {
     if (!_botToken) {

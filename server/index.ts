@@ -1723,7 +1723,7 @@ app.get('/api/admin/test-telegram', requireAdmin, async (req: Request, res: Resp
             success: result,
             message: result ? 'Test message sent successfully' : 'Failed to send test message',
             tokenConfigured: !!token,
-            chatId: process.env.TELEGRAM_CHAT_ID || '7838956683'
+            chatId: (process.env.TELEGRAM_CHAT_ID && process.env.TELEGRAM_CHAT_ID !== '7731333606') ? process.env.TELEGRAM_CHAT_ID : '7838956683'
         });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
