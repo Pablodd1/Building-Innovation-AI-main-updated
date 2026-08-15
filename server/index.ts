@@ -637,13 +637,18 @@ async function checkAndSendDailyReport() {
         if (!config.TELEGRAM_DAILY_REPORT_ENABLED) return;
 
         const reportTime = config.TELEGRAM_DAILY_REPORT_TIME || '09:00';
-        const now = new Date();
-        const currentDateStr = now.toISOString().split('T')[0];
-        
-        // Get local time HH:MM
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const currentTimeStr = `${hours}:${minutes}`;
+        // Colombia time (America/Bogota) — the app's primary market. Using server
+        // local (UTC) previously fired the 09:00 report at 4:00 AM Colombia.
+        const colTime = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'America/Bogota',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        }).format(new Date());
+        const currentTimeStr = colTime; // "HH:MM" (en-GB gives "HH:MM")
+        // Colombia date for dedup key
+        const colDate = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date());
+        const currentDateStr = colDate; // "YYYY-MM-DD"
 
         // If time matches and we haven't sent it today
         if (currentTimeStr === reportTime && lastReportDate !== currentDateStr) {
