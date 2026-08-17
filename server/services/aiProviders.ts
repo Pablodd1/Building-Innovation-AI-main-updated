@@ -26,6 +26,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
@@ -1141,8 +1142,8 @@ async function analyzeRoomGemini(req: AnalysisRequest, config: AIConfig): Promis
     // June 1, 2026, so they are no longer useful as fallbacks. Use the
     // current GA model with a stable variant as backup.
     const ANALYSIS_MODELS = [
-        { name: "gemini-3.5-flash", note: "Primary — GA, fastest + smartest" },
-        { name: "gemini-3-flash", note: "Fallback — stable previous generation" },
+        { name: "gemini-3.6-flash", note: "Primary — GA, fastest + smartest (newer gen, ~2x cheaper)" },
+        { name: "gemini-3.5-flash", note: "Fallback — previous GA model" },
     ];
 
     let lastError: any = null;
@@ -2279,6 +2280,35 @@ export async function generateOverlay(
     return generateGenericOverlay(req);
 }
 
+// ---- Room-analysis LRU cache ----
+// Re-renders on the SAME photo (user swaps materials, tweaks instruction)
+// previously re-ran the full Gemini analysis every time. Key = sha256 of the
+// image bytes. Size 50 / TTL 30min keeps memory tiny and data fresh.
+const ANALYSIS_CACHE_MAX = 50;
+const ANALYSIS_CACHE_TTL_MS = 30 * 60 * 1000;
+const analysisCache = new Map<string, { result: AnalysisResult; expires: number }>();
+
+function analysisCacheGet(key: string): AnalysisResult | null {
+    const hit = analysisCache.get(key);
+    if (!hit) return null;
+    if (Date.now() > hit.expires) {
+        analysisCache.delete(key);
+        return null;
+    }
+    // LRU touch: re-insert to move to freshest position
+    analysisCache.delete(key);
+    analysisCache.set(key, hit);
+    return hit.result;
+}
+
+function analysisCacheSet(key: string, result: AnalysisResult): void {
+    analysisCache.set(key, { result, expires: Date.now() + ANALYSIS_CACHE_TTL_MS });
+    if (analysisCache.size > ANALYSIS_CACHE_MAX) {
+        const oldest = analysisCache.keys().next().value as string;
+        analysisCache.delete(oldest);
+    }
+}
+
 export async function analyzeRoom(
     req: AnalysisRequest,
     preferredProvider: AIProvider,
@@ -2286,6 +2316,14 @@ export async function analyzeRoom(
 ): Promise<AnalysisResult> {
     const start = Date.now();
     const errors: string[] = [];
+
+    // Cache hit path — instant re-analysis on the same image.
+    const cacheKey = crypto.createHash("sha256").update(req.image).digest("hex").slice(0, 32);
+    const cached = analysisCacheGet(cacheKey);
+    if (cached) {
+        console.log(`[AI] ✅ Analysis cache HIT (${cacheKey}) — returning in ${Date.now() - start}ms`);
+        return { ...cached, durationMs: 1, model: cached.model + " (cached)" };
+    }
 
     // Updated Aug 2026: Gemini is the sole analysis provider — mirrors the
     // render path where Gemini is primary. Reason: user runs a Gemini-only
@@ -2304,7 +2342,15 @@ export async function analyzeRoom(
                         errors.push("Gemini: No API key configured");
                         continue;
                     }
-                    return await analyzeRoomGemini(req, config);
+                    {
+                        const result = await analyzeRoomGemini(req, config);
+                        // Only cache REAL analyses (skip generic fallback text)
+                        if (!result.model.includes("generic")) {
+                            analysisCacheSet(cacheKey, result);
+                            console.log(`[AI] Analysis cached (${cacheKey}) for 30min`);
+                        }
+                        return result;
+                    }
 
                 case "generic":
                     return {

@@ -1999,8 +1999,12 @@ const App: React.FC = () => {
             error: null,
         }));
         try {
+            // Speed: send a 1024px analysis copy — Gemini downsamples internally
+            // anyway, so detection quality is unchanged while upload + vision
+            // tokens drop ~35%. Renders still use the full 1600px original.
+            const analysisImage = await downscaleImage(originalImage, 1024, 0.85);
             const analysisResult = await generateRoomAnalysis(
-                originalImage,
+                analysisImage,
                 currentUser?.id,
                 lang,
                 currentUser?.session_token,
