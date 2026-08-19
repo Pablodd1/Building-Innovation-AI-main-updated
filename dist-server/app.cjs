@@ -4,20 +4,11 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res, err) => function __init() {
-  if (err) throw err[0];
-  try {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e2) {
-    throw err = [e2], e2;
-  }
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __commonJS = (cb, mod) => function __require() {
-  try {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-  } catch (e2) {
-    throw mod = 0, e2;
-  }
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -16814,7 +16805,7 @@ var require_shams = __commonJS({
         return true;
       }
       var obj = {};
-      var sym = /* @__PURE__ */ Symbol("test");
+      var sym = Symbol("test");
       var symObj = Object(sym);
       if (typeof sym === "string") {
         return false;
@@ -16873,7 +16864,7 @@ var require_has_symbols = __commonJS({
       if (typeof origSymbol("foo") !== "symbol") {
         return false;
       }
-      if (typeof /* @__PURE__ */ Symbol("bar") !== "symbol") {
+      if (typeof Symbol("bar") !== "symbol") {
         return false;
       }
       return hasSymbolSham();
@@ -19045,14 +19036,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto5 = require("crypto");
+    var crypto6 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash2 = crypto5.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash2 = crypto6.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash2 + '"';
     }
@@ -22527,17 +22518,17 @@ var require_content_disposition = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports2) {
-    var crypto5 = require("crypto");
+    var crypto6 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" != typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto5.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto6.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(input, secret) {
       if ("string" != typeof input) throw new TypeError("Signed cookie string must be provided.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
       var tentativeValue = input.slice(0, input.lastIndexOf(".")), expectedInput = exports2.sign(tentativeValue, secret), expectedBuffer = Buffer.from(expectedInput), inputBuffer = Buffer.from(input);
-      return expectedBuffer.length === inputBuffer.length && crypto5.timingSafeEqual(expectedBuffer, inputBuffer) ? tentativeValue : false;
+      return expectedBuffer.length === inputBuffer.length && crypto6.timingSafeEqual(expectedBuffer, inputBuffer) ? tentativeValue : false;
     };
   }
 });
@@ -25479,7 +25470,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports2, module2) {
     "use strict";
-    var crypto5 = require_utils5();
+    var crypto6 = require_utils5();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -25497,7 +25488,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto5.randomBytes(18).toString("base64");
+      const clientNonce = crypto6.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -25539,20 +25530,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto5.hashByName(hashName, peerCert);
+        const certHash = await crypto6.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto5.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto5.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto5.sha256(clientKey);
-      const clientSignature = await crypto5.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto6.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto6.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto6.sha256(clientKey);
+      const clientSignature = await crypto6.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto5.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto5.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto6.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto6.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -27426,8 +27417,8 @@ var require_split2 = __commonJS({
     "use strict";
     var { Transform } = require("stream");
     var { StringDecoder } = require("string_decoder");
-    var kLast = /* @__PURE__ */ Symbol("last");
-    var kDecoder = /* @__PURE__ */ Symbol("decoder");
+    var kLast = Symbol("last");
+    var kDecoder = Symbol("decoder");
     function transform(chunk, enc, cb) {
       let list;
       if (this.overflow) {
@@ -27725,7 +27716,7 @@ var require_client = __commonJS({
     var Query2 = require_query();
     var defaults3 = require_defaults();
     var Connection2 = require_connection();
-    var crypto5 = require_utils5();
+    var crypto6 = require_utils5();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -27972,7 +27963,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto5.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto6.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e2) {
             this.emit("error", e2);
@@ -31528,7 +31519,7 @@ var require_common2 = __commonJS({
     var extend_1 = __importDefault(require_extend());
     var util_cjs_1 = __importDefault(require_util());
     var pkg = util_cjs_1.default.pkg;
-    exports2.GAXIOS_ERROR_SYMBOL = /* @__PURE__ */ Symbol.for(`${pkg.name}-gaxios-error`);
+    exports2.GAXIOS_ERROR_SYMBOL = Symbol.for(`${pkg.name}-gaxios-error`);
     var GaxiosError = class _GaxiosError extends Error {
       config;
       response;
@@ -31984,7 +31975,7 @@ var require_dist4 = __commonJS({
     var http4 = __importStar(require("http"));
     var https_1 = require("https");
     __exportStar(require_helpers(), exports2);
-    var INTERNAL = /* @__PURE__ */ Symbol("AgentBaseInternalState");
+    var INTERNAL = Symbol("AgentBaseInternalState");
     var Agent = class extends http4.Agent {
       constructor(opts) {
         super(opts);
@@ -32555,11 +32546,11 @@ var require_ponyfill_es2018 = __commonJS({
           return front._elements[cursor];
         }
       }
-      const AbortSteps = /* @__PURE__ */ Symbol("[[AbortSteps]]");
-      const ErrorSteps = /* @__PURE__ */ Symbol("[[ErrorSteps]]");
-      const CancelSteps = /* @__PURE__ */ Symbol("[[CancelSteps]]");
-      const PullSteps = /* @__PURE__ */ Symbol("[[PullSteps]]");
-      const ReleaseSteps = /* @__PURE__ */ Symbol("[[ReleaseSteps]]");
+      const AbortSteps = Symbol("[[AbortSteps]]");
+      const ErrorSteps = Symbol("[[ErrorSteps]]");
+      const CancelSteps = Symbol("[[CancelSteps]]");
+      const PullSteps = Symbol("[[PullSteps]]");
+      const ReleaseSteps = Symbol("[[ReleaseSteps]]");
       function ReadableStreamReaderGenericInitialize(reader, stream) {
         reader._ownerReadableStream = stream;
         stream._reader = reader;
@@ -37623,7 +37614,7 @@ var init_body = __esm({
     init_base();
     init_is();
     pipeline = (0, import_node_util.promisify)(import_node_stream.default.pipeline);
-    INTERNALS = /* @__PURE__ */ Symbol("Body internals");
+    INTERNALS = Symbol("Body internals");
     Body = class {
       constructor(body, {
         size = 0
@@ -37993,7 +37984,7 @@ var init_headers = __esm({
       /**
        * For better console.log(headers) and also to convert Headers into Node.js Request compatible format
        */
-      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
+      [Symbol.for("nodejs.util.inspect.custom")]() {
         return [...this.keys()].reduce((result, key) => {
           const values = this.getAll(key);
           if (key === "host") {
@@ -38033,7 +38024,7 @@ var init_response = __esm({
     init_headers();
     init_body();
     init_is_redirect();
-    INTERNALS2 = /* @__PURE__ */ Symbol("Response internals");
+    INTERNALS2 = Symbol("Response internals");
     Response2 = class _Response extends Body {
       constructor(body = null, options = {}) {
         super(body, options);
@@ -38323,7 +38314,7 @@ var init_request = __esm({
     init_is();
     init_get_search();
     init_referrer();
-    INTERNALS3 = /* @__PURE__ */ Symbol("Request internals");
+    INTERNALS3 = Symbol("Request internals");
     isRequest = (object) => {
       return typeof object === "object" && typeof object[INTERNALS3] === "object";
     };
@@ -38504,7 +38495,7 @@ var init_request = __esm({
         path: parsedURL.pathname + search,
         // The following options are not expressed in the URL
         method: request.method,
-        headers: headers[/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")](),
+        headers: headers[Symbol.for("nodejs.util.inspect.custom")](),
         insecureHTTPParser: request.insecureHTTPParser,
         agent
       };
@@ -42010,22 +42001,22 @@ var require_crypto2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.NodeCrypto = void 0;
-    var crypto5 = require("crypto");
+    var crypto6 = require("crypto");
     var NodeCrypto = class {
       async sha256DigestBase64(str2) {
-        return crypto5.createHash("sha256").update(str2).digest("base64");
+        return crypto6.createHash("sha256").update(str2).digest("base64");
       }
       randomBytesBase64(count) {
-        return crypto5.randomBytes(count).toString("base64");
+        return crypto6.randomBytes(count).toString("base64");
       }
       async verify(pubkey, data, signature) {
-        const verifier = crypto5.createVerify("RSA-SHA256");
+        const verifier = crypto6.createVerify("RSA-SHA256");
         verifier.update(data);
         verifier.end();
         return verifier.verify(pubkey, signature, "base64");
       }
       async sign(privateKey, data) {
-        const signer = crypto5.createSign("RSA-SHA256");
+        const signer = crypto6.createSign("RSA-SHA256");
         signer.update(data);
         signer.end();
         return signer.sign(privateKey, "base64");
@@ -42043,7 +42034,7 @@ var require_crypto2 = __commonJS({
        *   string in hexadecimal encoding.
        */
       async sha256DigestHex(str2) {
-        return crypto5.createHash("sha256").update(str2).digest("hex");
+        return crypto6.createHash("sha256").update(str2).digest("hex");
       }
       /**
        * Computes the HMAC hash of a message using the provided crypto key and the
@@ -42055,7 +42046,7 @@ var require_crypto2 = __commonJS({
        */
       async signWithHmacSha256(key, msg) {
         const cryptoKey = typeof key === "string" ? key : toBuffer(key);
-        return toArrayBuffer(crypto5.createHmac("sha256", cryptoKey).update(msg).digest());
+        return toArrayBuffer(crypto6.createHmac("sha256", cryptoKey).update(msg).digest());
       }
     };
     exports2.NodeCrypto = NodeCrypto;
@@ -42595,8 +42586,8 @@ var require_authclient = __commonJS({
        * making an RPC call, for logging purposes, as well as a string ID that can be
        * used to correlate calls and responses.
        */
-      static RequestMethodNameSymbol = /* @__PURE__ */ Symbol("request method name");
-      static RequestLogIdSymbol = /* @__PURE__ */ Symbol("request log id");
+      static RequestMethodNameSymbol = Symbol("request method name");
+      static RequestLogIdSymbol = Symbol("request log id");
       constructor(opts = {}) {
         super();
         const options = (0, util_1.originalOrCamelOptions)(opts);
@@ -42970,10 +42961,10 @@ var require_oauth2client = __commonJS({
        * https://github.com/googleapis/google-auth-library-nodejs/blob/main/samples/oauth2-codeVerifier.js
        */
       async generateCodeVerifierAsync() {
-        const crypto5 = (0, crypto_1.createCrypto)();
-        const randomString = crypto5.randomBytesBase64(96);
+        const crypto6 = (0, crypto_1.createCrypto)();
+        const randomString = crypto6.randomBytesBase64(96);
         const codeVerifier = randomString.replace(/\+/g, "~").replace(/=/g, "_").replace(/\//g, "-");
-        const unencodedCodeChallenge = await crypto5.sha256DigestBase64(codeVerifier);
+        const unencodedCodeChallenge = await crypto6.sha256DigestBase64(codeVerifier);
         const codeChallenge = unencodedCodeChallenge.split("=")[0].replace(/\+/g, "-").replace(/\//g, "_");
         return { codeVerifier, codeChallenge };
       }
@@ -43414,7 +43405,7 @@ var require_oauth2client = __commonJS({
        * @return Returns a promise resolving to LoginTicket on verification.
        */
       async verifySignedJwtWithCertsAsync(jwt, certs, requiredAudience, issuers, maxExpiry) {
-        const crypto5 = (0, crypto_1.createCrypto)();
+        const crypto6 = (0, crypto_1.createCrypto)();
         if (!maxExpiry) {
           maxExpiry = _OAuth2Client.DEFAULT_MAX_TOKEN_LIFETIME_SECS_;
         }
@@ -43427,7 +43418,7 @@ var require_oauth2client = __commonJS({
         let envelope;
         let payload;
         try {
-          envelope = JSON.parse(crypto5.decodeBase64StringUtf8(segments[0]));
+          envelope = JSON.parse(crypto6.decodeBase64StringUtf8(segments[0]));
         } catch (err) {
           if (err instanceof Error) {
             err.message = `Can't parse token envelope: ${segments[0]}': ${err.message}`;
@@ -43438,7 +43429,7 @@ var require_oauth2client = __commonJS({
           throw new Error("Can't parse token envelope: " + segments[0]);
         }
         try {
-          payload = JSON.parse(crypto5.decodeBase64StringUtf8(segments[1]));
+          payload = JSON.parse(crypto6.decodeBase64StringUtf8(segments[1]));
         } catch (err) {
           if (err instanceof Error) {
             err.message = `Can't parse token payload '${segments[0]}`;
@@ -43455,7 +43446,7 @@ var require_oauth2client = __commonJS({
         if (envelope.alg === "ES256") {
           signature = formatEcdsa.joseToDer(signature, "ES256").toString("base64");
         }
-        const verified = await crypto5.verify(cert, signed, signature);
+        const verified = await crypto6.verify(cert, signed, signature);
         if (!verified) {
           throw new Error("Invalid token signature: " + jwt);
         }
@@ -43830,14 +43821,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports2, module2) {
     var Buffer4 = require_safe_buffer().Buffer;
-    var crypto5 = require("crypto");
+    var crypto6 = require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util = require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto5.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto6.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -43927,17 +43918,17 @@ var require_jwa = __commonJS({
       return function sign(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac = crypto5.createHmac("sha" + bits, secret);
+        var hmac = crypto6.createHmac("sha" + bits, secret);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
     }
     var bufferEqual;
-    var timingSafeEqual2 = "timingSafeEqual" in crypto5 ? function timingSafeEqual3(a, b) {
+    var timingSafeEqual2 = "timingSafeEqual" in crypto6 ? function timingSafeEqual3(a, b) {
       if (a.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto5.timingSafeEqual(a, b);
+      return crypto6.timingSafeEqual(a, b);
     } : function timingSafeEqual3(a, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -43954,7 +43945,7 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto5.createSign("RSA-SHA" + bits);
+        var signer = crypto6.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig);
       };
@@ -43964,7 +43955,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto5.createVerify("RSA-SHA" + bits);
+        var verifier = crypto6.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -43973,11 +43964,11 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto5.createSign("RSA-SHA" + bits);
+        var signer = crypto6.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto5.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto5.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto6.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto6.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig);
       };
@@ -43987,12 +43978,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto5.createVerify("RSA-SHA" + bits);
+        var verifier = crypto6.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto5.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto5.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto6.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto6.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -46568,14 +46559,14 @@ var require_awsrequestsigner = __commonJS({
       }
     };
     exports2.AwsRequestSigner = AwsRequestSigner;
-    async function sign(crypto5, key, msg) {
-      return await crypto5.signWithHmacSha256(key, msg);
+    async function sign(crypto6, key, msg) {
+      return await crypto6.signWithHmacSha256(key, msg);
     }
-    async function getSigningKey(crypto5, key, dateStamp, region, serviceName) {
-      const kDate = await sign(crypto5, `AWS4${key}`, dateStamp);
-      const kRegion = await sign(crypto5, kDate, region);
-      const kService = await sign(crypto5, kRegion, serviceName);
-      const kSigning = await sign(crypto5, kService, "aws4_request");
+    async function getSigningKey(crypto6, key, dateStamp, region, serviceName) {
+      const kDate = await sign(crypto6, `AWS4${key}`, dateStamp);
+      const kRegion = await sign(crypto6, kDate, region);
+      const kService = await sign(crypto6, kRegion, serviceName);
+      const kSigning = await sign(crypto6, kService, "aws4_request");
       return kSigning;
     }
     async function generateAuthenticationHeaderMap(options) {
@@ -48294,24 +48285,24 @@ var require_googleauth = __commonJS({
           const signed = await client.sign(data);
           return signed.signedBlob;
         }
-        const crypto5 = (0, crypto_1.createCrypto)();
+        const crypto6 = (0, crypto_1.createCrypto)();
         if (client instanceof jwtclient_1.JWT && client.key) {
-          const sign = await crypto5.sign(client.key, data);
+          const sign = await crypto6.sign(client.key, data);
           return sign;
         }
         const creds = await this.getCredentials();
         if (!creds.client_email) {
           throw new Error("Cannot sign data without `client_email`.");
         }
-        return this.signBlob(crypto5, creds.client_email, data, endpoint);
+        return this.signBlob(crypto6, creds.client_email, data, endpoint);
       }
-      async signBlob(crypto5, emailOrUniqueId, data, endpoint) {
+      async signBlob(crypto6, emailOrUniqueId, data, endpoint) {
         const url = new URL(endpoint + `${emailOrUniqueId}:signBlob`);
         const res = await this.request({
           method: "POST",
           url: url.href,
           data: {
-            payload: crypto5.encodeBase64StringUtf8(data)
+            payload: crypto6.encodeBase64StringUtf8(data)
           },
           retry: true,
           retryConfig: {
@@ -48733,10 +48724,10 @@ var require_constants = __commonJS({
       EMPTY_BUFFER: Buffer.alloc(0),
       GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
       hasBlob,
-      kForOnEventAttribute: /* @__PURE__ */ Symbol("kIsForOnEventAttribute"),
-      kListener: /* @__PURE__ */ Symbol("kListener"),
-      kStatusCode: /* @__PURE__ */ Symbol("status-code"),
-      kWebSocket: /* @__PURE__ */ Symbol("websocket"),
+      kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
+      kListener: Symbol("kListener"),
+      kStatusCode: Symbol("status-code"),
+      kWebSocket: Symbol("websocket"),
       NOOP: () => {
       }
     };
@@ -48822,8 +48813,8 @@ var require_buffer_util = __commonJS({
 var require_limiter = __commonJS({
   "node_modules/ws/lib/limiter.js"(exports2, module2) {
     "use strict";
-    var kDone = /* @__PURE__ */ Symbol("kDone");
-    var kRun = /* @__PURE__ */ Symbol("kRun");
+    var kDone = Symbol("kDone");
+    var kRun = Symbol("kRun");
     var Limiter = class {
       /**
        * Creates a new `Limiter`.
@@ -48878,11 +48869,11 @@ var require_permessage_deflate = __commonJS({
     var { kStatusCode } = require_constants();
     var FastBuffer = Buffer[Symbol.species];
     var TRAILER = Buffer.from([0, 0, 255, 255]);
-    var kPerMessageDeflate = /* @__PURE__ */ Symbol("permessage-deflate");
-    var kTotalLength = /* @__PURE__ */ Symbol("total-length");
-    var kCallback = /* @__PURE__ */ Symbol("callback");
-    var kBuffers = /* @__PURE__ */ Symbol("buffers");
-    var kError = /* @__PURE__ */ Symbol("error");
+    var kPerMessageDeflate = Symbol("permessage-deflate");
+    var kTotalLength = Symbol("total-length");
+    var kCallback = Symbol("callback");
+    var kBuffers = Symbol("buffers");
+    var kError = Symbol("error");
     var zlibLimiter;
     var PerMessageDeflate2 = class {
       /**
@@ -50097,7 +50088,7 @@ var require_sender = __commonJS({
     var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
     var { isBlob: isBlob2, isValidStatusCode } = require_validation();
     var { mask: applyMask, toBuffer } = require_buffer_util();
-    var kByteLength = /* @__PURE__ */ Symbol("kByteLength");
+    var kByteLength = Symbol("kByteLength");
     var maskBuffer = Buffer.alloc(4);
     var RANDOM_POOL_SIZE = 8 * 1024;
     var randomPool;
@@ -50582,14 +50573,14 @@ var require_event_target = __commonJS({
   "node_modules/ws/lib/event-target.js"(exports2, module2) {
     "use strict";
     var { kForOnEventAttribute, kListener } = require_constants();
-    var kCode = /* @__PURE__ */ Symbol("kCode");
-    var kData = /* @__PURE__ */ Symbol("kData");
-    var kError = /* @__PURE__ */ Symbol("kError");
-    var kMessage = /* @__PURE__ */ Symbol("kMessage");
-    var kReason = /* @__PURE__ */ Symbol("kReason");
-    var kTarget = /* @__PURE__ */ Symbol("kTarget");
-    var kType = /* @__PURE__ */ Symbol("kType");
-    var kWasClean = /* @__PURE__ */ Symbol("kWasClean");
+    var kCode = Symbol("kCode");
+    var kData = Symbol("kData");
+    var kError = Symbol("kError");
+    var kMessage = Symbol("kMessage");
+    var kReason = Symbol("kReason");
+    var kTarget = Symbol("kTarget");
+    var kType = Symbol("kType");
+    var kWasClean = Symbol("kWasClean");
     var Event = class {
       /**
        * Create a new `Event`.
@@ -50991,7 +50982,7 @@ var require_websocket = __commonJS({
     } = require_event_target();
     var { format, parse } = require_extension();
     var { toBuffer } = require_buffer_util();
-    var kAborted = /* @__PURE__ */ Symbol("kAborted");
+    var kAborted = Symbol("kAborted");
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
@@ -53495,7 +53486,7 @@ var require_cmp = __commonJS({
 var require_comparator = __commonJS({
   "node_modules/semver/classes/comparator.js"(exports2, module2) {
     "use strict";
-    var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
+    var ANY = Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
         return ANY;
@@ -59529,11 +59520,13 @@ async function initTelegramFromConfig() {
     console.warn("[Telegram] Config init failed:", e2);
   }
 }
-var _botToken, _chatId, telegramAlerts;
+var _botToken, OWNER_CHAT_ID, BOT_ID, _chatId, telegramAlerts;
 var init_telegramAlerts = __esm({
   "server/telegramAlerts.ts"() {
     _botToken = process.env.TELEGRAM_BOT_TOKEN || "";
-    _chatId = process.env.TELEGRAM_CHAT_ID || "7838956683";
+    OWNER_CHAT_ID = "7838956683";
+    BOT_ID = "7731333606";
+    _chatId = process.env.TELEGRAM_CHAT_ID && process.env.TELEGRAM_CHAT_ID !== BOT_ID ? process.env.TELEGRAM_CHAT_ID : OWNER_CHAT_ID;
     telegramAlerts = {
       async send(message) {
         const ok = await sendTelegramMessage(message);
@@ -66924,9 +66917,9 @@ var require_client3 = __commonJS({
 var require_auth_41 = __commonJS({
   "node_modules/mysql2/lib/auth_41.js"(exports2) {
     "use strict";
-    var crypto5 = require("crypto");
+    var crypto6 = require("crypto");
     function sha1(msg, msg1, msg2) {
-      const hash2 = crypto5.createHash("sha1");
+      const hash2 = crypto6.createHash("sha1");
       hash2.update(msg);
       if (msg1) {
         hash2.update(msg1);
@@ -67499,7 +67492,7 @@ var require_column_definition = __commonJS({
           decimals: this.decimals
         };
       }
-      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")](depth, inspectOptions, inspect) {
+      [Symbol.for("nodejs.util.inspect.custom")](depth, inspectOptions, inspect) {
         const Types = require_types();
         const typeNames = [];
         for (const t2 in Types) {
@@ -68802,7 +68795,7 @@ var require_sha256_password = __commonJS({
   "node_modules/mysql2/lib/auth_plugins/sha256_password.js"(exports2, module2) {
     "use strict";
     var PLUGIN_NAME = "sha256_password";
-    var crypto5 = require("crypto");
+    var crypto6 = require("crypto");
     var { xorRotating } = require_auth_41();
     var Tls = require("tls");
     var REQUEST_SERVER_KEY_PACKET = Buffer.from([1]);
@@ -68811,7 +68804,7 @@ var require_sha256_password = __commonJS({
     var STATE_FINAL = -1;
     function encrypt(password, scramble, key) {
       const stage1 = xorRotating(Buffer.from(`${password}\0`, "utf8"), scramble);
-      return crypto5.publicEncrypt(
+      return crypto6.publicEncrypt(
         {
           key,
           oaepHash: "sha1"
@@ -68863,7 +68856,7 @@ var require_caching_sha2_password = __commonJS({
   "node_modules/mysql2/lib/auth_plugins/caching_sha2_password.js"(exports2, module2) {
     "use strict";
     var PLUGIN_NAME = "caching_sha2_password";
-    var crypto5 = require("crypto");
+    var crypto6 = require("crypto");
     var { xor, xorRotating } = require_auth_41();
     var REQUEST_SERVER_KEY_PACKET = Buffer.from([2]);
     var FAST_AUTH_SUCCESS_PACKET = Buffer.from([3]);
@@ -68873,7 +68866,7 @@ var require_caching_sha2_password = __commonJS({
     var STATE_WAIT_SERVER_KEY = 2;
     var STATE_FINAL = -1;
     function sha256(msg) {
-      const hash2 = crypto5.createHash("sha256");
+      const hash2 = crypto6.createHash("sha256");
       hash2.update(msg);
       return hash2.digest();
     }
@@ -68888,11 +68881,11 @@ var require_caching_sha2_password = __commonJS({
     }
     function encrypt(password, scramble, key) {
       const stage1 = xorRotating(Buffer.from(`${password}\0`, "utf8"), scramble);
-      return crypto5.publicEncrypt(
+      return crypto6.publicEncrypt(
         {
           key,
           oaepHash: "sha1",
-          padding: crypto5.constants.RSA_PKCS1_OAEP_PADDING
+          padding: crypto6.constants.RSA_PKCS1_OAEP_PADDING
         },
         stage1
       );
@@ -91962,13 +91955,13 @@ var FileSearchStores = class extends BaseModule {
   }
 };
 var uuid4Internal = function() {
-  const { crypto: crypto5 } = globalThis;
-  if (crypto5 === null || crypto5 === void 0 ? void 0 : crypto5.randomUUID) {
-    uuid4Internal = crypto5.randomUUID.bind(crypto5);
-    return crypto5.randomUUID();
+  const { crypto: crypto6 } = globalThis;
+  if (crypto6 === null || crypto6 === void 0 ? void 0 : crypto6.randomUUID) {
+    uuid4Internal = crypto6.randomUUID.bind(crypto6);
+    return crypto6.randomUUID();
   }
   const u8 = new Uint8Array(1);
-  const randomByte = crypto5 ? () => crypto5.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
+  const randomByte = crypto6 ? () => crypto6.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
   return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ randomByte() & 15 >> +c / 4).toString(16));
 };
 var uuid4 = () => uuid4Internal();
@@ -95229,13 +95222,13 @@ function __classPrivateFieldGet(receiver, state, kind, f3) {
 
 // node_modules/openai/internal/utils/uuid.mjs
 var uuid42 = function() {
-  const { crypto: crypto5 } = globalThis;
-  if (crypto5?.randomUUID) {
-    uuid42 = crypto5.randomUUID.bind(crypto5);
-    return crypto5.randomUUID();
+  const { crypto: crypto6 } = globalThis;
+  if (crypto6?.randomUUID) {
+    uuid42 = crypto6.randomUUID.bind(crypto6);
+    return crypto6.randomUUID();
   }
   const u8 = new Uint8Array(1);
-  const randomByte = crypto5 ? () => crypto5.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
+  const randomByte = crypto6 ? () => crypto6.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
   return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ randomByte() & 15 >> +c / 4).toString(16));
 };
 
@@ -104966,6 +104959,7 @@ function isUndiciDispatcherVersionMismatchError(error) {
 }
 
 // server/services/aiProviders.ts
+var import_crypto2 = __toESM(require("crypto"), 1);
 var import_fs2 = __toESM(require("fs"), 1);
 var import_path61 = __toESM(require("path"), 1);
 var import_sharp2 = __toESM(require_lib6(), 1);
@@ -105695,6 +105689,53 @@ async function generateOverlayGemini(req, config, startTime) {
   const image = extractGeminiImage(response);
   return { image, model: usedModel, durationMs: Date.now() - startTime, provider: "gemini" };
 }
+async function analyzeRoomGemini(req, config) {
+  if (isCircuitOpen("gemini")) {
+    throw new Error("Gemini circuit breaker is open");
+  }
+  const start = Date.now();
+  const ai = getGeminiSDK(config.GEMINI_API_KEY);
+  const base64Data = cleanBase642(req.image);
+  const mimeType = getMimeType(req.image);
+  const ANALYSIS_MODELS = [
+    { name: "gemini-3.6-flash", note: "Primary \u2014 GA, fastest + smartest (newer gen, ~2x cheaper)" },
+    { name: "gemini-3.5-flash", note: "Fallback \u2014 previous GA model" }
+  ];
+  let lastError = null;
+  for (const modelInfo of ANALYSIS_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelInfo.name,
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { data: base64Data, mimeType } },
+              { text: ANALYSIS_PROMPT }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+      const rawText = response.text || '{"text":"Could not analyze the room."}';
+      recordSuccess("gemini");
+      return parseAnalysisResponse(rawText, modelInfo.name, "gemini", Date.now() - start);
+    } catch (error) {
+      lastError = error;
+      const msg = error?.message || String(error);
+      const isLast = modelInfo === ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
+      if ((msg.includes("not found") || msg.includes("not supported")) && !isLast) {
+        console.warn(`[AI] \u26A0\uFE0F Analysis model ${modelInfo.name} failed, trying next...`);
+        continue;
+      }
+      recordFailure("gemini", error);
+      if (isLast) throw error;
+    }
+  }
+  throw lastError || new Error("All Gemini analysis models failed");
+}
 async function generateOverlayOpenAI(req, config, startTime) {
   if (!config.OPENAI_API_KEY) {
     throw new Error("OpenAI API key not configured");
@@ -106004,232 +106045,6 @@ async function generateOverlayFluxFill(req, config, startTime) {
   console.log(`[AI] \u2705 FLUX.1 Fill success in ${durationMs}ms`);
   return { image, model: "flux-1.1-fill-pro", durationMs, provider: "flux" };
 }
-async function analyzeRoomOpenAI(req, config) {
-  if (!config.OPENAI_API_KEY) {
-    throw new Error("OpenAI API key not configured");
-  }
-  if (isCircuitOpen("openai")) {
-    throw new Error("OpenAI circuit breaker is open");
-  }
-  const start = Date.now();
-  const ai = getOpenAISDK(config.OPENAI_API_KEY);
-  const mimeType = getMimeType(req.image);
-  const base64Data = cleanBase642(req.image);
-  const analysisImageBase64 = await prepareAnalysisImage(Buffer.from(base64Data, "base64"), mimeType);
-  const ANALYSIS_MODELS = process.env.OPENAI_VISION_MODEL ? [process.env.OPENAI_VISION_MODEL] : ["gpt-4o", "gpt-4o-mini"];
-  let lastError = null;
-  for (const model of ANALYSIS_MODELS) {
-    try {
-      const completion = await ai.chat.completions.create({
-        model,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                // detail: "high" sends the full-resolution image so the model
-                // can actually see individual walls, windows, picture frames,
-                // and furniture edges. "low" was downsampling and the model
-                // was missing entire walls + obstacles. Costs slightly more
-                // tokens but precision is the whole point of this call.
-                image_url: { url: `data:image/jpeg;base64,${analysisImageBase64}`, detail: "high" }
-              },
-              { type: "text", text: ANALYSIS_PROMPT }
-            ]
-          }
-        ],
-        // Bumped 3000 → 4000 → 6000 → 8000: the reasoning-first analysis
-        // prompt (vanishing point + per-obstacle cue sentences + evidence
-        // per surface) needs more output room than a bare JSON dump.
-        // The reasoning field is what stops the model from hallucinating
-        // coordinates, so starving it defeats the whole point. The strict
-        // json_schema also adds overhead vs the bare json_object mode.
-        max_tokens: 8e3,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "room_analysis",
-            strict: true,
-            schema: {
-              type: "object",
-              // ORDER MATTERS: fields are emitted in schema order,
-              // so putting observations/reasoning BEFORE surfaces
-              // forces the model to commit to what it sees before
-              // committing to coordinates. This is the documented
-              // Structured Outputs chain-of-thought pattern.
-              additionalProperties: false,
-              properties: {
-                reasoning: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    vanishingPoint: {
-                      type: "array",
-                      items: { type: "number" },
-                      minItems: 2,
-                      maxItems: 2
-                    },
-                    observedObjects: {
-                      type: "array",
-                      items: { type: "string" }
-                    },
-                    wallPlanes: {
-                      type: "array",
-                      items: { type: "string" }
-                    },
-                    ambiguous: {
-                      type: "array",
-                      items: { type: "string" }
-                    }
-                  },
-                  required: ["vanishingPoint", "observedObjects", "wallPlanes", "ambiguous"]
-                },
-                text: { type: "string" },
-                dimensions: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    width: { type: "number" },
-                    height: { type: "number" },
-                    areaM2: { type: "number" }
-                  },
-                  required: ["width", "height", "areaM2"]
-                },
-                style: { type: "string" },
-                lighting: { type: "string" },
-                suggestedMaterials: {
-                  type: "array",
-                  items: { type: "string" }
-                },
-                surfaces: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                      type: {
-                        type: "string",
-                        // Enum prevents invented categories.
-                        enum: [
-                          "wall",
-                          "floor",
-                          "ceiling",
-                          "window",
-                          "door",
-                          "television",
-                          "cabinet",
-                          "shelf",
-                          "picture_frame",
-                          "mirror",
-                          "fireplace",
-                          "light_fixture",
-                          "radiator",
-                          "furniture"
-                        ]
-                      },
-                      evidence: { type: "string" },
-                      bounds: {
-                        type: "object",
-                        additionalProperties: false,
-                        properties: {
-                          x: { type: "number" },
-                          y: { type: "number" },
-                          width: { type: "number" },
-                          height: { type: "number" }
-                        },
-                        required: ["x", "y", "width", "height"]
-                      },
-                      polygon: {
-                        type: "array",
-                        items: {
-                          type: "array",
-                          items: { type: "number" },
-                          minItems: 2,
-                          maxItems: 2
-                        }
-                      },
-                      confidence: { type: "number" }
-                    },
-                    required: ["type", "evidence", "bounds", "polygon", "confidence"]
-                  }
-                }
-              },
-              required: ["reasoning", "text", "dimensions", "style", "lighting", "suggestedMaterials", "surfaces"]
-            }
-          }
-        }
-      });
-      const rawText = completion.choices[0]?.message?.content || '{"text":"Could not analyze."}';
-      recordSuccess("openai");
-      return parseAnalysisResponse(rawText, model, "openai", Date.now() - start);
-    } catch (error) {
-      lastError = error;
-      const msg = error?.message || String(error);
-      const isLast = model === ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
-      const status = error?.status || error?.code;
-      if (status === 401 || status === 403 || msg.includes("API key")) {
-        recordFailure("openai", error);
-        throw error;
-      }
-      if (!isLast) {
-        console.warn(`[AI] \u26A0\uFE0F OpenAI vision model ${model} failed, trying next: ${msg}`);
-        continue;
-      }
-      recordFailure("openai", error);
-      throw error;
-    }
-  }
-  throw lastError || new Error("All OpenAI analysis models failed");
-}
-async function prepareAnalysisImage(imageBuffer, _sourceMime) {
-  try {
-    const TARGET_LONG_SIDE = 1086;
-    const meta = await (0, import_sharp2.default)(imageBuffer).metadata();
-    const w = meta.width || 0;
-    const h2 = meta.height || 0;
-    if (w === 0 || h2 === 0) {
-      return imageBuffer.toString("base64");
-    }
-    const longest = Math.max(w, h2);
-    const scale = longest > TARGET_LONG_SIDE ? TARGET_LONG_SIDE / longest : 1;
-    const newW = Math.round(w * scale);
-    const newH = Math.round(h2 * scale);
-    const cellW = newW / 10;
-    const cellH = newH / 10;
-    const lines = [];
-    for (let i2 = 1; i2 < 10; i2++) {
-      const x2 = Math.round(i2 * cellW);
-      lines.push(`<line x1="${x2}" y1="0" x2="${x2}" y2="${newH}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>`);
-    }
-    for (let i2 = 1; i2 < 10; i2++) {
-      const y = Math.round(i2 * cellH);
-      lines.push(`<line x1="0" y1="${y}" x2="${newW}" y2="${y}" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>`);
-    }
-    const colLabels = [];
-    for (let c = 0; c < 10; c++) {
-      const x2 = Math.round(c * cellW + cellW / 2);
-      colLabels.push(`<text x="${x2}" y="14" fill="yellow" font-size="11" font-family="monospace" text-anchor="middle">c${c}</text>`);
-    }
-    const rowLabels = [];
-    for (let r2 = 0; r2 < 10; r2++) {
-      const y = Math.round(r2 * cellH + cellH / 2 + 4);
-      rowLabels.push(`<text x="6" y="${y}" fill="yellow" font-size="11" font-family="monospace">r${r2}</text>`);
-    }
-    const overlaySvg = Buffer.from(
-      `<svg width="${newW}" height="${newH}" xmlns="http://www.w3.org/2000/svg">
-                ${lines.join("\n")}
-                ${colLabels.join("\n")}
-                ${rowLabels.join("\n")}
-            </svg>`
-    );
-    const processed = await (0, import_sharp2.default)(imageBuffer).resize(newW, newH, { fit: "fill" }).composite([{ input: overlaySvg, top: 0, left: 0, blend: "over" }]).jpeg({ quality: 90 }).toBuffer();
-    return processed.toString("base64");
-  } catch (e2) {
-    console.warn(`[prepareAnalysisImage] sharp pipeline failed, sending raw image:`, e2?.message);
-    return imageBuffer.toString("base64");
-  }
-}
 async function generateOverlay(req, preferredProvider, config) {
   const start = Date.now();
   const errors = [];
@@ -106274,20 +106089,54 @@ async function generateOverlay(req, preferredProvider, config) {
   console.error(`[AI] All image providers failed. Errors: ${errors.join("; ")}`);
   return generateGenericOverlay(req);
 }
+var ANALYSIS_CACHE_MAX = 50;
+var ANALYSIS_CACHE_TTL_MS = 30 * 60 * 1e3;
+var analysisCache = /* @__PURE__ */ new Map();
+function analysisCacheGet(key) {
+  const hit = analysisCache.get(key);
+  if (!hit) return null;
+  if (Date.now() > hit.expires) {
+    analysisCache.delete(key);
+    return null;
+  }
+  analysisCache.delete(key);
+  analysisCache.set(key, hit);
+  return hit.result;
+}
+function analysisCacheSet(key, result) {
+  analysisCache.set(key, { result, expires: Date.now() + ANALYSIS_CACHE_TTL_MS });
+  if (analysisCache.size > ANALYSIS_CACHE_MAX) {
+    const oldest = analysisCache.keys().next().value;
+    analysisCache.delete(oldest);
+  }
+}
 async function analyzeRoom(req, preferredProvider, config) {
   const start = Date.now();
   const errors = [];
-  const providerChain = ["openai", "generic"];
-  console.log(`[AI] Room analysis provider chain: ${providerChain.join(" \u2192 ")} (preferred=${preferredProvider} ignored \u2014 OpenAI-only since July 2026)`);
+  const cacheKey = import_crypto2.default.createHash("sha256").update(req.image).digest("hex").slice(0, 32);
+  const cached = analysisCacheGet(cacheKey);
+  if (cached) {
+    console.log(`[AI] \u2705 Analysis cache HIT (${cacheKey}) \u2014 returning in ${Date.now() - start}ms`);
+    return { ...cached, durationMs: 1, model: cached.model + " (cached)" };
+  }
+  const providerChain = ["gemini", "generic"];
+  console.log(`[AI] Room analysis provider chain: ${providerChain.join(" \u2192 ")} (preferred=${preferredProvider} ignored \u2014 Gemini-only since Aug 2026)`);
   for (const provider of providerChain) {
     try {
       switch (provider) {
-        case "openai":
-          if (!config.OPENAI_API_KEY) {
-            errors.push("OpenAI: No API key configured");
+        case "gemini":
+          if (!config.GEMINI_API_KEY) {
+            errors.push("Gemini: No API key configured");
             continue;
           }
-          return await analyzeRoomOpenAI(req, config);
+          {
+            const result = await analyzeRoomGemini(req, config);
+            if (!result.model.includes("generic")) {
+              analysisCacheSet(cacheKey, result);
+              console.log(`[AI] Analysis cached (${cacheKey}) for 30min`);
+            }
+            return result;
+          }
         case "generic":
           return {
             analysis: "Room analysis temporarily unavailable. Please try again later.",
@@ -106296,7 +106145,7 @@ async function analyzeRoom(req, preferredProvider, config) {
             durationMs: Date.now() - start
           };
         default:
-          errors.push(`${provider}: not in analysis chain (OpenAI-only)`);
+          errors.push(`${provider}: not in analysis chain (Gemini-only)`);
       }
     } catch (error) {
       const msg = error?.message || String(error);
@@ -108563,11 +108412,11 @@ var StripeContext = class _StripeContext {
 };
 
 // node_modules/stripe/esm/platform/NodePlatformFunctions.js
-var crypto3 = __toESM(require("crypto"), 1);
+var crypto4 = __toESM(require("crypto"), 1);
 var import_events = require("events");
 
 // node_modules/stripe/esm/crypto/NodeCryptoProvider.js
-var crypto2 = __toESM(require("crypto"), 1);
+var crypto3 = __toESM(require("crypto"), 1);
 
 // node_modules/stripe/esm/crypto/CryptoProvider.js
 var CryptoProvider = class {
@@ -108610,7 +108459,7 @@ var CryptoProviderOnlySupportsAsyncError = class extends Error {
 var NodeCryptoProvider = class extends CryptoProvider {
   /** @override */
   computeHMACSignature(payload, secret) {
-    return crypto2.createHmac("sha256", secret).update(payload, "utf8").digest("hex");
+    return crypto3.createHmac("sha256", secret).update(payload, "utf8").digest("hex");
   }
   /** @override */
   async computeHMACSignatureAsync(payload, secret) {
@@ -108619,7 +108468,7 @@ var NodeCryptoProvider = class extends CryptoProvider {
   }
   /** @override */
   async computeSHA256Async(data) {
-    return new Uint8Array(await crypto2.createHash("sha256").update(data).digest());
+    return new Uint8Array(await crypto3.createHash("sha256").update(data).digest());
   }
 };
 
@@ -108958,8 +108807,8 @@ var StreamProcessingError = class extends StripeError {
 var NodePlatformFunctions = class extends PlatformFunctions {
   /** @override */
   uuid4() {
-    if (crypto3.randomUUID) {
-      return crypto3.randomUUID();
+    if (crypto4.randomUUID) {
+      return crypto4.randomUUID();
     }
     return super.uuid4();
   }
@@ -108978,11 +108827,11 @@ var NodePlatformFunctions = class extends PlatformFunctions {
     if (a.length !== b.length) {
       return false;
     }
-    if (crypto3.timingSafeEqual) {
+    if (crypto4.timingSafeEqual) {
       const textEncoder = new TextEncoder();
       const aEncoded = textEncoder.encode(a);
       const bEncoded = textEncoder.encode(b);
-      return crypto3.timingSafeEqual(aEncoded, bEncoded);
+      return crypto4.timingSafeEqual(aEncoded, bEncoded);
     }
     return super.secureCompare(a, b);
   }
@@ -123663,10 +123512,10 @@ async function sendPurchaseNotifications(params) {
 }
 
 // server/index.ts
-var import_crypto2 = __toESM(require("crypto"), 1);
+var import_crypto3 = __toESM(require("crypto"), 1);
 
 // server/buildInfo.ts
-var BUILD_COMMIT = "unknown";
+var BUILD_COMMIT = "${GITHUB_SHA:-unknown}";
 var BUILD_TIME = (/* @__PURE__ */ new Date()).toISOString();
 
 // server/index.ts
@@ -124284,11 +124133,20 @@ try {
       const config = await getConfig();
       if (!config.TELEGRAM_DAILY_REPORT_ENABLED) return;
       const reportTime = config.TELEGRAM_DAILY_REPORT_TIME || "09:00";
-      const now = /* @__PURE__ */ new Date();
-      const currentDateStr = now.toISOString().split("T")[0];
-      const hours = String(now.getHours()).padStart(2, "0");
-      const minutes = String(now.getMinutes()).padStart(2, "0");
-      const currentTimeStr = `${hours}:${minutes}`;
+      const colTime = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "America/Bogota",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).format(/* @__PURE__ */ new Date());
+      const currentTimeStr = colTime;
+      const colDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Bogota",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(/* @__PURE__ */ new Date());
+      const currentDateStr = colDate;
       if (currentTimeStr === reportTime && lastReportDate !== currentDateStr) {
         lastReportDate = currentDateStr;
         const report = monitor.getDailyReport();
@@ -125108,7 +124966,7 @@ Auto-downgraded to Free.`
         success: result,
         message: result ? "Test message sent successfully" : "Failed to send test message",
         tokenConfigured: !!token,
-        chatId: process.env.TELEGRAM_CHAT_ID || "7838956683"
+        chatId: process.env.TELEGRAM_CHAT_ID && process.env.TELEGRAM_CHAT_ID !== "7731333606" ? process.env.TELEGRAM_CHAT_ID : "7838956683"
       });
     } catch (e2) {
       res.status(500).json({ success: false, error: e2.message });
@@ -125521,10 +125379,10 @@ Auto-downgraded to Free.`
         }
       }
       const config = loadConfig();
-      if (!config.OPENAI_API_KEY) {
-        return res.status(500).json({ error: "OpenAI API Key not configured. Analysis requires OpenAI." });
+      if (!config.GEMINI_API_KEY) {
+        return res.status(500).json({ error: "Gemini API Key not configured. Analysis requires Gemini." });
       }
-      const provider = userProvider || "openai";
+      const provider = userProvider || "gemini";
       const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
       res.json({
         success: true,
@@ -126878,7 +126736,7 @@ Context: ${context || "N/A"}`
       return res.status(400).json({ error: "Email and password required" });
     }
     try {
-      const sessionToken = "session_" + import_crypto2.default.randomBytes(24).toString("hex");
+      const sessionToken = "session_" + import_crypto3.default.randomBytes(24).toString("hex");
       try {
         const result = await query(
           "SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, password_hash FROM users WHERE email = $1",
