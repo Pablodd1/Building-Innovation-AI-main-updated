@@ -926,12 +926,15 @@ const App: React.FC = () => {
     // Verified: /api/proxy-image returns real PNG images (352KB+)
     const proxyImageUrl = useCallback((url: string): string => {
         if (!url) return '';
-        // If it's already a proxy URL, return as-is
-        if (url.startsWith('/api/proxy-image') || url.includes('/api/proxy-image')) {
+        // If it's already a proxy URL, make sure it is absolute for Android Capacitor
+        if (url.startsWith('/api/proxy-image')) {
+            return `https://buildingapp.us${url}`;
+        }
+        if (url.includes('/api/proxy-image')) {
             return url;
         }
         if (url.includes('drive.google.com') || url.includes('lh3.googleusercontent.com')) {
-            return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+            return `https://buildingapp.us/api/proxy-image?url=${encodeURIComponent(url)}`;
         }
         // Rewrite CDN product image URLs to local static path
         const match = url.match(/https?:\/\/[^/]+\/products\/([^/]+\.(webp|jpg|jpeg|png|gif))/i);
