@@ -4788,7 +4788,11 @@ const App: React.FC = () => {
                                     isLoading={generationState.isRealisticGenerating || generationState.isAnalyzing}
                                     disabled={!originalImage || !selectedMaterial || generationState.isGenerating}
                                     variant="primary"
-                                    className="w-full py-3.5 text-sm uppercase tracking-widest font-black shadow-lg shadow-purple-900/30 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 flex items-center justify-center gap-2"
+                                    className={`w-full py-3.5 text-sm uppercase tracking-widest font-black flex items-center justify-center gap-2 ${
+                                        (!originalImage || !selectedMaterial || generationState.isGenerating || generationState.isAnalyzing || generationState.isRealisticGenerating)
+                                            ? "!bg-none !bg-slate-500 !text-slate-300 !shadow-none opacity-80"
+                                            : "shadow-lg shadow-purple-900/30 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white"
+                                    }`}
                                 >
                                     <span className="text-base">✨</span>
                                     {generationState.resultImage ? t.editor.regenerate : t.editor.generate}
