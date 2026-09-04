@@ -32,6 +32,7 @@ import {
 } from "./services/geminiService";
 import { formatMetersUSA } from "./services/unitUtils";
 import { HashRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { hapticLight, hapticMedium, hapticSuccess } from "./utils/haptics";
 
 interface HistoryItem {
     resultImage: string | null;
@@ -288,6 +289,8 @@ const App: React.FC = () => {
     const [contractorForm, setContractorForm] = useState<Partial<Contractor>>({});
     const [originalImage, setOriginalImage] = useState<string | null>(null);
     const [customPrompt, setCustomPrompt] = useState<string>("");
+    const [targetSurface, setTargetSurface] = useState<"accent" | "all" | "floor">("accent");
+    const [probeZoom, setProbeZoom] = useState<number>(1);
 
     const [renderOptions, setRenderOptions] = useState<RenderOptions>({
         lighting: "NATURAL",
@@ -1614,6 +1617,7 @@ const App: React.FC = () => {
     }, [setCategoryUsage, setView]);
 
     const handleSelectMaterial = useCallback(async (material: Material) => {
+        hapticLight();
         setSelectedMaterial(material);
         setShowProbeModal(true);
         logUserBehavior("SELECT_MATERIAL", { id: material.id, name: material.name });
@@ -1906,10 +1910,17 @@ const App: React.FC = () => {
         }, 12000);
 
         try {
+            const surfacePrompt = targetSurface === 'accent'
+                ? (lang === 'es' ? 'Aplicar estrictamente sobre la pared de acento principal, preservando las demás paredes.' : 'Apply strictly to the primary accent wall, keeping other walls original.')
+                : targetSurface === 'floor'
+                ? (lang === 'es' ? 'Aplicar exclusivamente sobre la superficie del piso.' : 'Apply strictly onto the floor surface.')
+                : (lang === 'es' ? 'Aplicar en todas las paredes visibles.' : 'Apply across all visible walls.');
+            const combinedPrompt = customPrompt ? `${customPrompt}. ${surfacePrompt}` : surfacePrompt;
+
             const generatedImage = await generateMaterialOverlay(
                 originalImage,
                 selectedMaterial,
-                customPrompt,
+                combinedPrompt,
                 renderOptions,
                 lang,
                 currentUser?.id,
@@ -1933,6 +1944,7 @@ const App: React.FC = () => {
             setHistory(newHistory);
             setHistoryIndex(newHistory.length - 1);
             clearTimeout(stageTimer);
+            hapticSuccess();
             setGenerationState((prev) => ({
                 ...prev,
                 isRealisticGenerating: false,
@@ -2012,6 +2024,7 @@ const App: React.FC = () => {
                 lang,
                 currentUser?.session_token,
             );
+            hapticSuccess();
             setGenerationState((prev) => ({
                 ...prev,
                 isAnalyzing: false,
@@ -4706,7 +4719,7 @@ const App: React.FC = () => {
                     <div className="flex-1 overflow-y-auto">
                         {/* Material chip + AI analysis */}
                         {selectedMaterial && (
-                            <div className="px-3 pt-3 pb-2">
+                            <div className="px-3 pt-3 pb-1">
                                 <div className="flex items-center gap-3 bg-gray-100 p-3 rounded-xl border border-gray-200">
                                     <div className="relative group cursor-pointer shrink-0" onClick={handleGenerateProbe}>
                                         <img
@@ -4717,14 +4730,14 @@ const App: React.FC = () => {
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
                                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
                                             </svg>
                                         </div>
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{t.editor.material}</div>
                                         <div className="font-bold text-gray-700 text-xs leading-tight truncate">{selectedMaterial.name}</div>
-                                        <div className="text-[10px] text-blue-400">{selectedMaterial.refCode}</div>
+                                        <div className="text-[10px] text-blue-500 font-medium">{selectedMaterial.refCode}</div>
                                     </div>
                                     <Button
                                         variant="ghost"
@@ -4738,8 +4751,86 @@ const App: React.FC = () => {
                             </div>
                         )}
 
+                        {/* Instant Material & Budget Estimator Card */}
+                        {selectedMaterial && (() => {
+                            const dims = generationState.analysis?.dimensions;
+                            const areaM2 = dims?.areaM2 || 
+                                           ((dims?.width && dims?.height) 
+                                               ? Math.round((dims.width * dims.height / 10000) * 10) / 10 
+                                               : 8.5);
+                            
+                            const pWidth = (selectedMaterial.dimensions?.width || 30) / 100;
+                            const pLength = (selectedMaterial.dimensions?.length || 200) / 100;
+                            const pieceArea = Math.max(0.1, pWidth * pLength);
+                            
+                            const estPieces = Math.ceil((areaM2 * 1.05) / pieceArea);
+                            const unitPrice = selectedMaterial.pricing?.pricePerUnit || 15;
+                            const estCost = Math.round(estPieces * unitPrice);
+                            const currency = selectedMaterial.pricing?.currency || 'USD';
+                            const unitLabel = selectedMaterial.pricing?.unitLabel || (lang === 'es' ? 'paneles' : 'panels');
+
+                            return (
+                                <div className="px-3 pb-2">
+                                    <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/80 rounded-xl p-2.5 flex items-center justify-between shadow-sm">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5 text-[9px] font-black text-blue-800 uppercase tracking-wider">
+                                                <span>📐</span>
+                                                <span>{lang === 'es' ? 'Presupuesto Estimado' : 'Smart Estimate'}</span>
+                                                <span className="text-gray-300">·</span>
+                                                <span className="text-blue-600 font-semibold">~{areaM2} m²</span>
+                                            </div>
+                                            <div className="text-xs font-black text-gray-800 mt-0.5 truncate">
+                                                {estPieces} {unitLabel}
+                                                <span className="text-gray-300 font-normal mx-1">·</span>
+                                                <span className="text-emerald-600 font-bold">~${estCost} {currency}</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                hapticLight();
+                                                setEstimationSource(AppView.EDITOR);
+                                                setView(AppView.ESTIMATION);
+                                            }}
+                                            className="shrink-0 ml-2 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm"
+                                        >
+                                            {lang === 'es' ? 'Cotizar' : 'Quote'} →
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                         {/* 2-column controls grid */}
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-3 pb-3 pt-2">
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-4 px-3 pb-3 pt-1">
+
+                            {/* Surface Scope Selector — full width */}
+                            <div className="col-span-2">
+                                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 block">
+                                    {lang === 'es' ? 'Superficie a Renovar' : 'Target Surface'}
+                                </label>
+                                <div className="grid grid-cols-3 gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                                    {[
+                                        { id: 'accent', icon: '🖼️', label: lang === 'es' ? 'Pared Acento' : 'Accent Wall' },
+                                        { id: 'all', icon: '🏛️', label: lang === 'es' ? 'Todas Paredes' : 'All Walls' },
+                                        { id: 'floor', icon: '🪵', label: lang === 'es' ? 'Pisos' : 'Floors' },
+                                    ].map((s) => (
+                                        <button
+                                            key={s.id}
+                                            type="button"
+                                            onClick={() => { hapticLight(); setTargetSurface(s.id as any); }}
+                                            className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
+                                                targetSurface === s.id
+                                                    ? 'bg-white text-purple-700 shadow-sm border border-purple-200'
+                                                    : 'text-gray-500 hover:text-gray-800'
+                                            }`}
+                                        >
+                                            <span>{s.icon}</span>
+                                            <span className="truncate">{s.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
 
                             {/* Lighting — full width */}
                             <div className="col-span-2">
@@ -4748,7 +4839,7 @@ const App: React.FC = () => {
                                     {["NATURAL", "SUNSET", "NIGHT_LUXURY"].map((l) => (
                                         <button
                                             key={l}
-                                            onClick={() => setRenderOptions({ ...renderOptions, lighting: l as any })}
+                                            onClick={() => { hapticLight(); setRenderOptions({ ...renderOptions, lighting: l as any }); }}
                                             className={`flex-1 py-2 rounded-lg text-[9px] font-bold border transition-all ${renderOptions.lighting === l ? "bg-gray-700 border-gray-600 text-white" : "bg-gray-100 border-gray-200 text-gray-500"}`}
                                         >
                                             {l.replace("_", " ")}
@@ -4767,12 +4858,45 @@ const App: React.FC = () => {
                                     value={customPrompt}
                                     onChange={(e) => setCustomPrompt(e.target.value)}
                                 />
-                                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                    {t.templates.slice(0, 3).map((template: string, i: number) => (
-                                        <button key={i} onClick={() => setCustomPrompt(template)} className="text-[9px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full hover:bg-gray-200 border border-gray-200">
-                                            {template}
-                                        </button>
-                                    ))}
+                                {/* Interactive 1-Tap Style & Prompt Chips */}
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {[
+                                        { id: 'plants', icon: '🌿', text: lang === 'es' ? 'Añadir plantas de interior' : 'Add indoor plants' },
+                                        { id: 'warm', icon: '💡', text: lang === 'es' ? 'Iluminación LED cálida' : 'Warm LED lighting' },
+                                        { id: 'minimal', icon: '🛋️', text: lang === 'es' ? 'Estilo minimalista moderno' : 'Modern minimalist' },
+                                        { id: 'night', icon: '🌙', text: lang === 'es' ? 'Ambiente nocturno de lujo' : 'Luxury evening ambiance' },
+                                        { id: 'clean', icon: '🧹', text: lang === 'es' ? 'Espacio ordenado y despejado' : 'Clean decluttered space' },
+                                    ].map((chip) => {
+                                        const isActive = customPrompt.includes(chip.text);
+                                        return (
+                                            <button
+                                                key={chip.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    hapticLight();
+                                                    if (isActive) {
+                                                        setCustomPrompt((prev) => 
+                                                            prev.replace(chip.text, '')
+                                                                .replace(/,\s*,/g, ',')
+                                                                .replace(/^[\s,]+|[\s,]+$/g, '')
+                                                                .trim()
+                                                        );
+                                                    } else {
+                                                        setCustomPrompt((prev) => prev ? `${prev.trim()}, ${chip.text}` : chip.text);
+                                                    }
+                                                }}
+                                                className={`text-[10px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1 border ${
+                                                    isActive
+                                                        ? 'bg-purple-100 text-purple-700 border-purple-300 shadow-sm'
+                                                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                <span>{chip.icon}</span>
+                                                <span>{chip.text}</span>
+                                                {isActive && <span className="text-[9px] ml-0.5 opacity-70">✕</span>}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -5236,90 +5360,162 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
         );
     };
 
-    // --- Modal: 3D Probe ---
+    // --- Modal: Material Texture Inspector & 3D Probe ---
     const renderProbeModal = () => {
         if (!showProbeModal) return null;
+        const dims = selectedMaterial?.dimensions;
+        const specs = selectedMaterial?.specs;
+
         return (
             <div
                 className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 animate-fadeIn"
-                onClick={() => setShowProbeModal(false)}
+                onClick={() => { setShowProbeModal(false); setProbeZoom(1); }}
             >
                 <div
-                    className="relative max-w-lg w-full bg-white rounded-2xl overflow-hidden shadow-2xl border border-gray-300 flex flex-col max-h-[90vh]"
+                    className="relative max-w-lg w-full bg-white rounded-2xl overflow-hidden shadow-2xl border border-gray-300 flex flex-col max-h-[92vh]"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <div className="absolute top-4 right-4 z-10">
+                    {/* Close button */}
+                    <div className="absolute top-3 right-3 z-20">
                         <button
-                            onClick={() => setShowProbeModal(false)}
-                            className="bg-black/50 text-gray-700 rounded-full p-2 hover:bg-white hover:text-black transition-colors"
+                            onClick={() => { setShowProbeModal(false); setProbeZoom(1); }}
+                            className="bg-black/60 text-white rounded-full p-2 hover:bg-black transition-colors"
                         >
-                            <svg
-                                className="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                />
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
                     </div>
 
-                    <div className="bg-black flex items-center justify-center min-h-[200px] max-h-[50vh] relative overflow-hidden">
+                    {/* Interactive Zoomable Material Viewer */}
+                    <div className="bg-slate-950 flex items-center justify-center min-h-[240px] max-h-[46vh] relative overflow-hidden select-none">
                         {selectedMaterial ? (
-                            <img
-                                src={proxyImageUrl(selectedMaterial.imageUrl)}
-                                className="w-full h-full object-contain max-h-[50vh]"
-                            />
+                            <div className="w-full h-full flex items-center justify-center overflow-hidden">
+                                <img
+                                    src={proxyImageUrl(selectedMaterial.imageUrl)}
+                                    alt={selectedMaterial.name}
+                                    style={{
+                                        transform: `scale(${probeZoom})`,
+                                        transition: 'transform 0.2s ease-out',
+                                        cursor: probeZoom > 1 ? 'grab' : 'zoom-in'
+                                    }}
+                                    onClick={() => {
+                                        hapticLight();
+                                        setProbeZoom((prev) => (prev >= 2.5 ? 1 : prev + 0.75));
+                                    }}
+                                    className="w-full h-full object-contain max-h-[46vh]"
+                                />
+                            </div>
                         ) : (
                             <div className="text-red-400 text-sm p-4 text-center">
                                 {lang === "es" ? "Cargando..." : "Loading..."}
                             </div>
                         )}
+
+                        {/* Floating Zoom Controls */}
+                        <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 text-white text-xs">
+                            <button
+                                type="button"
+                                onClick={() => { hapticLight(); setProbeZoom((p) => Math.max(1, p - 0.5)); }}
+                                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 font-bold"
+                            >
+                                -
+                            </button>
+                            <span className="font-mono text-[11px] px-1">{Math.round(probeZoom * 100)}%</span>
+                            <button
+                                type="button"
+                                onClick={() => { hapticLight(); setProbeZoom((p) => Math.min(3, p + 0.5)); }}
+                                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 font-bold"
+                            >
+                                +
+                            </button>
+                            {probeZoom > 1 && (
+                                <button
+                                    type="button"
+                                    onClick={() => { hapticLight(); setProbeZoom(1); }}
+                                    className="ml-1 text-[10px] text-amber-400 hover:underline font-bold"
+                                >
+                                    Reset
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Texture Hint */}
+                        <div className="absolute top-3 left-3 z-10 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-white/90 uppercase tracking-wider">
+                            🔍 {lang === 'es' ? 'Toca para Zoom' : 'Tap to Zoom'}
+                        </div>
                     </div>
 
-                    <div className="p-6 bg-white space-y-6">
-                        <div className="text-center">
-                            <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">
-                                {selectedMaterial?.category}
+                    {/* Details and Technical Specs */}
+                    <div className="p-5 bg-white space-y-4 overflow-y-auto">
+                        <div>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                                    {selectedMaterial?.category}
+                                </span>
+                                <span className="text-xs font-mono font-bold text-gray-400">
+                                    {selectedMaterial?.refCode}
+                                </span>
                             </div>
-                            <h3 className="text-2xl font-black text-gray-700 mb-2">
+                            <h3 className="text-xl font-black text-gray-900 leading-tight">
                                 {selectedMaterial?.name}
                             </h3>
-                            <p className="text-gray-500 text-sm line-clamp-2">
+                            <p className="text-gray-500 text-xs mt-1 leading-relaxed line-clamp-2">
                                 {selectedMaterial?.description}
                             </p>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        {/* Technical Specs Grid */}
+                        <div className="grid grid-cols-3 gap-2 bg-gray-50 p-2.5 rounded-xl border border-gray-150 text-[11px]">
+                            <div className="text-center">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase block">{lang === 'es' ? 'Dimensiones' : 'Dimensions'}</span>
+                                <span className="font-bold text-gray-700">
+                                    {dims ? `${dims.width} × ${dims.length} cm` : '30 × 200 cm'}
+                                </span>
+                            </div>
+                            <div className="text-center border-x border-gray-200">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase block">{lang === 'es' ? 'Espesor' : 'Thickness'}</span>
+                                <span className="font-bold text-gray-700">
+                                    {dims?.thickness ? `${dims.thickness} mm` : '8 mm'}
+                                </span>
+                            </div>
+                            <div className="text-center">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase block">{lang === 'es' ? 'Precio Unit.' : 'Unit Price'}</span>
+                                <span className="font-black text-emerald-600">
+                                    ${selectedMaterial?.pricing?.pricePerUnit || 15} {selectedMaterial?.pricing?.currency || 'USD'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="grid grid-cols-2 gap-3 pt-1">
                             <Button
                                 variant="secondary"
                                 onClick={() => {
+                                    hapticLight();
                                     setShowProbeModal(false);
+                                    setProbeZoom(1);
                                     setEstimationSource(AppView.GALLERY);
                                     setView(AppView.ESTIMATION);
                                 }}
-                                className="uppercase text-xs"
+                                className="uppercase text-xs font-bold py-3"
                             >
-                                {t.modal.quote}
+                                📐 {t.modal.quote}
                             </Button>
                             <Button
                                 onClick={() => {
+                                    hapticSuccess();
                                     setShowProbeModal(false);
-                                    // ponytail: if user already has a room photo, skip camera and go straight to editor
+                                    setProbeZoom(1);
                                     if (originalImage) {
                                         setView(AppView.EDITOR);
                                     } else {
                                         setView(AppView.CAMERA);
                                     }
                                 }}
-                                className="uppercase text-xs font-bold"
+                                className="uppercase text-xs font-black py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg"
                             >
-                                {t.modal.visualize}
+                                ✨ {t.modal.visualize}
                             </Button>
                         </div>
                     </div>
