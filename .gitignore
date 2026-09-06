@@ -8,6 +8,23 @@ dist-server/
 # Contains API keys — fill from .env.example
 data/config.json
 .env*.local
-data/config.json
 .env*
 .chrome-profile/
+
+# Sensitive data — hashed passwords, session tokens, user PII
+data/*.json
+!data/.gitkeep
+
+# Android signing
+*.keystore
+*.jks
+android/keystore.properties
+
+# Apple iOS signing & credentials
+apple-credentials/
+*.p12
+*.cer
+*.csr
+*.mobileprovision
+*.p8
+*.key

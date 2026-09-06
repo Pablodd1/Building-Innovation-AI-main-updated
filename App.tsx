@@ -355,13 +355,14 @@ const App: React.FC = () => {
         const originalFetch = window.fetch;
         window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
             let finalInput = input;
+            const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
             if (typeof input === 'string') {
-                if (input.startsWith('/api/')) {
-                    finalInput = `https://buildingapp.us${input}`;
+                if (input.startsWith('/api/') && apiBase) {
+                    finalInput = `${apiBase}${input}`;
                 }
             } else if (input instanceof URL) {
-                if (input.pathname.startsWith('/api/')) {
-                    finalInput = new URL(input.pathname + input.search, 'https://buildingapp.us').href;
+                if (input.pathname.startsWith('/api/') && apiBase) {
+                    finalInput = new URL(input.pathname + input.search, apiBase).href;
                 }
             }
 
@@ -2279,13 +2280,9 @@ const App: React.FC = () => {
                         onClick={async () => {
                             setAuthLoading(true);
                             try {
-                                const res = await fetch("/api/auth/login", {
+                                const res = await fetch("/api/auth/demo", {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({
-                                        email: "admin@buildingapp.us",
-                                        password: "BuildingAdmin2026!"
-                                    }),
                                 });
                                 const data = await res.json();
                                 if (data.user) {
@@ -2303,7 +2300,7 @@ const App: React.FC = () => {
                         }}
                         className="w-full text-sm text-blue-600 hover:text-blue-800 underline transition-colors py-2 font-bold"
                     >
-                        {t.login.skip || "Quick Admin Access (Demo)"}
+                        {t.login.skip || (lang === 'es' ? "Acceso Demo (Invitado)" : "Quick Demo Access (Guest)")}
                     </button>
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
@@ -2563,7 +2560,7 @@ const App: React.FC = () => {
                             <img
                                 src="https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/Espacio_Int_ipvzyz.jpg"
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                fetchpriority="high"
+                                fetchPriority="high"
                                 alt="Interior space visualization"
                             />
                         </div>
@@ -4754,20 +4751,30 @@ const App: React.FC = () => {
                         {/* Instant Material & Budget Estimator Card */}
                         {selectedMaterial && (() => {
                             const dims = generationState.analysis?.dimensions;
-                            const areaM2 = dims?.areaM2 || 
+                            const baseArea = dims?.areaM2 || 
                                            ((dims?.width && dims?.height) 
                                                ? Math.round((dims.width * dims.height / 10000) * 10) / 10 
                                                : 8.5);
                             
+                            // Adapt area to selected surface scope:
+                            const surfaceMultiplier = targetSurface === 'accent' ? 0.35
+                                                    : targetSurface === 'floor' ? 1.0
+                                                    : 2.5;
+                            const areaM2 = Math.round(baseArea * surfaceMultiplier * 10) / 10;
+                            
                             const pWidth = (selectedMaterial.dimensions?.width || 30) / 100;
                             const pLength = (selectedMaterial.dimensions?.length || 200) / 100;
                             const pieceArea = Math.max(0.1, pWidth * pLength);
+                            const itemsPerBox = selectedMaterial.pricing?.itemsPerBox || 1;
                             
                             const estPieces = Math.ceil((areaM2 * 1.05) / pieceArea);
-                            const unitPrice = selectedMaterial.pricing?.pricePerUnit || 15;
-                            const estCost = Math.round(estPieces * unitPrice);
+                            const estBoxes = Math.ceil(estPieces / itemsPerBox);
+                            const unitPrice = selectedMaterial.pricing?.pricePerUnit || 0;
+                            const estCost = Math.round((itemsPerBox > 1 ? estBoxes : estPieces) * unitPrice);
                             const currency = selectedMaterial.pricing?.currency || 'USD';
-                            const unitLabel = selectedMaterial.pricing?.unitLabel || (lang === 'es' ? 'paneles' : 'panels');
+                            const unitLabel = itemsPerBox > 1
+                                ? (lang === 'es' ? 'cajas' : 'boxes')
+                                : (selectedMaterial.pricing?.unitLabel || (lang === 'es' ? 'paneles' : 'panels'));
 
                             return (
                                 <div className="px-3 pb-2">
@@ -4780,7 +4787,7 @@ const App: React.FC = () => {
                                                 <span className="text-blue-600 font-semibold">~{areaM2} m²</span>
                                             </div>
                                             <div className="text-xs font-black text-gray-800 mt-0.5 truncate">
-                                                {estPieces} {unitLabel}
+                                                {itemsPerBox > 1 ? `${estBoxes} ${unitLabel} (${estPieces} pcs)` : `${estPieces} ${unitLabel}`}
                                                 <span className="text-gray-300 font-normal mx-1">·</span>
                                                 <span className="text-emerald-600 font-bold">~${estCost} {currency}</span>
                                             </div>
@@ -4910,7 +4917,7 @@ const App: React.FC = () => {
                                 <Button
                                     onClick={handleRealisticRender}
                                     isLoading={generationState.isRealisticGenerating || generationState.isAnalyzing}
-                                    disabled={!originalImage || !selectedMaterial || generationState.isGenerating}
+                                    disabled={!originalImage || !selectedMaterial || generationState.isGenerating || generationState.isAnalyzing || generationState.isRealisticGenerating}
                                     variant="primary"
                                     className={`w-full py-3.5 text-sm uppercase tracking-widest font-black flex items-center justify-center gap-2 ${
                                         (!originalImage || !selectedMaterial || generationState.isGenerating || generationState.isAnalyzing || generationState.isRealisticGenerating)
@@ -5937,12 +5944,13 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                                             <h4 className="font-bold text-blue-700 uppercase text-[10px] tracking-widest mb-2">Subscription Tier</h4>
                                             <select 
                                                 className="w-full bg-white border border-blue-200 rounded-lg text-xs p-2 text-gray-700 outline-none"
-                                                value={u.tier || 'Free'}
+                                                value={(u.tier || 'FREE').toUpperCase()}
                                                 onChange={(e) => handleUpdateUserTier(u.id, e.target.value)}
                                             >
-                                                <option value="Free">Free</option>
-                                                <option value="Pro">Pro</option>
-                                                <option value="Enterprise">Enterprise</option>
+                                                <option value="FREE">FREE</option>
+                                                <option value="STANDARD">STANDARD</option>
+                                                <option value="PREMIUM">PREMIUM</option>
+                                                <option value="LUXURY">LUXURY</option>
                                             </select>
                                         </div>
 
@@ -5952,9 +5960,10 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                                             <div className="flex items-center gap-2">
                                                 <input 
                                                     type="number"
+                                                    min="0"
                                                     className="flex-1 min-w-0 bg-white border border-purple-200 rounded-lg text-xs p-2 text-gray-700 outline-none"
                                                     value={u.generations_used || 0}
-                                                    onChange={(e) => handleUpdateUserGenerations(u.id, parseInt(e.target.value) || 0)}
+                                                    onChange={(e) => handleUpdateUserGenerations(u.id, Math.max(0, parseInt(e.target.value) || 0))}
                                                 />
                                                 <span className="text-xs text-gray-500 font-semibold w-12">/ {getTierLimit(u.tier || 'Free')}</span>
                                             </div>

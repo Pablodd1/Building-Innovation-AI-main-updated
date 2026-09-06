@@ -2052,7 +2052,7 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
         
         // Check quota — userId is guaranteed set by requireAuth
         if (userId) {
-            const quota = await checkAndIncrementQuota(userId);
+            const quota = await checkQuota(userId);
             if (!quota.allowed) {
                 // Distinguish "limit reached" from "service failure" so the
                 // frontend can show the right UX (upgrade modal vs retry).
@@ -2129,6 +2129,7 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
                         success: true,
                     },
                 });
+                if (userId) await incrementQuota(userId);
                 return res.json({ success: true, image: result.image, provider: result.provider, model: result.model, mode: "inpaint" });
             } catch (error: any) {
                 pushGenerationLog({
@@ -2181,6 +2182,7 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
                     success: true,
                 },
             });
+            if (userId) await incrementQuota(userId);
             return res.json({ success: true, image: compositeResult.image, provider: "compositor", model: "sharp" });
         }
 
@@ -2218,6 +2220,7 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
             },
         });
         
+        if (userId) await incrementQuota(userId);
         res.json({ success: true, image: result.image, provider, model: result.model });
         
     } catch (error: any) {
@@ -2281,7 +2284,7 @@ app.post("/api/ai/analyze-room", requireAuth, async (req: Request, res: Response
         }
         
         if (userId) {
-            const quota = await checkAndIncrementQuota(userId);
+            const quota = await checkQuota(userId);
             if (!quota.allowed) {
                 if (quota.error && quota.used === undefined) {
                     return res.status(503).json({ error: quota.error });
@@ -2301,6 +2304,10 @@ app.post("/api/ai/analyze-room", requireAuth, async (req: Request, res: Response
         const provider = (userProvider as AIProvider) || "gemini";
 
         const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
+
+        if (userId) {
+            await incrementQuota(userId);
+        }
 
         res.json({
             success: true,
@@ -3060,6 +3067,65 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     }
 });
 
+// Safe demo guest login — no admin credentials exposed
+app.post('/api/auth/demo', async (req: Request, res: Response) => {
+    try {
+        const demoEmail = 'demo@buildingapp.us';
+        const sessionToken = 'session_' + require('crypto').randomBytes(24).toString('hex');
+        
+        try {
+            const result = await query(
+                'SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at FROM users WHERE email = $1',
+                [demoEmail]
+            );
+
+            if (result.rows.length > 0) {
+                const user = result.rows[0];
+                try {
+                    await query('UPDATE users SET session_token = $1 WHERE id = $2', [sessionToken, user.id]);
+                } catch (updateErr: any) {
+                    console.warn('Failed to save demo session token to DB:', updateErr.message);
+                }
+                await checkAndDowngradeExpiredTier(user);
+                return res.json({
+                    user: {
+                        ...user,
+                        session_token: sessionToken,
+                    }
+                });
+            }
+            throw new Error('Demo user not found in DB');
+        } catch (dbErr) {
+            // Check or create demo user in fallback store
+            const users = await getUsers();
+            let user = users.find((u: any) => u.email === demoEmail);
+            if (!user) {
+                user = {
+                    id: 9999,
+                    name: 'Demo Guest',
+                    email: demoEmail,
+                    role: 'customer',
+                    tier: 'FREE',
+                    generations_used: 0,
+                    created_at: new Date().toISOString(),
+                };
+                users.push(user);
+            }
+            user.session_token = sessionToken;
+            saveToJSON(JSON_USERS_PATH, users);
+            return res.json({
+                user: {
+                    ...user,
+                    session_token: sessionToken,
+                }
+            });
+        }
+    } catch (err: any) {
+        console.error('Demo auth error:', err);
+        res.status(500).json({ error: 'Demo login failed' });
+    }
+});
+
 // ===== MATERIAL MANAGEMENT API v2 (consolidated — uses getMaterials helper) =====
 // All duplicate handlers removed; single source of truth at lines 1667-1910
 
@@ -3069,8 +3135,8 @@ app.patch('/api/admin/users/:id/generations', requireAdmin, async (req: Request,
         const { id } = req.params;
         const { generations_used } = req.body;
 
-        if (typeof generations_used !== 'number') {
-            return res.status(400).json({ error: 'Invalid generation count' });
+        if (typeof generations_used !== 'number' || isNaN(generations_used) || generations_used < 0) {
+            return res.status(400).json({ error: 'generations_used must be a non-negative number' });
         }
 
         // Get user email for audit log
@@ -3621,13 +3687,7 @@ app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) =>
 
 // ===== AI GENERATION PROXY (Quota Enforced) =====
 
-async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolean; limit?: number; used?: number; error?: string }> {
-    // SECURITY: No magic-id bypasses. No "allow if user not found" — that was a
-    // quota-bypass vector. After P0.1, userId always comes from requireAuth
-    // (req.user.id), so it's guaranteed to be a real authenticated user.
-    // Admins get unlimited quota via their tier (LUXURY/Enterprise limit is
-    // 999999), not via a hardcoded id shortcut.
-
+async function checkQuota(userId: number): Promise<{ allowed: boolean; limit?: number; used?: number; error?: string }> {
     try {
         const result = await query('SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1', [userId]);
         if (result.rows.length === 0) return { allowed: false, error: 'User not found' };
@@ -3650,16 +3710,10 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
             return { allowed: false, limit: tierConfig.limit, used: generations_used };
         }
 
-        await query('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', [userId]);
-        return { allowed: true, used: generations_used + 1, limit: tierConfig.limit };
+        return { allowed: true, used: generations_used, limit: tierConfig.limit };
     } catch (e: any) {
         console.warn('Quota check fallback to JSON:', e.message);
 
-        // JSON fallback quota check — only used when Postgres is unavailable.
-        // SECURITY: an unknown userId is now a hard DENY (was: allow). Combined
-        // with requireAuth on the AI routes, this means a valid authenticated
-        // user that somehow isn't in the JSON store is denied rather than
-        // silently given unlimited renders.
         try {
             const users = await getUsers();
             const user = users.find((u: any) => String(u.id) === String(userId));
@@ -3678,21 +3732,37 @@ async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolea
                 return { allowed: false, limit: tierConfig.limit, used };
             }
 
-            user.generations_used = used + 1;
-            try {
-                saveToJSON(JSON_USERS_PATH, users);
-            } catch (saveErr) {
-                console.error('Failed to save to users.json:', saveErr);
-            }
-            return { allowed: true, used: used + 1, limit: tierConfig.limit };
+            return { allowed: true, used, limit: tierConfig.limit };
         } catch (jsonErr) {
-            // Fail closed — if we can't verify quota, we don't render. Better
-            // to refuse a paying user temporarily than to give away unlimited
-            // billed AI calls. The frontend shows the error message.
             console.error('Quota check hard failure:', jsonErr);
             return { allowed: false, error: 'Quota service unavailable — please try again.' };
         }
     }
+}
+
+async function incrementQuota(userId: number): Promise<void> {
+    try {
+        await query('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', [userId]);
+    } catch (e: any) {
+        console.warn('Increment quota fallback to JSON:', e.message);
+        try {
+            const users = await getUsers();
+            const user = users.find((u: any) => String(u.id) === String(userId));
+            if (user) {
+                user.generations_used = Math.max(0, (user.generations_used || 0) + 1);
+                saveToJSON(JSON_USERS_PATH, users);
+            }
+        } catch (jsonErr) {
+            console.error('Increment quota JSON fallback failed:', jsonErr);
+        }
+    }
+}
+
+async function checkAndIncrementQuota(userId: number): Promise<{ allowed: boolean; limit?: number; used?: number; error?: string }> {
+    const check = await checkQuota(userId);
+    if (!check.allowed) return check;
+    await incrementQuota(userId);
+    return { ...check, used: (check.used || 0) + 1 };
 }
 
 app.get('/api/debug', requireAdmin, async (req: Request, res: Response) => {

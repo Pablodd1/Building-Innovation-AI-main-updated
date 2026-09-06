@@ -55,7 +55,7 @@ export const ImageComparator: React.FC<ImageComparatorProps> = ({
 
         document.addEventListener('mousemove', handleMove);
         document.addEventListener('mouseup', handleUp);
-        document.addEventListener('touchmove', handleMove, { passive: false });
+        document.addEventListener('touchmove', handleMove, { passive: true });
         document.addEventListener('touchend', handleUp);
 
         return () => {

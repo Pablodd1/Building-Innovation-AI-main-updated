@@ -47,5 +47,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Building Innovation AI uses your camera to capture room photos for AI visualization and remodeling analysis.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Building Innovation AI requires photo library access so you can choose room images to visualize new materials.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Building Innovation AI requires permission to save rendered designs and quote estimates to your photo library.</string>
 </dict>
 </plist>

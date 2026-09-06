@@ -109,14 +109,14 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({
     const currency = material.pricing?.currency || 'USD';
 
     const materialCost = panelsWithWaste * unitPrice;
-    const wasteCost = wastePanels * unitPrice;
+    const wasteCost = wastePanels * unitPrice; // For display breakdown only
 
     // Contractor labor
     const contractor = contractors.find(c => c.id === selectedContractor);
     const laborRatePerSqm = contractor?.laborRatePerSqm || parseFloat(laborOverride) || 0;
     const laborCost = laborRatePerSqm > 0 ? areaM2 * laborRatePerSqm : 0;
 
-    const subtotal = materialCost + wasteCost;
+    const subtotal = materialCost; // materialCost already includes waste panels — don't add wasteCost again
     const total = subtotal + laborCost;
 
     // Format currency

@@ -125174,7 +125174,7 @@ Auto-downgraded to Free.`
         return res.status(413).json({ error: "Image too large. Max 5MB." });
       }
       if (userId) {
-        const quota = await checkAndIncrementQuota(userId);
+        const quota = await checkQuota(userId);
         if (!quota.allowed) {
           if (quota.error && quota.used === void 0) {
             return res.status(503).json({
@@ -125239,6 +125239,7 @@ Auto-downgraded to Free.`
               success: true
             }
           });
+          if (userId) await incrementQuota(userId);
           return res.json({ success: true, image: result2.image, provider: result2.provider, model: result2.model, mode: "inpaint" });
         } catch (error) {
           pushGenerationLog({
@@ -125287,6 +125288,7 @@ Auto-downgraded to Free.`
             success: true
           }
         });
+        if (userId) await incrementQuota(userId);
         return res.json({ success: true, image: compositeResult.image, provider: "compositor", model: "sharp" });
       }
       const result = await generateOverlay({
@@ -125318,6 +125320,7 @@ Auto-downgraded to Free.`
           success: true
         }
       });
+      if (userId) await incrementQuota(userId);
       res.json({ success: true, image: result.image, provider, model: result.model });
     } catch (error) {
       pushGenerationLog({
@@ -125370,7 +125373,7 @@ Auto-downgraded to Free.`
         return res.status(413).json({ error: "Image too large. Max 5MB." });
       }
       if (userId) {
-        const quota = await checkAndIncrementQuota(userId);
+        const quota = await checkQuota(userId);
         if (!quota.allowed) {
           if (quota.error && quota.used === void 0) {
             return res.status(503).json({ error: quota.error });
@@ -125384,6 +125387,9 @@ Auto-downgraded to Free.`
       }
       const provider = userProvider || "gemini";
       const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
+      if (userId) {
+        await incrementQuota(userId);
+      }
       res.json({
         success: true,
         analysis: result.analysis,
@@ -126060,12 +126066,66 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: error.message });
     }
   });
+  app.post("/api/auth/demo", async (req, res) => {
+    try {
+      const demoEmail = "demo@buildingapp.us";
+      const sessionToken = "session_" + require("crypto").randomBytes(24).toString("hex");
+      try {
+        const result = await query(
+          "SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at FROM users WHERE email = $1",
+          [demoEmail]
+        );
+        if (result.rows.length > 0) {
+          const user = result.rows[0];
+          try {
+            await query("UPDATE users SET session_token = $1 WHERE id = $2", [sessionToken, user.id]);
+          } catch (updateErr) {
+            console.warn("Failed to save demo session token to DB:", updateErr.message);
+          }
+          await checkAndDowngradeExpiredTier(user);
+          return res.json({
+            user: {
+              ...user,
+              session_token: sessionToken
+            }
+          });
+        }
+        throw new Error("Demo user not found in DB");
+      } catch (dbErr) {
+        const users = await getUsers();
+        let user = users.find((u) => u.email === demoEmail);
+        if (!user) {
+          user = {
+            id: 9999,
+            name: "Demo Guest",
+            email: demoEmail,
+            role: "customer",
+            tier: "FREE",
+            generations_used: 0,
+            created_at: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          users.push(user);
+        }
+        user.session_token = sessionToken;
+        saveToJSON(JSON_USERS_PATH, users);
+        return res.json({
+          user: {
+            ...user,
+            session_token: sessionToken
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Demo auth error:", err);
+      res.status(500).json({ error: "Demo login failed" });
+    }
+  });
   app.patch("/api/admin/users/:id/generations", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { generations_used } = req.body;
-      if (typeof generations_used !== "number") {
-        return res.status(400).json({ error: "Invalid generation count" });
+      if (typeof generations_used !== "number" || isNaN(generations_used) || generations_used < 0) {
+        return res.status(400).json({ error: "generations_used must be a non-negative number" });
       }
       let userEmail = "unknown";
       try {
@@ -126514,7 +126574,7 @@ Auto-downgraded to Free.`
       res.json(users);
     }
   });
-  async function checkAndIncrementQuota(userId) {
+  async function checkQuota(userId) {
     try {
       const result = await query("SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1", [userId]);
       if (result.rows.length === 0) return { allowed: false, error: "User not found" };
@@ -126530,8 +126590,7 @@ Auto-downgraded to Free.`
       if (generations_used >= tierConfig.limit) {
         return { allowed: false, limit: tierConfig.limit, used: generations_used };
       }
-      await query("UPDATE users SET generations_used = generations_used + 1 WHERE id = $1", [userId]);
-      return { allowed: true, used: generations_used + 1, limit: tierConfig.limit };
+      return { allowed: true, used: generations_used, limit: tierConfig.limit };
     } catch (e2) {
       console.warn("Quota check fallback to JSON:", e2.message);
       try {
@@ -126547,18 +126606,35 @@ Auto-downgraded to Free.`
         if (used >= tierConfig.limit) {
           return { allowed: false, limit: tierConfig.limit, used };
         }
-        user.generations_used = used + 1;
-        try {
-          saveToJSON(JSON_USERS_PATH, users);
-        } catch (saveErr) {
-          console.error("Failed to save to users.json:", saveErr);
-        }
-        return { allowed: true, used: used + 1, limit: tierConfig.limit };
+        return { allowed: true, used, limit: tierConfig.limit };
       } catch (jsonErr) {
         console.error("Quota check hard failure:", jsonErr);
         return { allowed: false, error: "Quota service unavailable \u2014 please try again." };
       }
     }
+  }
+  async function incrementQuota(userId) {
+    try {
+      await query("UPDATE users SET generations_used = generations_used + 1 WHERE id = $1", [userId]);
+    } catch (e2) {
+      console.warn("Increment quota fallback to JSON:", e2.message);
+      try {
+        const users = await getUsers();
+        const user = users.find((u) => String(u.id) === String(userId));
+        if (user) {
+          user.generations_used = Math.max(0, (user.generations_used || 0) + 1);
+          saveToJSON(JSON_USERS_PATH, users);
+        }
+      } catch (jsonErr) {
+        console.error("Increment quota JSON fallback failed:", jsonErr);
+      }
+    }
+  }
+  async function checkAndIncrementQuota(userId) {
+    const check = await checkQuota(userId);
+    if (!check.allowed) return check;
+    await incrementQuota(userId);
+    return { ...check, used: (check.used || 0) + 1 };
   }
   app.get("/api/debug", requireAdmin, async (req, res) => {
     const debugInfo = {
