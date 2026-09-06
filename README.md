@@ -1,144 +1,173 @@
 # Building Innovation AI
 
-**AI-Powered Construction Material Visualization & Estimation Platform**
+**AI-Powered Architectural Visualization, Material Estimation & Contractor Commerce Platform**
 
-[buildingapp.us](https://buildingapp.us) · [buildinginnovation.us](https://buildinginnovation.us)
-
----
-
-## What It Does
-
-Building Innovation AI lets contractors, homeowners, and architects:
-
-1. **Take a photo** of any room
-2. **Overlay construction materials** using AI (Google Gemini / OpenAI)
-3. **Get exact estimates** — material quantity, waste factor, labor cost
-4. **Assign a contractor** from our database
-5. **Checkout with Stripe** — buy materials directly
-
-All in a single platform. English/Spanish toggle. LATAM + USA units.
+🌐 **Web Application:** [buildingapp.us](https://buildingapp.us) · [buildinginnovation.us](https://buildinginnovation.us)  
+📱 **Mobile Application:** Android Release Bundle (Capacitor native wrapper · Google Play Console `versionCode 7` / v1.0.6)
 
 ---
 
-## Competitive Landscape
+## 📖 Executive Summary & Core Capabilities
 
-| Feature | Building Innovation AI | Hover | Planner5D | Buildxact | Procore | STACK |
-|---------|----------------------|-------|-----------|-----------|---------|-------|
-| AI Room Visualization | ✅ | ❌ (3D only) | ⚠️ (design gen) | ❌ | ❌ | ❌ |
-| Camera Photo Capture | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| AI Room Analysis | ✅ | ✅ (measurements) | ⚠️ | ❌ | ❌ | ❌ |
-| Material Estimation | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| Contractor Assignment | ✅ | ⚠️ | ❌ | ⚠️ | ✅ | ❌ |
-| Stripe Checkout | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Multi-Language (EN/ES) | ✅ | ❌ | ✅ (20+) | ❌ | ✅ | ❌ |
-| Before/After Comparison | ✅ | ⚠️ | ✅ | ❌ | ❌ | ❌ |
-| Multiple Lighting Modes | ✅ | ❌ | ⚠️ | ❌ | ❌ | ❌ |
-| Free Tier with AI | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| WhatsApp Bot (planned) | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Price** | **Free / $9.99/mo** | $29-65/report | Free / $6.99/mo | $149/mo | ~$5K+/yr | $2,599/yr |
+Building Innovation AI is an end-to-end commercial and architectural platform built for homeowners, contractors, architects, and building material distributors. It transforms a simple smartphone photo into a photorealistic room remodel, computes exact panel/box counts and budgets, and facilitates direct contractor quoting and material purchasing.
 
-> **Full competitive analysis:** [building-innovation-landing.vercel.app](https://building-innovation-landing.vercel.app)
+```mermaid
+flowchart LR
+    A[📷 Photo Capture / Upload] --> B[🧠 Vision Analysis\nGemini 1.5 Flash]
+    B --> C[🎨 Surface & Material Selection\nPVC, Wood Slats, Marble]
+    C --> D[✨ Generative Inpainting\nOpenAI / Compositor]
+    D --> E[👁️ Split / Hold-to-Compare\nBefore vs. After]
+    E --> F[📐 Budget & Panel Calculator\nm² & Waste Estimation]
+    F --> G[💳 Stripe Checkout / Contractor Quote]
+```
 
 ---
 
-## Tech Stack
+## 🎯 Capabilities vs. Code Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19 + TypeScript + Vite |
-| Styling | Tailwind CSS |
-| Backend | Express.js (Node.js) |
-| Database | PostgreSQL |
-| AI | Google Gemini 2.0 / OpenAI GPT-4o |
-| Payments | Stripe PaymentIntents |
-| Notifications | Email (Nodemailer) + Telegram Alerts |
-| Hosting | Hostinger (Node.js Passenger) + Vercel |
-| Image Processing | Sharp |
+This guide explains how every feature is represented and implemented across the codebase.
 
----
+### 1. User Experience & Visualizer Flow
 
-## What Makes Us Different
-
-1. **Only all-in-one platform** — visualization + estimation + contractor + checkout in one flow
-2. **LATAM-first** — Spanish-native interface, Colombian contractor database, metric units
-3. **15x cheaper** than enterprise alternatives (Procore, Buildxact, STACK)
-4. **AI-agnostic** — multi-provider backend can switch between Gemini/OpenAI without code changes
-5. **Free tier** — 5 real AI renders/month at $0
+| Capability | What the User Experiences | Code Implementation & Location |
+| :--- | :--- | :--- |
+| **Photo Capture & Upload** | Live camera capture or upload from gallery. Works flawlessly across iOS, Android, and web. | [`CameraCapture.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/components/CameraCapture.tsx) · [`WebcamCapture.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/components/WebcamCapture.tsx)<br>Native Android permissions (`CAMERA`, `READ_MEDIA_IMAGES`) declared in [`AndroidManifest.xml`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/android/app/src/main/AndroidManifest.xml). |
+| **Smart Downscaling (Zero Timeout)** | Even massive 15–24MP camera photos upload in ~1 second with zero timeouts over mobile networks. | `downscaleImage()` in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx) compresses images to 1024px @ 85% JPEG before dispatching to `/api/ai/analyze-room`, bypassing 45s HTTP abort limits. |
+| **AI Room Analysis** | Automatic room scanning: extracts estimated dimensions (width, height, area in m²), architectural style, lighting, and suggested materials. | [`services/geminiService.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/services/geminiService.ts) -> `/api/ai/analyze-room` in [`server/index.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/server/index.ts) using Gemini vision. |
+| **Surface Scope Selector** | Users can choose where materials go: **Pared Acento (Accent Wall)**, **Todas Paredes (All Walls)**, or **Pisos (Floors)**. | Segmented control in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx) (`targetSurface` state). Automatically combines prompt rules into the AI inpaint instructions. |
+| **1-Tap Style & Prompt Chips** | One-tap style pills: 🌿 *Add indoor plants*, 💡 *Warm LED lighting*, 🛋️ *Modern minimalist*, 🌙 *Luxury evening*, 🧹 *Clean space*. | Interactive chip state in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx). Tapping a chip highlights it in purple and dynamically appends or removes the tag from `customPrompt`. |
+| **Texture Zoom & Inspector** | Click any material to inspect grain, relief, reflection, and finish up to 300% zoom with technical specs. | `renderProbeModal` in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx). Features scale transforms, zoom buttons (+ / - / Reset), and specs badges (dimensions, thickness, unit price). |
+| **Photorealistic AI Inpainting** | Materials seamlessly wrap walls with realistic shadows and perspective while preserving furniture, windows, and plants. | `generateMaterialOverlay()` in [`services/geminiService.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/services/geminiService.ts) -> `/api/ai/generate-overlay` in [`server/services/aiProviders.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/server/services/aiProviders.ts) using OpenAI inpainting with surface masks. |
+| **Hold-to-Compare & Split Slider** | Drag handle for split-view OR press and hold **"Mantén para ver Original"** to instantly flick between before and after. | [`components/ImageComparator.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/components/ImageComparator.tsx). Uses dynamic clip-paths, touch/mouse listeners, and top quick-toggle mode pills (`[Original \| Split \| AI Render]`). |
+| **Real-time Budget Estimator** | In-editor card displays live wall area, required panels (with 5% waste buffer), and estimated dollar cost. | Smart Estimate badge in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx) calculates: `pieces = ceil(areaM2 * 1.05 / pieceArea)` and connects directly to quote breakdown. |
+| **Mobile Haptic Feedback** | Subtle vibrations when selecting materials, changing scopes, and when generation finishes. | [`utils/haptics.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/utils/haptics.ts) using the Web Vibration API (`navigator.vibrate`), safe on both desktop and mobile WebViews. |
 
 ---
 
-## Planned AI Features (Roadmap)
+### 2. Commercial & Administrative Operations
 
-| Feature | Impact | Effort |
-|---------|--------|--------|
-| Voice-to-Quote (hands-free ordering) | 10x faster field quotes | Medium |
-| AI Damage Assessment (insurance claims) | New revenue stream | Medium |
-| AI Design Style Transfer (inspiration → product) | Viral consumer feature | Low |
-| AR Live Preview (WebXR) | Highest conversion | High |
-| AI Project Timeline Generator | PM-lite add-on | Low |
-| WhatsApp AI Chatbot for Quotes | 10x LATAM user base | Medium |
-
----
-
-## Pricing
-
-| Tier | Price | AI Renders | Features |
-|------|-------|-----------|----------|
-| Free | $0/mo | 5/month | Browse catalog, basic estimation |
-| Premium | $9.99/mo | 50/month | Full estimation, contractor, Stripe |
-| Elite | $19.99/mo | Unlimited | Priority AI, PDF export, all features |
+| Capability | What the Admin / Business Manages | Code Implementation & Location |
+| :--- | :--- | :--- |
+| **User & Quota Administration** | Inspect registered users, manage tier levels (*Free, Standard, Premium, Luxury*), view renders used, and reset quotas. | `renderAdmin()` in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx) -> `/api/admin/users` & `/api/admin/tiers` in [`server/index.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/server/index.ts). |
+| **Material Catalog Management** | Add new products, adjust pricing per unit or box, modify dimensions, change usage (Interior/Exterior), and update texture URLs. | Catalog CRUD handlers in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx) -> `/api/admin/materials` in [`server/index.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/server/index.ts). |
+| **Purchase & Order Tracking** | View and fulfill orders submitted through Stripe live checkout or generated via email quote requests. | [`components/AdminPurchaseQueue.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/components/AdminPurchaseQueue.tsx) -> `/api/admin/orders` in [`server/index.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/server/index.ts). |
+| **Contractor Network** | Browse and assign verified regional contractors in Colombia (Bogotá, Medellín, Cali, etc.) with custom labor rates per m². | [`components/EstimationPanel.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/components/EstimationPanel.tsx) with contractor data defined in [`constants.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/constants.ts). |
+| **Audit Logging & Security** | Comprehensive security audit log tracking admin logins, quota overrides, material updates, and IP addresses. | `renderAuditLogsComponent()` in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx) -> `/api/admin/audit-logs` in [`server/index.ts`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/server/index.ts). |
 
 ---
 
-## Repository Structure
+## 🏗️ Technical Architecture & Repository Layout
 
 ```
-├── App.tsx                    # Main React application
-├── components/                # Reusable UI components
-│   ├── CameraCapture.tsx      # In-app photo capture
-│   ├── EstimationPanel.tsx    # Material quantity calculator
-│   ├── ImageComparator.tsx    # Before/after side-by-side
-│   └── AdminPurchaseQueue.tsx # Purchase management
-├── server/
-│   ├── index.ts               # Express.js server
-│   ├── services/aiProviders.ts # Multi-provider AI abstraction
-│   ├── emailService.ts        # Purchase notifications
-│   └── telegramAlerts.ts      # Crash/order Telegram alerts
+├── App.tsx                      # Primary application entry point & view router
+├── types.ts                     # TypeScript definitions for Materials, Users, Analysis, Cart
+├── constants.ts                 # Initial catalog items, translations (EN/ES), contractor registry
+├── components/
+│   ├── ImageComparator.tsx      # Split-screen comparison & Touch & Hold original view
+│   ├── EstimationPanel.tsx      # Full contractor quotation & m² calculator panel
+│   ├── ProductCard.tsx          # Catalog item card with actions (Quote, Add to Cart, Select)
+│   ├── CameraCapture.tsx        # Camera and file input modal handler
+│   ├── WebcamCapture.tsx        # Live HTML5 video stream with facingMode switch
+│   ├── AdminPurchaseQueue.tsx   # Admin purchase queue & fulfillment dashboard
+│   └── Button.tsx               # Reusable styled UI button with loading and disabled states
+├── utils/
+│   └── haptics.ts               # Web Vibrate API wrapper for native haptic feedback
 ├── services/
-│   └── geminiService.ts       # Client-side AI service layer
-├── constants.ts               # Materials, contractors, translations
-└── types.ts                   # TypeScript type definitions
+│   ├── geminiService.ts         # Client AI abstraction for room analysis and material inpainting
+│   └── unitUtils.ts             # Metric / Imperial conversion utilities
+├── server/
+│   ├── index.ts                 # Express.js REST API, authentication, Stripe, and admin routes
+│   └── services/
+│       ├── aiProviders.ts       # Multi-provider routing (Gemini vision, OpenAI inpaint, Flux, local)
+│       └── imageCompositor.ts   # Local Sharp-based rendering fallback
+└── android/                     # Capacitor native Android studio project
+    └── app/src/main/
+        └── AndroidManifest.xml  # Camera & Gallery permissions for Google Play Store release
 ```
 
 ---
 
-## Environment Variables
+## ⚙️ Environment Variables Configuration
 
-```
-AI_PROVIDER=gemini|openai
-GEMINI_API_KEY=xxx
-OPENAI_API_KEY=xxx
-STRIPE_SECRET_KEY=sk_live_xxx
-STRIPE_WEBHOOK_SECRET=whsec_xxx
-DATABASE_URL=postgresql://...
-DB_HOST=xxx
-DB_USER=xxx
-DB_PASSWORD=xxx
-DB_NAME=xxx
-TELEGRAM_BOT_TOKEN=xxx
-TELEGRAM_CHAT_ID=xxx
+Create a `.env` file in the root directory:
+
+```ini
+# --- Server Environment ---
+PORT=3000
+NODE_ENV=production
+
+# --- AI Providers ---
+AI_PROVIDER=gemini               # 'gemini' | 'openai' | 'openrouter'
+GEMINI_API_KEY=AQ.Ab8RN...       # Google Vertex AI / Cloud Service Key
+OPENAI_API_KEY=sk-...            # OpenAI API Key (required for photorealistic inpainting)
+
+# --- Database ---
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=building_innovation
+DB_PORT=3306
+DATABASE_URL=postgresql://...    # Optional PostgreSQL connection string
+
+# --- Payments (Stripe) ---
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_PUBLISHABLE_KEY=pk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_PRO=price_...
+STRIPE_PRICE_ENTERPRISE=price_...
+
+# --- Notifications ---
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+SMTP_HOST=smtp.hostinger.com
+SMTP_USER=admin@buildingapp.us
+SMTP_PASS=...
 ```
 
 ---
 
-## Deploy
+## 🛠️ Build & Deployment Commands
 
+### Local Development
 ```bash
-npm run build
-# Frontend → Vercel (auto-deploy on git push)
-# Backend → Hostinger (via PHP FTP bridge or Passenger)
+npm install
+npm run dev
+# Starts backend server (tsx server/index.ts) and frontend (vite) concurrently
 ```
+
+### Production Build
+```bash
+# Build frontend bundle into dist/
+npm run build:frontend
+
+# Bundle backend into dist-server/app.cjs using esbuild
+npm run build:server
+
+# Run the compiled production app
+npm start
+```
+
+### Android Native Builds (Capacitor)
+```bash
+# 1. Build latest frontend assets
+npm run build:frontend
+
+# 2. Sync web assets into the Android native project
+npx cap sync android
+
+# 3. Build signed Release APK & App Bundle (AAB) for Google Play Console
+$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+cd android
+.\gradlew.bat clean bundleRelease assembleRelease
+```
+* The signed App Bundle output is located at: `android/app/build/outputs/bundle/release/app-release.aab`
+* The standalone installable APK output is located at: `android/app/build/outputs/apk/release/app-release.apk`
 
 ---
 
-*Building Innovation AI — Visualize. Estimate. Build.*
+## 🔒 Security & Deployment Notes
+
+1. **Google Play Store Compliance:** Android permissions are strictly scoped to user-initiated image selection (`CAMERA`, `READ_MEDIA_IMAGES`). No advertising ID permissions (`AD_ID`) are declared.
+2. **CORS Whitelist:** Backend strictly permits connections from `https://buildingapp.us`, `https://buildinginnovation.us`, `http://localhost:5173`, `http://localhost:3000`, `capacitor://localhost`, and `https://localhost`.
+3. **Asset Proxying:** Dynamic image URLs served within the native Android WebView are converted to absolute paths (`https://buildingapp.us/api/proxy-image?url=...`) via `proxyImageUrl()` in [`App.tsx`](file:///C:/Users/jasme/.gemini/antigravity/Building-Innovation-AI-main-updated/App.tsx) to prevent WebView `localhost` path resolution errors.
+
