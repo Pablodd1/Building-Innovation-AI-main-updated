@@ -161,20 +161,20 @@ export const ImageComparator: React.FC<ImageComparatorProps> = ({
             </div>
 
             {/* Hold to Compare floating button (Mobile & Desktop) */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
+            <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-30">
                 <button
                     onMouseDown={() => { hapticLight(); setIsHoldingOriginal(true); }}
                     onMouseUp={() => setIsHoldingOriginal(false)}
                     onMouseLeave={() => setIsHoldingOriginal(false)}
                     onTouchStart={(e) => { e.preventDefault(); hapticLight(); setIsHoldingOriginal(true); }}
                     onTouchEnd={() => setIsHoldingOriginal(false)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-black uppercase tracking-wider backdrop-blur-md shadow-2xl border transition-all select-none ${
+                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider backdrop-blur-md shadow-2xl border transition-all select-none whitespace-nowrap ${
                         isHoldingOriginal
                             ? 'bg-amber-500 text-white border-amber-300 scale-105 shadow-amber-500/50'
                             : 'bg-black/70 hover:bg-black/90 text-white border-white/20 active:scale-95'
                     }`}
                 >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
@@ -184,7 +184,7 @@ export const ImageComparator: React.FC<ImageComparatorProps> = ({
 
             {/* Material badge if provided */}
             {materialThumbnail && (
-                <div className="absolute bottom-4 right-4 z-30 w-12 h-12 md:w-14 md:h-14 rounded-xl overflow-hidden border-2 border-white shadow-xl bg-white">
+                <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-30 w-10 h-10 md:w-14 md:h-14 rounded-xl overflow-hidden border-2 border-white shadow-xl bg-white">
                     <img
                         src={materialThumbnail}
                         alt="Material"

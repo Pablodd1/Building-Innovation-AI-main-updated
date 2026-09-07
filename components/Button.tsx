@@ -14,7 +14,18 @@ export const Button: React.FC<ButtonProps> = ({
   className = '',
   ...props 
 }) => {
-  const baseStyles = "inline-flex items-center justify-center px-5 py-3 min-h-[44px] text-sm font-medium rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed";
+  const hasPaddingX = /\bpx-|\bp-/.test(className);
+  const hasPaddingY = /\bpy-|\bp-/.test(className);
+  const hasMinH = /\bmin-h-/.test(className);
+  const hasTextSize = /\btext-/.test(className);
+  const hasRounded = /\brounded-/.test(className);
+  
+  const defaultPadding = `${hasPaddingX ? '' : 'px-5'} ${hasPaddingY ? '' : 'py-3'}`.trim();
+  const defaultMinH = hasMinH ? '' : 'min-h-[44px]';
+  const defaultText = hasTextSize ? '' : 'text-sm';
+  const defaultRounded = hasRounded ? '' : 'rounded-xl';
+
+  const baseStyles = `inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed ${defaultMinH} ${defaultPadding} ${defaultText} ${defaultRounded}`.replace(/\s+/g, ' ').trim();
   
   const variants = {
     primary: "bg-blue-600 hover:bg-blue-500 text-white focus:ring-blue-500 shadow-lg shadow-blue-900/30",

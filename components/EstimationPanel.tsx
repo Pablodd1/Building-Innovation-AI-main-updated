@@ -514,13 +514,13 @@ export const EstimationPanel: React.FC<EstimationPanelProps> = ({
                             window.location.href = `mailto:${userEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                         }}
                         disabled={areaM2 <= 0}
-                        className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white font-medium rounded-xl transition-colors text-sm"
+                        className="flex-1 px-2 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white font-medium rounded-xl transition-colors text-xs sm:text-sm text-center leading-tight"
                     >
                         {specLabel.emailQuote}
                     </button>
                     <button
                         onClick={onNewQuote}
-                        className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition-colors text-sm"
+                        className="flex-1 px-2 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition-colors text-xs sm:text-sm text-center leading-tight"
                     >
                         {specLabel.newQuote}
                     </button>

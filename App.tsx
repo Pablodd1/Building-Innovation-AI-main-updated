@@ -2087,24 +2087,24 @@ const App: React.FC = () => {
     };
 
     const LanguageToggle = () => (
-        <div className="flex bg-gray-200 rounded-lg p-1 border border-gray-300">
+        <div className="flex bg-gray-200 rounded-lg p-0.5 sm:p-1 border border-gray-300 shrink-0">
             <button
                 onClick={() => {
                     setLang("en");
                     logUserBehavior("CHANGE_LANGUAGE", { lang: "en" });
                 }}
-                className={`px-3 py-2 text-xs font-bold rounded transition-colors min-h-[44px] flex items-center ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
+                className={`px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-bold rounded transition-colors min-h-[38px] sm:min-h-[44px] flex items-center ${lang === "en" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
-                EN {unitSystem === "usa" && "(ft/in)"}
+                EN<span className="hidden sm:inline font-normal text-[10px] ml-1">{unitSystem === "usa" ? "(ft/in)" : ""}</span>
             </button>
             <button
                 onClick={() => {
                     setLang("es");
                     logUserBehavior("CHANGE_LANGUAGE", { lang: "es" });
                 }}
-                className={`px-3 py-2 text-xs font-bold rounded transition-colors min-h-[44px] flex items-center ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
+                className={`px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-bold rounded transition-colors min-h-[38px] sm:min-h-[44px] flex items-center ${lang === "es" ? "bg-blue-600 text-white shadow" : "text-gray-500 hover:text-gray-700"}`}
             >
-                ES {unitSystem === "latam" && "(m/cm)"}
+                ES<span className="hidden sm:inline font-normal text-[10px] ml-1">{unitSystem === "latam" ? "(m/cm)" : ""}</span>
             </button>
         </div>
     );
@@ -2163,7 +2163,7 @@ const App: React.FC = () => {
     };
 
     const renderLogin = () => (
-        <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-gray-100">
+        <div className="min-h-screen flex flex-col items-center justify-center px-4 py-6 sm:p-6 relative overflow-hidden bg-gray-100">
             <div
                 className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-50"
                 style={{
@@ -2177,7 +2177,7 @@ const App: React.FC = () => {
             <div className="relative z-10 flex flex-col items-center mb-8">
                 <BrandLogo className="w-32 h-32" />
             </div>
-            <div className="relative z-10 w-full max-w-sm bg-gray-200/80 backdrop-blur-sm p-8 rounded-2xl shadow-lg">
+            <div className="relative z-10 w-full max-w-sm bg-gray-200/80 backdrop-blur-sm p-6 sm:p-8 rounded-2xl shadow-lg">
                 <form className="space-y-4" onSubmit={handleAuth}>
                     {authMode === "signup" && (
                         <>
@@ -2356,7 +2356,7 @@ const App: React.FC = () => {
     );
 
     const renderLanding = () => (
-        <div className="min-h-screen bg-gray-100 p-6 flex flex-col relative">
+        <div className="min-h-screen bg-gray-100 px-4 py-6 sm:p-6 pb-28 sm:pb-28 flex flex-col relative">
             <div
                 className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-50"
                 style={{
@@ -2390,14 +2390,14 @@ const App: React.FC = () => {
                         </>
                     )}
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                     <LanguageToggle />
                     <button
                         onClick={() => setView(AppView.CART)}
-                        className="relative p-2 text-gray-600 hover:text-gray-900"
+                        className="relative p-1.5 sm:p-2 text-gray-600 hover:text-gray-900"
                     >
                         <svg
-                            className="w-6 h-6"
+                            className="w-5 h-5 sm:w-6 sm:h-6"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -2418,10 +2418,10 @@ const App: React.FC = () => {
                     {currentUser?.role === "admin" && (
                         <button
                             onClick={() => setView(AppView.ADMIN)}
-                            className="p-2 text-gray-600 hover:text-gray-900"
+                            className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900"
                         >
                             <svg
-                                className="w-6 h-6"
+                                className="w-5 h-5 sm:w-6 sm:h-6"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -2478,55 +2478,57 @@ const App: React.FC = () => {
                         </div>
                     )}
 
-                    <button
-                        onClick={() => {
-                            setCurrentUser(null);
-                            localStorage.removeItem('constructviz_user');
-                            setView(AppView.LOGIN);
-                        }}
-                        className="p-2 text-gray-600 hover:text-gray-900"
-                        title={lang === "es" ? "Cerrar sesión" : "Logout"}
-                    >
-                        <svg
-                            className="w-6 h-6"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                            />
-                        </svg>
-                    </button>
-                    {/* App Store Compliance: Delete Account Button */}
-                    <button
-                        onClick={async () => {
-                            const msg = lang === "es" 
-                                ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos. Esta acción no se puede deshacer. ¿Desea continuar?" 
-                                : "WARNING: This will permanently delete your account and all your data. This action cannot be undone. Do you wish to proceed?";
-                            
-                            if (window.confirm(msg)) {
-                                try {
-                                    // Make API call to delete account if needed
-                                    // await fetch(`/api/auth/users/${currentUser?.id}`, { method: 'DELETE' });
-                                    alert(lang === "es" ? "Su cuenta ha sido eliminada. Lamentamos que te vayas." : "Your account has been successfully deleted. We are sorry to see you go.");
+                    {currentUser && (
+                        <>
+                            <button
+                                onClick={() => {
                                     setCurrentUser(null);
+                                    localStorage.removeItem('constructviz_user');
                                     setView(AppView.LOGIN);
-                                } catch (e) {
-                                    alert(lang === "es" ? "Error al eliminar la cuenta." : "Failed to delete account.");
-                                }
-                            }
-                        }}
-                        className="p-2 text-red-500 hover:text-red-700"
-                        title={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
-                    >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                    </button>
+                                }}
+                                className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900"
+                                title={lang === "es" ? "Cerrar sesión" : "Logout"}
+                            >
+                                <svg
+                                    className="w-5 h-5 sm:w-6 sm:h-6"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                                    />
+                                </svg>
+                            </button>
+                            {/* App Store Compliance: Delete Account Button */}
+                            <button
+                                onClick={async () => {
+                                    const msg = lang === "es" 
+                                        ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos. Esta acción no se puede deshacer. ¿Desea continuar?" 
+                                        : "WARNING: This will permanently delete your account and all your data. This action cannot be undone. Do you wish to proceed?";
+                                    
+                                    if (window.confirm(msg)) {
+                                        try {
+                                            alert(lang === "es" ? "Su cuenta ha sido eliminada. Lamentamos que te vayas." : "Your account has been successfully deleted. We are sorry to see you go.");
+                                            setCurrentUser(null);
+                                            setView(AppView.LOGIN);
+                                        } catch (e) {
+                                            alert(lang === "es" ? "Error al eliminar la cuenta." : "Failed to delete account.");
+                                        }
+                                    }
+                                }}
+                                className="p-1.5 sm:p-2 text-red-500 hover:text-red-700"
+                                title={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                            >
+                                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </>
+                    )}
                 </div>
             </header>
 
@@ -2550,11 +2552,11 @@ const App: React.FC = () => {
                         : "SELECT SPACE TYPE"}
                 </p>
 
-                <div className="grid grid-cols-2 gap-4 w-full">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full max-w-full">
                     <button
                         type="button"
                         onClick={() => { handleStart("Interior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Interior" }); }}
-                        className="group flex flex-col items-center"
+                        className="group flex flex-col items-center min-w-0 w-full"
                     >
                         <div className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all">
                             <img
@@ -2564,7 +2566,7 @@ const App: React.FC = () => {
                                 alt="Interior space visualization"
                             />
                         </div>
-                        <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
+                        <span className="mt-2.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-200 text-gray-700 rounded-lg text-xs sm:text-sm font-medium text-center truncate max-w-full">
                             {lang === "es"
                                 ? "Espacio interior"
                                 : "Interior Space"}
@@ -2573,7 +2575,7 @@ const App: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => { handleStart("Exterior"); logUserBehavior("SELECT_SPACE_TYPE", { type: "Exterior" }); }}
-                        className="group flex flex-col items-center"
+                        className="group flex flex-col items-center min-w-0 w-full"
                     >
                         <div className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all">
                             <img
@@ -2583,7 +2585,7 @@ const App: React.FC = () => {
                                 alt="Exterior space visualization"
                             />
                         </div>
-                        <span className="mt-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium">
+                        <span className="mt-2.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-200 text-gray-700 rounded-lg text-xs sm:text-sm font-medium text-center truncate max-w-full">
                             {lang === "es"
                                 ? "Espacio exterior"
                                 : "Exterior Space"}
@@ -4581,7 +4583,7 @@ const App: React.FC = () => {
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-28 sm:pb-24">
                     <div className="max-w-7xl mx-auto grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
                         {filteredMaterials.map((material) => (
                             <ProductCard
@@ -4684,7 +4686,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Mobile-Optimised Controls Panel */}
-                <div className="w-full md:w-96 bg-white border-l border-gray-300 flex flex-col h-[52vh] md:h-full z-20 shadow-2xl pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <div className="w-full md:w-96 bg-white border-l border-gray-300 flex flex-col h-[55vh] sm:h-[52vh] md:h-full z-20 shadow-2xl pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                     {/* Top bar */}
                     <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0">
                         <Button
@@ -4713,7 +4715,7 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Scrollable area */}
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y pb-6">
                         {/* Material chip + AI analysis */}
                         {selectedMaterial && (
                             <div className="px-3 pt-3 pb-1">
@@ -4816,7 +4818,7 @@ const App: React.FC = () => {
                                 <label className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 block">
                                     {lang === 'es' ? 'Superficie a Renovar' : 'Target Surface'}
                                 </label>
-                                <div className="grid grid-cols-3 gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                                <div className="grid grid-cols-3 gap-1 sm:gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
                                     {[
                                         { id: 'accent', icon: '🖼️', label: lang === 'es' ? 'Pared Acento' : 'Accent Wall' },
                                         { id: 'all', icon: '🏛️', label: lang === 'es' ? 'Todas Paredes' : 'All Walls' },
@@ -4826,13 +4828,13 @@ const App: React.FC = () => {
                                             key={s.id}
                                             type="button"
                                             onClick={() => { hapticLight(); setTargetSurface(s.id as any); }}
-                                            className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
+                                            className={`py-1.5 px-1 sm:px-2 rounded-lg text-[9px] sm:text-[10px] font-bold transition-all flex items-center justify-center gap-1 min-w-0 ${
                                                 targetSurface === s.id
                                                     ? 'bg-white text-purple-700 shadow-sm border border-purple-200'
                                                     : 'text-gray-500 hover:text-gray-800'
                                             }`}
                                         >
-                                            <span>{s.icon}</span>
+                                            <span className="shrink-0">{s.icon}</span>
                                             <span className="truncate">{s.label}</span>
                                         </button>
                                     ))}
@@ -4892,15 +4894,15 @@ const App: React.FC = () => {
                                                         setCustomPrompt((prev) => prev ? `${prev.trim()}, ${chip.text}` : chip.text);
                                                     }
                                                 }}
-                                                className={`text-[10px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1 border ${
+                                                className={`text-[10px] px-2.5 py-1 rounded-full font-semibold transition-all flex items-center gap-1 border max-w-full text-left ${
                                                     isActive
                                                         ? 'bg-purple-100 text-purple-700 border-purple-300 shadow-sm'
                                                         : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
                                                 }`}
                                             >
-                                                <span>{chip.icon}</span>
-                                                <span>{chip.text}</span>
-                                                {isActive && <span className="text-[9px] ml-0.5 opacity-70">✕</span>}
+                                                <span className="shrink-0">{chip.icon}</span>
+                                                <span className="truncate">{chip.text}</span>
+                                                {isActive && <span className="text-[9px] ml-0.5 opacity-70 shrink-0">✕</span>}
                                             </button>
                                         );
                                     })}
@@ -4960,49 +4962,48 @@ const App: React.FC = () => {
                                 </div>
                             )}
 
-                            {/* Download — right col */}
-                            <div className="col-span-1">
+                            {/* Action Buttons: Full-width Download + 2-Column Cart & Quote */}
+                            <div className="col-span-2 space-y-2">
                                 <Button
                                     onClick={handleDownloadResult}
                                     variant="primary"
                                     disabled={!generationState.resultImage}
-                                    className="w-full py-3 text-xs uppercase whitespace-nowrap"
-                                    icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+                                    className="w-full py-3 text-xs uppercase font-bold tracking-wider justify-center"
+                                    icon={<svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
                                 >
                                     {t.editor.download}
                                 </Button>
-                            </div>
 
-                            {/* Quote/Cart — full width */}
-                            <div className="col-span-2 flex gap-2">
-                                <Button
-                                    onClick={() => {
-                                        const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
-                                        const wallDims = generationState.analysis?.dimensions;
-                                        const cartDims = wallDims 
-                                            ? { width: wallDims.width, height: wallDims.height } 
-                                            : { width: dims.width, height: dims.length };
-                                        addToCart(selectedMaterial, cartDims, 1);
-                                    }}
-                                    variant="secondary"
-                                    disabled={!generationState.resultImage}
-                                    className="flex-1 py-3 bg-blue-600 border-blue-500 hover:bg-blue-500 text-white text-xs uppercase whitespace-nowrap"
-                                    icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" /></svg>}
-                                >
-                                    {lang === 'es' ? 'Añadir al Carrito' : 'Add to Cart'}
-                                </Button>
-                                <Button
-                                    onClick={() => {
-                                        setEstimationSource(AppView.EDITOR);
-                                        setView(AppView.ESTIMATION);
-                                    }}
-                                    variant="secondary"
-                                    disabled={!generationState.resultImage}
-                                    className="flex-1 py-3 bg-green-600 border-green-500 hover:bg-green-500 text-white text-xs uppercase whitespace-nowrap"
-                                    icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
-                                >
-                                    {t.editor.createQuote}
-                                </Button>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        onClick={() => {
+                                            const dims = selectedMaterial.dimensions || { width: 30, length: 30 };
+                                            const wallDims = generationState.analysis?.dimensions;
+                                            const cartDims = wallDims 
+                                                ? { width: wallDims.width, height: wallDims.height } 
+                                                : { width: dims.width, height: dims.length };
+                                            addToCart(selectedMaterial, cartDims, 1);
+                                        }}
+                                        variant="secondary"
+                                        disabled={!generationState.resultImage}
+                                        className="w-full px-2 sm:px-3 py-2.5 min-h-[44px] bg-blue-600 border-blue-500 hover:bg-blue-500 text-white text-[11px] sm:text-xs font-bold uppercase leading-tight text-center justify-center"
+                                        icon={<svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" /></svg>}
+                                    >
+                                        <span className="truncate sm:whitespace-normal">{lang === 'es' ? 'Añadir al Carrito' : 'Add to Cart'}</span>
+                                    </Button>
+                                    <Button
+                                        onClick={() => {
+                                            setEstimationSource(AppView.EDITOR);
+                                            setView(AppView.ESTIMATION);
+                                        }}
+                                        variant="secondary"
+                                        disabled={!generationState.resultImage}
+                                        className="w-full px-2 sm:px-3 py-2.5 min-h-[44px] bg-green-600 border-green-500 hover:bg-green-500 text-white text-[11px] sm:text-xs font-bold uppercase leading-tight text-center justify-center"
+                                        icon={<svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
+                                    >
+                                        <span className="truncate sm:whitespace-normal">{t.editor.createQuote}</span>
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -5055,7 +5056,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
         };
 
         return (
-            <div className="min-h-screen bg-gray-100 p-6 flex flex-col">
+            <div className="min-h-screen bg-gray-100 px-4 py-6 sm:p-6 pb-28 sm:pb-24 flex flex-col">
                 <header className="flex items-center gap-4 mb-6">
                     <button onClick={() => setView(AppView.LANDING)}
                         className="p-2 -ml-2 text-gray-600 hover:text-gray-900">
@@ -6165,8 +6166,8 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
 
             {view === AppView.ESTIMATION && (
                 selectedMaterial ? (
-                    <div className="h-screen bg-slate-900 p-4 md:p-8 overflow-y-auto flex justify-center">
-                        <div className="w-full max-w-4xl h-full">
+                    <div className="h-screen bg-slate-900 px-3 py-4 sm:p-6 md:p-8 pb-28 sm:pb-28 overflow-y-auto flex justify-center">
+                        <div className="w-full max-w-4xl">
                             <EstimationPanel
                                 material={selectedMaterial}
                                 roomAnalysis={generationState.analysis}
