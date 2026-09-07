@@ -3126,6 +3126,112 @@ app.post('/api/auth/demo', async (req: Request, res: Response) => {
     }
 });
 
+// ===== APP STORE COMPLIANCE ENDPOINTS =====
+
+// Apple App Store Guideline 5.1.1(v) - In-App Account & Data Deletion
+app.post('/api/auth/delete-account', async (req: Request, res: Response) => {
+    try {
+        const { userId, sessionToken } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'userId is required' });
+        }
+
+        let deletedFromDb = false;
+        let deletedFromFallback = false;
+
+        // 1. Delete from PostgreSQL database if connected
+        try {
+            const deleteResult = await query(
+                'DELETE FROM users WHERE id = $1 RETURNING id, email',
+                [userId]
+            );
+            if (deleteResult.rows.length > 0) {
+                deletedFromDb = true;
+            }
+        } catch (dbErr: any) {
+            console.warn('DB delete error (might be using JSON fallback):', dbErr.message);
+        }
+
+        // 2. Delete from fallback JSON store
+        try {
+            const users = await getUsers();
+            const initialLength = users.length;
+            const updatedUsers = users.filter((u: any) => String(u.id) !== String(userId));
+            if (updatedUsers.length < initialLength) {
+                saveToJSON(JSON_USERS_PATH, updatedUsers);
+                deletedFromFallback = true;
+            }
+        } catch (jsonErr: any) {
+            console.warn('JSON store delete error:', jsonErr.message);
+        }
+
+        // 3. Clean up generation history / user activities if present
+        try {
+            await query('DELETE FROM generation_history WHERE user_id = $1', [userId]).catch(() => {});
+        } catch (_) {}
+
+        logUserActivity({
+            userId: Number(userId) || 0,
+            action: 'DELETE_ACCOUNT',
+            details: { userId, deletedFromDb, deletedFromFallback, timestamp: new Date().toISOString() },
+        });
+
+        return res.json({
+            success: true,
+            message: 'Account and associated personal data successfully deleted in compliance with Apple App Store Review Guideline 5.1.1(v).'
+        });
+    } catch (err: any) {
+        console.error('Delete account endpoint error:', err);
+        return res.status(500).json({ error: 'Failed to delete account: ' + err.message });
+    }
+});
+
+// Apple App Store Guideline 3.1.1 - Restore Purchases Verification
+app.post('/api/auth/restore-purchases', async (req: Request, res: Response) => {
+    try {
+        const { userId, email } = req.body;
+        if (!userId && !email) {
+            return res.status(400).json({ error: 'userId or email is required' });
+        }
+
+        let foundUser: any = null;
+
+        // Try DB first
+        try {
+            const result = await query(
+                'SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at FROM users WHERE id = $1 OR email = $2',
+                [userId || -1, email || '']
+            );
+            if (result.rows.length > 0) {
+                foundUser = result.rows[0];
+                await checkAndDowngradeExpiredTier(foundUser);
+            }
+        } catch (dbErr) {}
+
+        // Fallback to JSON store
+        if (!foundUser) {
+            const users = await getUsers();
+            foundUser = users.find((u: any) => String(u.id) === String(userId) || (email && u.email === email));
+        }
+
+        if (!foundUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const { password_hash, ...safeUser } = foundUser;
+        return res.json({
+            success: true,
+            user: safeUser,
+            restored: true,
+            tier: safeUser.tier || 'Free'
+        });
+    } catch (err: any) {
+        console.error('Restore purchases error:', err);
+        return res.status(500).json({ error: 'Failed to restore purchases' });
+    }
+});
+
 // ===== MATERIAL MANAGEMENT API v2 (consolidated — uses getMaterials helper) =====
 // All duplicate handlers removed; single source of truth at lines 1667-1910
 

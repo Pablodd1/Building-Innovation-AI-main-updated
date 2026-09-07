@@ -33,6 +33,7 @@ import {
 import { formatMetersUSA } from "./services/unitUtils";
 import { HashRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { hapticLight, hapticMedium, hapticSuccess } from "./utils/haptics";
+import { Capacitor } from "@capacitor/core";
 
 interface HistoryItem {
     resultImage: string | null;
@@ -805,6 +806,40 @@ const App: React.FC = () => {
     const handleSelectPlan = async (newTier: string) => {
         if (!currentUser) return;
         
+        // Apple App Store Guideline 3.1.1: On native iOS, external web checkouts for digital tiers are forbidden
+        if (Capacitor.getPlatform() === 'ios') {
+            const name = prompt(
+                lang === 'es' 
+                    ? 'Nombre para solicitud de activación de plan:' 
+                    : 'Name for plan activation request:', 
+                currentUser.name || ''
+            );
+            if (name) {
+                try {
+                    await fetch("/api/purchase-requests", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: currentUser.id,
+                            customer_name: name,
+                            customer_email: currentUser.email,
+                            customer_phone: (currentUser as any).phone || "iOS App Request",
+                            customer_address: "iOS App In-App Tier Request",
+                            cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
+                            total_estimate: 0,
+                            project_notes: `iOS App Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
+                        }),
+                    });
+                    setToast(lang === 'es' ? `Solicitud para ${newTier} recibida. Te contactaremos.` : `Request for ${newTier} received. We will contact you.`);
+                } catch {
+                    setToast(lang === 'es' ? `Error al enviar. Contacta a soporte.` : `Failed to submit. Contact support.`);
+                }
+            }
+            setShowSubscriptionModal(false);
+            setTimeout(() => setToast(null), 4000);
+            return;
+        }
+
         try {
             const res = await fetch("/api/checkout/create-session", {
                 method: "POST",
@@ -854,6 +889,33 @@ const App: React.FC = () => {
             console.error("Subscription error:", e);
             alert(lang === 'es' ? `Error en la suscripción: ${e.message}` : `Subscription error: ${e.message}`);
         }
+    };
+
+    // Apple App Store Guideline 3.1.1: Restore Purchases verification handler
+    const handleRestorePurchases = async () => {
+        if (!currentUser) return;
+        setToast(lang === 'es' ? "Verificando compras y suscripciones..." : "Verifying purchases and subscriptions...");
+        try {
+            const res = await fetch("/api/auth/restore-purchases", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: currentUser.id,
+                    email: currentUser.email,
+                }),
+            });
+            const data = await res.json();
+            if (res.ok && data.user) {
+                setCurrentUser(data.user);
+                localStorage.setItem('constructviz_user', JSON.stringify(data.user));
+                setToast(lang === 'es' ? `Suscripción verificada: Plan ${data.user.tier || 'Free'}` : `Purchases restored: ${data.user.tier || 'Free'} Plan`);
+            } else {
+                setToast(lang === 'es' ? "No se encontraron compras activas para restaurar." : "No active purchases found to restore.");
+            }
+        } catch (e) {
+            setToast(lang === 'es' ? "Error al restaurar compras. Verifica tu conexión." : "Error restoring purchases. Please check connection.");
+        }
+        setTimeout(() => setToast(null), 4000);
     };
 
     const handleUpdateTierField = (tierKey: string, field: string, value: any) => {
@@ -2503,20 +2565,36 @@ const App: React.FC = () => {
                                     />
                                 </svg>
                             </button>
-                            {/* App Store Compliance: Delete Account Button */}
+                            {/* App Store Compliance: Delete Account Button (Guideline 5.1.1(v)) */}
                             <button
                                 onClick={async () => {
                                     const msg = lang === "es" 
-                                        ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos. Esta acción no se puede deshacer. ¿Desea continuar?" 
-                                        : "WARNING: This will permanently delete your account and all your data. This action cannot be undone. Do you wish to proceed?";
+                                        ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos de nuestros servidores. Esta acción no se puede deshacer. ¿Desea continuar?" 
+                                        : "WARNING: This will permanently delete your account and all your personal data from our servers. This action cannot be undone. Do you wish to proceed?";
                                     
                                     if (window.confirm(msg)) {
                                         try {
-                                            alert(lang === "es" ? "Su cuenta ha sido eliminada. Lamentamos que te vayas." : "Your account has been successfully deleted. We are sorry to see you go.");
+                                            if (currentUser?.id) {
+                                                const res = await fetch("/api/auth/delete-account", {
+                                                    method: "POST",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({
+                                                        userId: currentUser.id,
+                                                        sessionToken: (currentUser as any).session_token
+                                                    })
+                                                });
+                                                const data = await res.json();
+                                                if (!res.ok) {
+                                                    throw new Error(data.error || "Failed to delete account on server");
+                                                }
+                                            }
+                                            localStorage.removeItem('constructviz_user');
+                                            localStorage.removeItem('constructVizCart');
+                                            alert(lang === "es" ? "Su cuenta y datos personales han sido eliminados de forma permanente." : "Your account and personal data have been permanently deleted.");
                                             setCurrentUser(null);
                                             setView(AppView.LOGIN);
-                                        } catch (e) {
-                                            alert(lang === "es" ? "Error al eliminar la cuenta." : "Failed to delete account.");
+                                        } catch (e: any) {
+                                            alert(lang === "es" ? `Error al eliminar la cuenta: ${e.message}` : `Failed to delete account: ${e.message}`);
                                         }
                                     }
                                 }}
@@ -5023,14 +5101,14 @@ We collect only the information you provide: name, email, phone number, and addr
 
 We do NOT sell, share, or monetize your personal data. We do not use tracking cookies or advertising identifiers.
 
-For the complete policy, visit unitecusadesign.com/policies/.`,
+For the complete policy, visit https://www.unitecusadesign.com/politicas/.`,
                 es: `Building Innovation AI respeta su privacidad.
 
 Recopilamos solo la información que usted proporciona: nombre, correo electrónico, teléfono y dirección para crear su cuenta. Las fotos que sube se transmiten de forma segura a OpenAI para procesamiento de IA y no se almacenan permanentemente en nuestros servidores.
 
 NO vendemos, compartimos ni monetizamos sus datos personales. No utilizamos cookies de seguimiento ni identificadores publicitarios.
 
-Para la política completa, visite unitecusadesign.com/policies/.`
+Para la política completa, visite https://www.unitecusadesign.com/politicas/.`
             }
         } : {
             title: { en: 'Terms of Service', es: 'Términos de Servicio' },
@@ -5042,7 +5120,7 @@ Free accounts include 5 renders. Paid tiers unlock additional renders as describ
 
 We reserve the right to modify these terms. Continued use constitutes acceptance.
 
-For complete terms, visit unitecusadesign.com/policies/.`,
+For complete terms, visit https://www.unitecusadesign.com/politicas/.`,
                 es: `Al usar Building Innovation AI, usted acepta estos términos.
 
 La aplicación proporciona visualización de materiales con IA con fines informativos. Los renders son aproximaciones generadas por IA y pueden no representar perfectamente los resultados del mundo real.
@@ -5051,7 +5129,7 @@ Las cuentas gratuitas incluyen 5 renders. Los planes pagos desbloquean renders a
 
 Nos reservamos el derecho de modificar estos términos. El uso continuo constituye aceptación.
 
-Para los términos completos, visite unitecusadesign.com/policies/.`
+Para los términos completos, visite https://www.unitecusadesign.com/politicas/.`
             }
         };
 
@@ -5072,7 +5150,7 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                     {lang === 'es' ? content.body.es : content.body.en}
                 </div>
                 <div className="mt-6 text-center">
-                    <a href="https://www.unitecusadesign.com/policies/" target="_blank" rel="noreferrer"
+                    <a href="https://www.unitecusadesign.com/politicas/" target="_blank" rel="noreferrer"
                         className="text-blue-600 hover:underline text-sm">
                         {lang === 'es' ? 'Ver política completa →' : 'View full policy →'}
                     </a>
@@ -6105,13 +6183,57 @@ Para los términos completos, visite unitecusadesign.com/policies/.`
                                                     onClick={() => handleSelectPlan(p.key)}
                                                     className={`w-full py-5 font-black tracking-widest text-lg transition-all ${isCurrent ? 'bg-purple-900/50 text-white/50 cursor-default' : 'bg-[#c75af6] text-white hover:bg-[#d67bf9] shadow-[0_0_20px_rgba(199,90,246,0.5)] active:scale-95'}`}
                                                 >
-                                                    {isCurrent ? 'PLAN ACTUAL' : p.price}
+                                                    {isCurrent 
+                                                        ? (lang === 'es' ? 'PLAN ACTUAL' : 'CURRENT PLAN') 
+                                                        : (Capacitor.getPlatform() === 'ios' && p.key !== 'FREE'
+                                                            ? (lang === 'es' ? 'SOLICITAR ACTIVACIÓN' : 'REQUEST ACTIVATION')
+                                                            : p.price)}
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
                                 );
                             })}
+                        </div>
+
+                        {/* Apple App Store Compliance: Restore Purchases & Legal Links (Guidelines 3.1.1 & 3.1.2) */}
+                        <div className="flex flex-col items-center justify-center gap-4 pt-6 border-t border-gray-800 text-center">
+                            <button
+                                type="button"
+                                onClick={handleRestorePurchases}
+                                className="px-6 py-2.5 rounded-xl border border-purple-500/50 hover:border-purple-400 bg-purple-950/30 text-purple-200 text-xs font-bold uppercase tracking-wider transition-all hover:bg-purple-900/40 active:scale-95 flex items-center gap-2"
+                            >
+                                <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                {lang === 'es' ? 'Restaurar Compras Anteriores' : 'Restore Previous Purchases'}
+                            </button>
+
+                            <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400">
+                                <a
+                                    href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="hover:text-purple-300 underline underline-offset-2 transition-colors"
+                                >
+                                    {lang === 'es' ? 'Términos de Uso (EULA)' : 'Terms of Use (EULA)'}
+                                </a>
+                                <span className="text-gray-600">•</span>
+                                <a
+                                    href="https://www.unitecusadesign.com/politicas/"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="hover:text-purple-300 underline underline-offset-2 transition-colors"
+                                >
+                                    {lang === 'es' ? 'Política de Privacidad' : 'Privacy Policy'}
+                                </a>
+                            </div>
+
+                            <p className="text-[10px] text-gray-500 max-w-xl leading-relaxed">
+                                {lang === 'es'
+                                    ? 'Las suscripciones se renuevan automáticamente al finalizar el período a menos que se cancelen con al menos 24 horas de anticipación. Puedes administrar y cancelar tus suscripciones desde la configuración de tu cuenta.'
+                                    : 'Subscriptions automatically renew at the end of the period unless cancelled at least 24 hours prior. You can manage or cancel your subscriptions in your account settings.'}
+                            </p>
                         </div>
                     </div>
                 </div>

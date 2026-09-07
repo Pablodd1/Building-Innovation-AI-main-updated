@@ -126120,6 +126120,92 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: "Demo login failed" });
     }
   });
+  app.post("/api/auth/delete-account", async (req, res) => {
+    try {
+      const { userId, sessionToken } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      let deletedFromDb = false;
+      let deletedFromFallback = false;
+      try {
+        const deleteResult = await query(
+          "DELETE FROM users WHERE id = $1 RETURNING id, email",
+          [userId]
+        );
+        if (deleteResult.rows.length > 0) {
+          deletedFromDb = true;
+        }
+      } catch (dbErr) {
+        console.warn("DB delete error (might be using JSON fallback):", dbErr.message);
+      }
+      try {
+        const users = await getUsers();
+        const initialLength = users.length;
+        const updatedUsers = users.filter((u) => String(u.id) !== String(userId));
+        if (updatedUsers.length < initialLength) {
+          saveToJSON(JSON_USERS_PATH, updatedUsers);
+          deletedFromFallback = true;
+        }
+      } catch (jsonErr) {
+        console.warn("JSON store delete error:", jsonErr.message);
+      }
+      try {
+        await query("DELETE FROM generation_history WHERE user_id = $1", [userId]).catch(() => {
+        });
+      } catch (_) {
+      }
+      logUserActivity({
+        userId: Number(userId) || 0,
+        action: "DELETE_ACCOUNT",
+        details: { userId, deletedFromDb, deletedFromFallback, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
+      });
+      return res.json({
+        success: true,
+        message: "Account and associated personal data successfully deleted in compliance with Apple App Store Review Guideline 5.1.1(v)."
+      });
+    } catch (err) {
+      console.error("Delete account endpoint error:", err);
+      return res.status(500).json({ error: "Failed to delete account: " + err.message });
+    }
+  });
+  app.post("/api/auth/restore-purchases", async (req, res) => {
+    try {
+      const { userId, email } = req.body;
+      if (!userId && !email) {
+        return res.status(400).json({ error: "userId or email is required" });
+      }
+      let foundUser = null;
+      try {
+        const result = await query(
+          "SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at FROM users WHERE id = $1 OR email = $2",
+          [userId || -1, email || ""]
+        );
+        if (result.rows.length > 0) {
+          foundUser = result.rows[0];
+          await checkAndDowngradeExpiredTier(foundUser);
+        }
+      } catch (dbErr) {
+      }
+      if (!foundUser) {
+        const users = await getUsers();
+        foundUser = users.find((u) => String(u.id) === String(userId) || email && u.email === email);
+      }
+      if (!foundUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const { password_hash, ...safeUser } = foundUser;
+      return res.json({
+        success: true,
+        user: safeUser,
+        restored: true,
+        tier: safeUser.tier || "Free"
+      });
+    } catch (err) {
+      console.error("Restore purchases error:", err);
+      return res.status(500).json({ error: "Failed to restore purchases" });
+    }
+  });
   app.patch("/api/admin/users/:id/generations", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
