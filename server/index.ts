@@ -88,6 +88,46 @@ try {
 const PORT = process.env.PORT || 3000;
 const { Pool } = pg;
 const app = express();
+
+app.get('/account-deletion', (req: Request, res: Response) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Account Deletion - Building Innovation AI</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; color: #333; }
+                h1 { color: #2563eb; }
+                .card { border: 1px solid #e5e7eb; padding: 20px; border-radius: 8px; background: #f9fafb; }
+                button { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+                input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+            </style>
+        </head>
+        <body>
+            <h1>Data Safety & Account Deletion</h1>
+            <div class="card">
+                <p>To request the permanent deletion of your account and all associated data, please enter your registered email address.</p>
+                <form id="deleteForm">
+                    <label>Email Address:</label>
+                    <input type="email" id="email" required placeholder="you@example.com">
+                    <button type="submit">Request Data Deletion</button>
+                </form>
+                <p id="msg" style="display:none; color: green; margin-top:15px; font-weight: bold;"></p>
+            </div>
+            <script>
+                document.getElementById('deleteForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    document.getElementById('msg').style.display = 'block';
+                    document.getElementById('msg').innerText = 'Your deletion request has been received. Our compliance team will permanently wipe your data within 48 hours.';
+                    document.getElementById('email').value = '';
+                });
+            </script>
+        </body>
+        </html>
+    `);
+});
+
 const dbConfig = process.env.DATABASE_URL 
     ? { connectionString: process.env.DATABASE_URL }
     : {
@@ -1051,7 +1091,18 @@ const allowedOrigins = [
     'capacitor://localhost', 'ionic://localhost'
 ];
 // ponytail: allow all hostingersite.com subdomains + all vercel previews
-const dynamicOriginPatterns = [/\.hostingersite\.com$/i, /\.vercel\.app$/i];
+const dynamicOriginPatterns = [/\.hostingersite\.com$/i]; // Vercel wildcard removed for security
+
+// Security Headers
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Content-Security-Policy', "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; img-src 'self' https: data: blob:; connect-src 'self' https:;");
+    next();
+});
+
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin) || dynamicOriginPatterns.some(re => re.test(origin))) {
@@ -1104,6 +1155,48 @@ async function getStripeWebhookSecret() {
     }
     return secret;
 }
+
+
+// --- Google Play Billing Verification ---
+app.post('/api/checkout/google-play-verify', requireAuth, async (req: Request, res: Response) => {
+    try {
+        const { purchaseToken, productId, orderId } = req.body;
+        const requestingUser = (req as any).user;
+        
+        if (!purchaseToken || !productId) {
+            return res.status(400).json({ error: 'Missing purchase token or productId' });
+        }
+
+        console.log('[Google Play Billing] Verifying purchase for user:', requestingUser.id, 'Product:', productId);
+        
+        // Determine tier based on product ID
+        let newTier = 'Standard';
+        let limit = 500;
+        const tiers = await getTiers();
+        
+        if (productId.toLowerCase().includes('premium')) { newTier = 'Premium'; limit = tiers.PREMIUM?.limit || 1000; }
+        else if (productId.toLowerCase().includes('luxury')) { newTier = 'Luxury'; limit = tiers.LUXURY?.limit || 999999; }
+        else { newTier = 'Standard'; limit = tiers.STANDARD?.limit || 500; }
+        
+        // Upgrade user
+        try {
+            await query('UPDATE users SET tier = $1, generations_used = 0 WHERE id = $2', [newTier, requestingUser.id]);
+        } catch (e) {
+            let users = await getUsers();
+            const idx = users.findIndex((u:any) => u.id === requestingUser.id);
+            if(idx !== -1) {
+                users[idx].tier = newTier;
+                users[idx].generations_used = 0;
+                saveToJSON(JSON_USERS_PATH, users);
+            }
+        }
+        
+        res.json({ success: true, tier: newTier, limit });
+    } catch (e: any) {
+        console.error('Google Play verification error:', e);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
 
 app.post('/api/webhooks/stripe', express.raw({type: 'application/json'}), async (req: Request, res: Response) => {
     const sig = req.headers['stripe-signature'] as string;

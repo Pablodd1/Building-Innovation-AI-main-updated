@@ -806,8 +806,8 @@ const App: React.FC = () => {
     const handleSelectPlan = async (newTier: string) => {
         if (!currentUser) return;
         
-        // Apple App Store Guideline 3.1.1: On native iOS, external web checkouts for digital tiers are forbidden
-        if (Capacitor.getPlatform() === 'ios') {
+        // Apple/Google Store Compliance: On native mobile, external web checkouts for digital tiers are forbidden
+        if (Capacitor.getPlatform() === 'ios' || Capacitor.getPlatform() === 'android') {
             const name = prompt(
                 lang === 'es' 
                     ? 'Nombre para solicitud de activación de plan:' 
@@ -823,11 +823,11 @@ const App: React.FC = () => {
                             user_id: currentUser.id,
                             customer_name: name,
                             customer_email: currentUser.email,
-                            customer_phone: (currentUser as any).phone || "iOS App Request",
-                            customer_address: "iOS App In-App Tier Request",
+                            customer_phone: (currentUser as any).phone || "Mobile App Request",
+                            customer_address: "Mobile App In-App Tier Request",
                             cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
                             total_estimate: 0,
-                            project_notes: `iOS App Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
+                            project_notes: `Mobile App Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
                         }),
                     });
                     setToast(lang === 'es' ? `Solicitud para ${newTier} recibida. Te contactaremos.` : `Request for ${newTier} received. We will contact you.`);
