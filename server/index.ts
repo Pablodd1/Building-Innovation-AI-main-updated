@@ -2170,12 +2170,7 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
         // tool here — it can tile a texture but can't realistically relight,
         // preserve perspective, or handle complex wall shapes. OpenAI handles
         // all of that natively when given a mask.
-        if (mode === "inpaint") {
-            if (!config.OPENAI_API_KEY) {
-                return res.status(500).json({
-                    error: "OpenAI API Key not configured. Realistic Render requires an OpenAI key."
-                });
-            }
+        if (mode === "inpaint" && config.OPENAI_API_KEY) {
             if (!analysis?.surfaces || analysis.surfaces.length === 0) {
                 return res.status(400).json({
                     error: "Room analysis is required for Realistic Render. Wait for analysis to complete, then try again."
