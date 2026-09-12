@@ -999,7 +999,7 @@ const App: React.FC = () => {
         if (url.includes('/api/proxy-image')) {
             return url;
         }
-        if (url.includes('drive.google.com') || url.includes('lh3.googleusercontent.com')) {
+        if (url.includes('drive.google.com')) {
             return `https://buildingapp.us/api/proxy-image?url=${encodeURIComponent(url)}`;
         }
         // Rewrite CDN product image URLs to local static path
@@ -1021,7 +1021,7 @@ const App: React.FC = () => {
         }
 
         // Try proxy for Google Drive / external images
-        if (originalSrc.includes('googleusercontent.com') || originalSrc.includes('drive.google.com')) {
+        if (originalSrc.includes('drive.google.com')) {
             target.setAttribute('data-error-fixed', 'true');
             target.src = `/api/proxy-image?url=${encodeURIComponent(originalSrc)}`;
             return;
@@ -1030,7 +1030,7 @@ const App: React.FC = () => {
         // For local paths that failed, try the original DB fallback URL before giving up
         if (originalSrc.startsWith('/')) {
             const dbUrl = target.getAttribute('data-original-src');
-            if (dbUrl && dbUrl !== originalSrc && (dbUrl.includes('drive.google.com') || dbUrl.includes('lh3.googleusercontent.com'))) {
+            if (dbUrl && dbUrl !== originalSrc && dbUrl.includes('drive.google.com')) {
                 target.setAttribute('data-error-fixed', 'true');
                 target.src = `/api/proxy-image?url=${encodeURIComponent(dbUrl)}`;
                 return;
@@ -1042,7 +1042,7 @@ const App: React.FC = () => {
 
         // If a buildingapp.us WebP CDN image failed, try the original data-original-src
         const dbUrl = target.getAttribute('data-original-src');
-        if (dbUrl && dbUrl !== originalSrc && (dbUrl.includes('drive.google.com') || dbUrl.includes('lh3.googleusercontent.com'))) {
+        if (dbUrl && dbUrl !== originalSrc && dbUrl.includes('drive.google.com')) {
             target.setAttribute('data-error-fixed', 'true');
             target.src = `/api/proxy-image?url=${encodeURIComponent(dbUrl)}`;
             return;
