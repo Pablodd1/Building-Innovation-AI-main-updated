@@ -2962,7 +2962,7 @@ app.post('/api/auth/signup', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Name, email, and password required' });
         }
 
-        const sessionToken = 'session_' + require('crypto').randomBytes(24).toString('hex');
+        const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
 
         try {
             // Check if email already exists
@@ -3077,7 +3077,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Email and password required' });
         }
 
-        const sessionToken = 'session_' + require('crypto').randomBytes(24).toString('hex');
+        const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
 
         try {
             const result = await query(
@@ -3164,7 +3164,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 app.post('/api/auth/demo', async (req: Request, res: Response) => {
     try {
         const demoEmail = 'demo@buildingapp.us';
-        const sessionToken = 'session_' + require('crypto').randomBytes(24).toString('hex');
+        const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
         
         try {
             const result = await query(
@@ -4338,7 +4338,7 @@ app.listen(PORT, async () => {
                 role: 'admin',
                 tier: 'Enterprise',
                 generations_used: 0,
-                session_token: 'admin_' + require('crypto').randomBytes(16).toString('hex'),
+                session_token: 'admin_' + crypto.randomBytes(16).toString('hex'),
                 created_at: new Date().toISOString()
             };
             // Try DB first, fall back to JSON

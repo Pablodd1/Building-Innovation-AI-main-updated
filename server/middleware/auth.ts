@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { query } from '../db';
 import { atomicReadJSON } from '../utils/atomicJSON';
@@ -109,7 +110,7 @@ export async function bootstrapAdmin() {
         if (existing.rows.length === 0) {
             const bcrypt = await import('bcryptjs');
             const hash = await bcrypt.hash(adminPassword, 10);
-            const token = 'boot_' + require('crypto').randomBytes(32).toString('hex');
+            const token = 'boot_' + crypto.randomBytes(32).toString('hex');
             await query(
                 `INSERT INTO users (name, email, password_hash, role, tier, session_token)
                  VALUES ($1, $2, $3, $4, $5, $6)`,
