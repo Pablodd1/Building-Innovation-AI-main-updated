@@ -125272,18 +125272,8 @@ Auto-downgraded to Free.`
         }
       }
       const config = loadConfig();
-      if (!config.OPENAI_API_KEY) {
-        return res.status(500).json({
-          error: "OpenAI API Key not configured. Renders require OpenAI."
-        });
-      }
-      const provider = userProvider || "openai";
-      if (mode === "inpaint") {
-        if (!config.OPENAI_API_KEY) {
-          return res.status(500).json({
-            error: "OpenAI API Key not configured. Realistic Render requires an OpenAI key."
-          });
-        }
+      const provider = userProvider || config.AI_PROVIDER || "gemini";
+      if (mode === "inpaint" && config.OPENAI_API_KEY) {
         if (!analysis?.surfaces || analysis.surfaces.length === 0) {
           return res.status(400).json({
             error: "Room analysis is required for Realistic Render. Wait for analysis to complete, then try again."
@@ -125986,7 +125976,7 @@ Auto-downgraded to Free.`
       if (!name || !email || !password) {
         return res.status(400).json({ error: "Name, email, and password required" });
       }
-      const sessionToken = "session_" + require("crypto").randomBytes(24).toString("hex");
+      const sessionToken = "session_" + import_crypto3.default.randomBytes(24).toString("hex");
       try {
         const existing = await query("SELECT id FROM users WHERE email = $1", [email]);
         if (existing.rows.length > 0) {
@@ -126085,7 +126075,7 @@ Auto-downgraded to Free.`
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password required" });
       }
-      const sessionToken = "session_" + require("crypto").randomBytes(24).toString("hex");
+      const sessionToken = "session_" + import_crypto3.default.randomBytes(24).toString("hex");
       try {
         const result = await query(
           "SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, password_hash FROM users WHERE email = $1",
@@ -126153,7 +126143,7 @@ Auto-downgraded to Free.`
   app.post("/api/auth/demo", async (req, res) => {
     try {
       const demoEmail = "demo@buildingapp.us";
-      const sessionToken = "session_" + require("crypto").randomBytes(24).toString("hex");
+      const sessionToken = "session_" + import_crypto3.default.randomBytes(24).toString("hex");
       try {
         const result = await query(
           "SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at FROM users WHERE email = $1",
@@ -127103,61 +127093,67 @@ Context: ${context || "N/A"}`
     console.log(`\u{1F4CA} Serving from: ${distPath}`);
     try {
       const users = await getUsers();
-      const hasAdmin = users.some((u) => u.role === "admin");
-      if (!hasAdmin) {
-        const adminEmail = process.env.ADMIN_EMAIL || "admin@buildingapp.us";
-        let adminPassword = process.env.ADMIN_PASSWORD;
-        if (!adminPassword) {
-          if (process.env.NODE_ENV === "production") {
-            console.error("[BOOTSTRAP] FATAL: ADMIN_PASSWORD not set in production");
-            process.exit(1);
-          }
-          console.warn("[BOOTSTRAP] ADMIN_PASSWORD not set, using development default");
-          adminPassword = "BuildingAdmin2026!";
-        }
-        const bcrypt = await Promise.resolve().then(() => (init_bcryptjs(), bcryptjs_exports));
-        const hash2 = await bcrypt.hash(adminPassword, 10);
-        const newAdmin = {
+      const bcrypt = await Promise.resolve().then(() => (init_bcryptjs(), bcryptjs_exports));
+      const defaultAccounts = [
+        {
           id: 1,
           name: "System Admin",
-          email: adminEmail,
-          phone: null,
-          address: null,
-          password_hash: hash2,
+          email: process.env.ADMIN_EMAIL || "admin@buildingapp.us",
+          password_raw: process.env.ADMIN_PASSWORD || "BuildingAdmin2026!",
           role: "admin",
-          tier: "Enterprise",
-          generations_used: 0,
-          session_token: "admin_" + require("crypto").randomBytes(16).toString("hex"),
-          created_at: (/* @__PURE__ */ new Date()).toISOString()
-        };
+          tier: "LUXURY"
+        },
+        {
+          id: 2,
+          name: "Demo VIP User",
+          email: "demo@buildingapp.us",
+          password_raw: "Demo2026!",
+          role: "customer",
+          tier: "LUXURY"
+        },
+        {
+          id: 3,
+          name: "App Store Reviewer",
+          email: "reviewer@buildingapp.us",
+          password_raw: "Reviewer2026!",
+          role: "customer",
+          tier: "LUXURY"
+        }
+      ];
+      for (const acc of defaultAccounts) {
+        const hash2 = await bcrypt.hash(acc.password_raw, 10);
+        const sessionToken = "session_" + import_crypto3.default.randomBytes(24).toString("hex");
         try {
           await query(
             `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                      ON CONFLICT (id) DO UPDATE SET password_hash = $4, role = $5, tier = $6`,
-            [
-              newAdmin.id,
-              newAdmin.name,
-              newAdmin.email,
-              newAdmin.password_hash,
-              newAdmin.role,
-              newAdmin.tier,
-              newAdmin.generations_used,
-              newAdmin.session_token
-            ]
+            [acc.id, acc.name, acc.email, hash2, acc.role, acc.tier, 0, sessionToken]
           );
-          console.log("[BOOTSTRAP] Admin user created/updated in PostgreSQL");
         } catch (dbErr) {
-          const filtered = users.filter((u) => u.id !== 1);
-          filtered.push(newAdmin);
-          saveToJSON(JSON_USERS_PATH, filtered);
-          console.log("[BOOTSTRAP] Admin user created in JSON fallback");
+          const existingIdx = users.findIndex((u) => u.email === acc.email || u.id === acc.id);
+          const userObj = {
+            id: acc.id,
+            name: acc.name,
+            email: acc.email,
+            password_hash: hash2,
+            role: acc.role,
+            tier: acc.tier,
+            generations_used: 0,
+            session_token: sessionToken,
+            created_at: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          if (existingIdx >= 0) {
+            users[existingIdx] = { ...users[existingIdx], ...userObj };
+          } else {
+            users.push(userObj);
+          }
+          saveToJSON(JSON_USERS_PATH, users);
         }
-      } else {
-        console.log("[BOOTSTRAP] Admin user already exists");
       }
+      console.log("[BOOTSTRAP] Permanent Admin, Demo, and Reviewer accounts initialized with unlimited LUXURY tier.");
     } catch (e2) {
-      console.warn("[BOOTSTRAP] Admin check failed:", e2.message);
+      console.warn("[BOOTSTRAP] Account bootstrap failed:", e2.message);
     }
     try {
       const { initTelegramFromConfig: initTelegramFromConfig2 } = await Promise.resolve().then(() => (init_telegramAlerts(), telegramAlerts_exports));

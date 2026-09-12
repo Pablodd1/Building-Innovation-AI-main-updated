@@ -1,0 +1,41 @@
+[
+  {
+    "id": 1,
+    "name": "System Admin",
+    "email": "admin@buildingapp.us",
+    "phone": "+1 (555) 019-2831",
+    "address": "Building Innovation HQ",
+    "password_hash": "$2b$10$gZg1GeSScFMxE0hzUYocKOuHqHARFtQ5qDlRv41CYgzKiMEgI3JRK",
+    "role": "admin",
+    "tier": "LUXURY",
+    "generations_used": 0,
+    "session_token": "session_eec43baed61199e257da81af3235c493a2930f76c83dcad2",
+    "created_at": "2026-09-12T18:47:26.065Z"
+  },
+  {
+    "id": 2,
+    "name": "Demo VIP User",
+    "email": "demo@buildingapp.us",
+    "phone": "+1 (555) 012-3456",
+    "address": "Demonstration Suite 101",
+    "password_hash": "$2b$10$PHhenB5jX3ADPb2EpH/n1ePScQs5NlyXP8h6YVWR3B35Vewq2dtsm",
+    "role": "customer",
+    "tier": "LUXURY",
+    "generations_used": 0,
+    "session_token": "session_68d62b8699b71b3f85afa34647c60bb098b6f9b8d74d3fa3",
+    "created_at": "2026-09-12T18:47:26.128Z"
+  },
+  {
+    "id": 3,
+    "name": "App Store Reviewer",
+    "email": "reviewer@buildingapp.us",
+    "phone": "+1 (555) 098-7654",
+    "address": "App Review Sandbox",
+    "password_hash": "$2b$10$YAAQA6N5fxaTkg.YP48Goe3958sOLafBGj8vtW5xqNxq.2JmORV4m",
+    "role": "customer",
+    "tier": "LUXURY",
+    "generations_used": 0,
+    "session_token": "session_405ba0852b640ffd883d111049540525d55aef8ed1e1b8b1",
+    "created_at": "2026-09-12T18:47:26.190Z"
+  }
+]

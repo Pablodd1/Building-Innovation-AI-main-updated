@@ -25,5 +25,15 @@
     "success": true,
     "durationMs": 197,
     "model": "sharp/compositor"
+  },
+  {
+    "timestamp": "2026-09-12T18:43:49.983Z",
+    "userId": 9999,
+    "materialId": "14031001",
+    "materialName": "LAMINA PVC BLANCO BRILLANTE H-01-I",
+    "category": "CIELO RASO PVC",
+    "success": true,
+    "durationMs": 459,
+    "model": "sharp/compositor"
   }
 ]

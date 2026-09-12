@@ -2335,35 +2335,6 @@ const App: React.FC = () => {
                                 ? "Registrarse"
                                 : "Sign Up"}
                     </button>
-
-                    {/* Skip Login - Demo Mode */}
-                    <button
-                        type="button"
-                        onClick={async () => {
-                            setAuthLoading(true);
-                            try {
-                                const res = await fetch("/api/auth/demo", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                });
-                                const data = await res.json();
-                                if (data.user) {
-                                    setCurrentUser(data.user);
-                                    localStorage.setItem('constructviz_user', JSON.stringify(data.user));
-                                    setView(AppView.LANDING);
-                                } else {
-                                    setAuthError(data.error || "Demo login failed");
-                                }
-                            } catch (e) {
-                                setAuthError("Connection error");
-                            } finally {
-                                setAuthLoading(false);
-                            }
-                        }}
-                        className="w-full text-sm text-blue-600 hover:text-blue-800 underline transition-colors py-2 font-bold"
-                    >
-                        {t.login.skip || (lang === 'es' ? "Acceso Demo (Invitado)" : "Quick Demo Access (Guest)")}
-                    </button>
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>

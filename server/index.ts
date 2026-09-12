@@ -4300,58 +4300,74 @@ app.listen(PORT, async () => {
     console.log(`🚀 ConstructViz AI Server running on port ${PORT}`);
     console.log(`📊 Serving from: ${distPath}`);
     
-    // Bootstrap admin user if none exists (ensures permanent admin)
+    // Bootstrap admin & permanent demo accounts (ensures permanent access)
     try {
         const users = await getUsers();
-        const hasAdmin = users.some((u: any) => u.role === 'admin');
-        if (!hasAdmin) {
-            const adminEmail = process.env.ADMIN_EMAIL || 'admin@buildingapp.us';
-            let adminPassword = process.env.ADMIN_PASSWORD;
-            if (!adminPassword) {
-                if (process.env.NODE_ENV === 'production') {
-                    console.error('[BOOTSTRAP] FATAL: ADMIN_PASSWORD not set in production');
-                    process.exit(1);
-                }
-                console.warn('[BOOTSTRAP] ADMIN_PASSWORD not set, using development default');
-                adminPassword = 'BuildingAdmin2026!';
-            }
-            const bcrypt = await import('bcryptjs');
-            const hash = await bcrypt.hash(adminPassword, 10);
-            const newAdmin = {
+        const bcrypt = await import('bcryptjs');
+        const defaultAccounts = [
+            {
                 id: 1,
                 name: 'System Admin',
-                email: adminEmail,
-                phone: null,
-                address: null,
-                password_hash: hash,
+                email: process.env.ADMIN_EMAIL || 'admin@buildingapp.us',
+                password_raw: process.env.ADMIN_PASSWORD || 'BuildingAdmin2026!',
                 role: 'admin',
-                tier: 'Enterprise',
-                generations_used: 0,
-                session_token: 'admin_' + crypto.randomBytes(16).toString('hex'),
-                created_at: new Date().toISOString()
-            };
-            // Try DB first, fall back to JSON
+                tier: 'LUXURY',
+            },
+            {
+                id: 2,
+                name: 'Demo VIP User',
+                email: 'demo@buildingapp.us',
+                password_raw: 'Demo2026!',
+                role: 'customer',
+                tier: 'LUXURY',
+            },
+            {
+                id: 3,
+                name: 'App Store Reviewer',
+                email: 'reviewer@buildingapp.us',
+                password_raw: 'Reviewer2026!',
+                role: 'customer',
+                tier: 'LUXURY',
+            }
+        ];
+
+        for (const acc of defaultAccounts) {
+            const hash = await bcrypt.hash(acc.password_raw, 10);
+            const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
+            
+            // Try DB first
             try {
                 await query(
                     `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                      ON CONFLICT (id) DO UPDATE SET password_hash = $4, role = $5, tier = $6`,
-                    [newAdmin.id, newAdmin.name, newAdmin.email, newAdmin.password_hash,
-                     newAdmin.role, newAdmin.tier, newAdmin.generations_used, newAdmin.session_token]
+                    [acc.id, acc.name, acc.email, hash, acc.role, acc.tier, 0, sessionToken]
                 );
-                console.log('[BOOTSTRAP] Admin user created/updated in PostgreSQL');
             } catch (dbErr) {
-                // JSON fallback
-                const filtered = users.filter((u: any) => u.id !== 1);
-                filtered.push(newAdmin);
-                saveToJSON(JSON_USERS_PATH, filtered);
-                console.log('[BOOTSTRAP] Admin user created in JSON fallback');
+                // Fallback to JSON store
+                const existingIdx = users.findIndex((u: any) => u.email === acc.email || u.id === acc.id);
+                const userObj = {
+                    id: acc.id,
+                    name: acc.name,
+                    email: acc.email,
+                    password_hash: hash,
+                    role: acc.role,
+                    tier: acc.tier,
+                    generations_used: 0,
+                    session_token: sessionToken,
+                    created_at: new Date().toISOString()
+                };
+                if (existingIdx >= 0) {
+                    users[existingIdx] = { ...users[existingIdx], ...userObj };
+                } else {
+                    users.push(userObj);
+                }
+                saveToJSON(JSON_USERS_PATH, users);
             }
-        } else {
-            console.log('[BOOTSTRAP] Admin user already exists');
         }
+        console.log('[BOOTSTRAP] Permanent Admin, Demo, and Reviewer accounts initialized with unlimited LUXURY tier.');
     } catch (e: any) {
-        console.warn('[BOOTSTRAP] Admin check failed:', e.message);
+        console.warn('[BOOTSTRAP] Account bootstrap failed:', e.message);
     }
 
     // Initialize Telegram from config file

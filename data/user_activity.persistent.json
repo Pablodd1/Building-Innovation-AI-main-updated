@@ -37,5 +37,71 @@
       "durationMs": 197,
       "success": true
     }
+  },
+  {
+    "timestamp": "2026-09-12T18:32:12.163Z",
+    "userId": 9999,
+    "action": "PURCHASE_INIT",
+    "details": {
+      "tier": "STANDARD",
+      "tierPrice": 4.99,
+      "mode": "subscription",
+      "method": "stripe"
+    }
+  },
+  {
+    "timestamp": "2026-09-12T18:43:49.985Z",
+    "userId": 9999,
+    "action": "RENDER",
+    "details": {
+      "materialId": "14031001",
+      "materialName": "LAMINA PVC BLANCO BRILLANTE H-01-I",
+      "category": "CIELO RASO PVC",
+      "provider": "compositor",
+      "model": "sharp",
+      "durationMs": 459,
+      "success": true
+    }
+  },
+  {
+    "timestamp": "2026-09-12T18:47:59.683Z",
+    "userId": 1,
+    "action": "LOGIN",
+    "details": {
+      "email": "admin@buildingapp.us",
+      "tier": "LUXURY",
+      "method": "json_fallback"
+    }
+  },
+  {
+    "timestamp": "2026-09-12T18:47:59.827Z",
+    "userId": 2,
+    "action": "LOGIN",
+    "details": {
+      "email": "demo@buildingapp.us",
+      "tier": "LUXURY",
+      "method": "json_fallback"
+    }
+  },
+  {
+    "timestamp": "2026-09-12T18:47:59.829Z",
+    "userId": 3,
+    "action": "LOGIN",
+    "details": {
+      "email": "reviewer@buildingapp.us",
+      "tier": "LUXURY",
+      "method": "json_fallback"
+    }
+  },
+  {
+    "timestamp": "2026-09-12T18:48:05.386Z",
+    "userId": 1789238885370,
+    "action": "SIGNUP",
+    "details": {
+      "email": "testsignup_1789238885241@buildingapp.us",
+      "name": "Test New User",
+      "tier": "Free",
+      "method": "json_fallback"
+    }
   }
 ]
