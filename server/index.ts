@@ -2161,15 +2161,9 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
             }
         }
 
-        // Load config. OpenAI is the sole AI provider since July 2026 —
-        // both orchestrators ignore preferredProvider (see aiProviders.ts).
+        // Load config
         const config = loadConfig();
-        if (!config.OPENAI_API_KEY) {
-            return res.status(500).json({
-                error: "OpenAI API Key not configured. Renders require OpenAI."
-            });
-        }
-        const provider = (userProvider as AIProvider) || "openai";
+        const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
 
         // INPAINT MODE: skip the sharp compositor entirely and go straight to
         // OpenAI gpt-image with a wall-region mask. The compositor is the wrong
