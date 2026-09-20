@@ -20,9 +20,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
+      - name: Verify Xcode Version
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
           xcodebuild -version
           xcodebuild -showsdks
 
@@ -106,13 +105,14 @@ jobs:
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
-            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -configuration Release \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             CODE_SIGN_STYLE="Manual" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.APPLE_PROFILE_NAME || 'Building Innovation AppStore' }}"
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.APPLE_PROFILE_NAME || 'Building Innovation AppStore' }}" \
+            ONLY_ACTIVE_ARCH=NO
 
       - name: Export .ipa Package
         run: |
