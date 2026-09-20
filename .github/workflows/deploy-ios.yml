@@ -106,7 +106,7 @@ jobs:
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
-            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
             -configuration Release \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             CODE_SIGN_STYLE="Manual" \
