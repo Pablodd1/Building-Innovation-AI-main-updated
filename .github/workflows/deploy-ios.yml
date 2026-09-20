@@ -149,6 +149,9 @@ jobs:
 
           xcrun altool --upload-package "$IPA_FILE" \
             --type ios \
+            --bundle-id "com.buildinginnovation.app" \
+            --bundle-version "7" \
+            --bundle-short-version-string "1.0.6" \
             --apiKey "$API_KEY_ID" \
             --apiIssuer "$API_ISSUER_ID" \
             --show-progress
