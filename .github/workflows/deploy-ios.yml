@@ -149,6 +149,7 @@ jobs:
 
           xcrun altool --upload-package "$IPA_FILE" \
             --type ios \
+            --apple-id "6814202053" \
             --bundle-id "com.buildinginnovation.app" \
             --bundle-version "7" \
             --bundle-short-version-string "1.0.6" \
