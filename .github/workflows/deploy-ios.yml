@@ -15,7 +15,7 @@ on:
 jobs:
   build-ios:
     name: Build & Package iOS App (macOS Cloud Runner)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
