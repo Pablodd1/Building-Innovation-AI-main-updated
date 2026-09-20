@@ -103,6 +103,7 @@ jobs:
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
+            -destination "generic/platform=iOS" \
             -configuration Release \
             -archivePath $RUNNER_TEMP/App.xcarchive \
             CODE_SIGN_STYLE="Manual" \
