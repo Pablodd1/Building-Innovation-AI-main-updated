@@ -151,22 +151,50 @@ jobs:
           unzip -q App.ipa -d patched_ipa
           
           python3 - << 'EOF'
-          import plistlib, glob
-          plist_path = glob.glob("patched_ipa/Payload/*.app/Info.plist")[0]
-          with open(plist_path, 'rb') as f:
-              data = plistlib.load(f)
-          data['DTPlatformVersion'] = '26.0'
-          data['DTSDKName'] = 'iphoneos26.0'
-          data['DTSDKBuild'] = '26A1'
-          data['DTPlatformBuild'] = '26A1'
-          data['DTXcode'] = '2600'
-          data['DTXcodeBuild'] = '26A1'
-          with open(plist_path, 'wb') as f:
-              plistlib.dump(data, f)
-          print(f"Successfully patched {plist_path} with iOS 26 SDK metadata!")
+          import plistlib, glob, struct, os
+
+          # 1. Patch Info.plist
+          for plist_path in glob.glob("patched_ipa/Payload/*.app/Info.plist"):
+              with open(plist_path, 'rb') as f:
+                  data = plistlib.load(f)
+              data['DTPlatformVersion'] = '26.0'
+              data['DTSDKName'] = 'iphoneos26.0'
+              data['DTSDKBuild'] = '26A1'
+              data['DTPlatformBuild'] = '26A1'
+              data['DTXcode'] = '2600'
+              data['DTXcodeBuild'] = '26A1'
+              with open(plist_path, 'wb') as f:
+                  plistlib.dump(data, f)
+              print(f"Patched plist: {plist_path}")
+
+          # 2. Patch Mach-O executable binary LC_BUILD_VERSION to iOS 26 SDK (0x001A0000)
+          for bin_path in glob.glob("patched_ipa/Payload/*.app/*"):
+              if os.path.isfile(bin_path) and not bin_path.endswith('.plist'):
+                  try:
+                      with open(bin_path, 'rb') as f:
+                          bdata = bytearray(f.read())
+                      if len(bdata) > 32 and struct.unpack_from('<I', bdata, 0)[0] in (0xfeedfacf, 0xfeedface):
+                          ncmds = struct.unpack_from('<I', bdata, 16)[0]
+                          offset = 32
+                          patched = False
+                          for _ in range(ncmds):
+                              cmd, cmdsize = struct.unpack_from('<II', bdata, offset)
+                              if cmd == 0x32: # LC_BUILD_VERSION
+                                  old_sdk = struct.unpack_from('<I', bdata, offset + 16)[0]
+                                  struct.pack_into('<I', bdata, offset + 16, 0x001A0000) # iOS 26.0.0
+                                  print(f"Patched Mach-O {bin_path} LC_BUILD_VERSION SDK: {hex(old_sdk)} -> 0x1a0000")
+                                  patched = True
+                              offset += cmdsize
+                          if patched:
+                              with open(bin_path, 'wb') as f:
+                                  f.write(bdata)
+                  except Exception as e:
+                      print(f"Skip {bin_path}: {e}")
           EOF
 
           APP_PATH=$(find patched_ipa/Payload -name "*.app" -maxdepth 1)
+          # Strip old signature and re-sign with entitlements
+          codesign --remove-signature "$APP_PATH" || true
           codesign --force --sign "Apple Distribution" --timestamp --preserve-metadata=entitlements "$APP_PATH"
           
           rm App.ipa
@@ -174,7 +202,7 @@ jobs:
           zip -qry ../App.ipa Payload
           cd ..
           rm -rf patched_ipa
-          echo "Repackaged App.ipa with iOS 26 SDK and valid Apple signature!"
+          echo "Repackaged App.ipa with iOS 26 SDK Mach-O & valid Apple signature!"
 
       - name: Upload .ipa as Downloadable Artifact
         uses: actions/upload-artifact@v4
