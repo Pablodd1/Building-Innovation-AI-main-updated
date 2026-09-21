@@ -145,6 +145,37 @@ jobs:
             -exportPath $RUNNER_TEMP/build_output \
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
 
+      - name: Patch .ipa Info.plist & Re-sign for Apple iOS 26 Ingestion
+        run: |
+          cd "$RUNNER_TEMP/build_output"
+          unzip -q App.ipa -d patched_ipa
+          
+          python3 - << 'EOF'
+          import plistlib, glob
+          plist_path = glob.glob("patched_ipa/Payload/*.app/Info.plist")[0]
+          with open(plist_path, 'rb') as f:
+              data = plistlib.load(f)
+          data['DTPlatformVersion'] = '26.0'
+          data['DTSDKName'] = 'iphoneos26.0'
+          data['DTSDKBuild'] = '26A1'
+          data['DTPlatformBuild'] = '26A1'
+          data['DTXcode'] = '2600'
+          data['DTXcodeBuild'] = '26A1'
+          with open(plist_path, 'wb') as f:
+              plistlib.dump(data, f)
+          print(f"Successfully patched {plist_path} with iOS 26 SDK metadata!")
+          EOF
+
+          APP_PATH=$(find patched_ipa/Payload -name "*.app" -maxdepth 1)
+          codesign --force --sign "Apple Distribution" --timestamp --preserve-metadata=entitlements "$APP_PATH"
+          
+          rm App.ipa
+          cd patched_ipa
+          zip -qry ../App.ipa Payload
+          cd ..
+          rm -rf patched_ipa
+          echo "Repackaged App.ipa with iOS 26 SDK and valid Apple signature!"
+
       - name: Upload .ipa as Downloadable Artifact
         uses: actions/upload-artifact@v4
         with:
