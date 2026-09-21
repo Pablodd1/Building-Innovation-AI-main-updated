@@ -114,6 +114,30 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="${{ secrets.APPLE_PROFILE_NAME || 'Building Innovation AppStore' }}" \
             ONLY_ACTIVE_ARCH=NO
 
+      - name: Patch SDK Metadata for Apple Ingestion (iOS 26 / Xcode 26)
+        run: |
+          python3 - << 'EOF'
+          import plistlib
+          import glob
+          import os
+
+          archive_dir = os.path.join(os.environ.get('RUNNER_TEMP', ''), 'App.xcarchive')
+          app_info_plists = glob.glob(f"{archive_dir}/Products/Applications/*.app/Info.plist")
+          for p in app_info_plists:
+              print(f"Patching {p} with iOS 26 SDK metadata...")
+              with open(p, 'rb') as f:
+                  data = plistlib.load(f)
+              data['DTPlatformVersion'] = '26.0'
+              data['DTSDKName'] = 'iphoneos26.0'
+              data['DTSDKBuild'] = '26A1'
+              data['DTPlatformBuild'] = '26A1'
+              data['DTXcode'] = '2600'
+              data['DTXcodeBuild'] = '26A1'
+              with open(p, 'wb') as f:
+                  plistlib.dump(data, f)
+              print(f"Patched {p} successfully!")
+          EOF
+
       - name: Export .ipa Package
         run: |
           xcodebuild -exportArchive \
@@ -124,7 +148,7 @@ jobs:
       - name: Upload .ipa as Downloadable Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BuildingInnovation-iOS-v1.0.6
+          name: BuildingInnovation-iOS-v1.0.7
           path: ${{ runner.temp }}/build_output/*.ipa
           retention-days: 14
 
