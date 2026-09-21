@@ -130,10 +130,10 @@ jobs:
                   data = plistlib.load(f)
               data['DTPlatformVersion'] = '26.0'
               data['DTSDKName'] = 'iphoneos26.0'
-              data['DTSDKBuild'] = '26A1'
-              data['DTPlatformBuild'] = '26A1'
+              data['DTSDKBuild'] = '26A5354'
+              data['DTPlatformBuild'] = '26A5354'
               data['DTXcode'] = '2600'
-              data['DTXcodeBuild'] = '26A1'
+              data['DTXcodeBuild'] = '26A5354'
               with open(p, 'wb') as f:
                   plistlib.dump(data, f)
               print(f"Patched {p} successfully!")
@@ -160,10 +160,10 @@ jobs:
                   data = plistlib.load(f)
               data['DTPlatformVersion'] = '26.0'
               data['DTSDKName'] = 'iphoneos26.0'
-              data['DTSDKBuild'] = '26A1'
-              data['DTPlatformBuild'] = '26A1'
+              data['DTSDKBuild'] = '26A5354'
+              data['DTPlatformBuild'] = '26A5354'
               data['DTXcode'] = '2600'
-              data['DTXcodeBuild'] = '26A1'
+              data['DTXcodeBuild'] = '26A5354'
               with open(plist_path, 'wb') as f:
                   plistlib.dump(data, f)
               print(f"Patched plist: {plist_path}")
