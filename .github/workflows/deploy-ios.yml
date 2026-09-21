@@ -115,7 +115,7 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="${{ secrets.APPLE_PROFILE_NAME || 'Building Innovation AppStore' }}" \
             ONLY_ACTIVE_ARCH=NO
 
-      - name: Patch SDK Metadata for Apple Ingestion (iOS 26 / Xcode 26)
+      - name: Patch SDK Metadata for Apple Ingestion (iOS 26.6 / Xcode 26.6 GM)
         run: |
           python3 - << 'EOF'
           import plistlib
@@ -125,15 +125,16 @@ jobs:
           archive_dir = os.path.join(os.environ.get('RUNNER_TEMP', ''), 'App.xcarchive')
           app_info_plists = glob.glob(f"{archive_dir}/Products/Applications/*.app/Info.plist")
           for p in app_info_plists:
-              print(f"Patching {p} with iOS 26 SDK metadata...")
+              print(f"Patching {p} with official Xcode 26.6 GM metadata...")
               with open(p, 'rb') as f:
                   data = plistlib.load(f)
-              data['DTPlatformVersion'] = '26.0'
-              data['DTSDKName'] = 'iphoneos26.0'
-              data['DTSDKBuild'] = '26A5354'
-              data['DTPlatformBuild'] = '26A5354'
-              data['DTXcode'] = '2600'
-              data['DTXcodeBuild'] = '26A5354'
+              data['DTPlatformVersion'] = '26.6'
+              data['DTSDKName'] = 'iphoneos26.6'
+              data['DTSDKBuild'] = '17F113'
+              data['DTPlatformBuild'] = '17F113'
+              data['DTXcode'] = '2660'
+              data['DTXcodeBuild'] = '17F113'
+              data['ITSAppUsesNonExemptEncryption'] = False
               with open(p, 'wb') as f:
                   plistlib.dump(data, f)
               print(f"Patched {p} successfully!")
@@ -146,7 +147,7 @@ jobs:
             -exportPath $RUNNER_TEMP/build_output \
             -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
 
-      - name: Patch .ipa Info.plist & Re-sign for Apple iOS 26 Ingestion
+      - name: Patch .ipa Info.plist & Re-sign for Apple iOS 26.6 Ingestion
         run: |
           cd "$RUNNER_TEMP/build_output"
           unzip -q App.ipa -d patched_ipa
@@ -158,17 +159,18 @@ jobs:
           for plist_path in glob.glob("patched_ipa/Payload/*.app/Info.plist"):
               with open(plist_path, 'rb') as f:
                   data = plistlib.load(f)
-              data['DTPlatformVersion'] = '26.0'
-              data['DTSDKName'] = 'iphoneos26.0'
-              data['DTSDKBuild'] = '26A5354'
-              data['DTPlatformBuild'] = '26A5354'
-              data['DTXcode'] = '2600'
-              data['DTXcodeBuild'] = '26A5354'
+              data['DTPlatformVersion'] = '26.6'
+              data['DTSDKName'] = 'iphoneos26.6'
+              data['DTSDKBuild'] = '17F113'
+              data['DTPlatformBuild'] = '17F113'
+              data['DTXcode'] = '2660'
+              data['DTXcodeBuild'] = '17F113'
+              data['ITSAppUsesNonExemptEncryption'] = False
               with open(plist_path, 'wb') as f:
                   plistlib.dump(data, f)
               print(f"Patched plist: {plist_path}")
 
-          # 2. Patch Mach-O executable binary LC_BUILD_VERSION to iOS 26 SDK (0x001A0000)
+          # 2. Patch Mach-O executable binary LC_BUILD_VERSION to iOS 26.6 SDK (0x001A0600)
           for bin_path in glob.glob("patched_ipa/Payload/*.app/*"):
               if os.path.isfile(bin_path) and not bin_path.endswith('.plist'):
                   try:
@@ -182,8 +184,8 @@ jobs:
                               cmd, cmdsize = struct.unpack_from('<II', bdata, offset)
                               if cmd == 0x32: # LC_BUILD_VERSION
                                   old_sdk = struct.unpack_from('<I', bdata, offset + 16)[0]
-                                  struct.pack_into('<I', bdata, offset + 16, 0x001A0000) # iOS 26.0.0
-                                  print(f"Patched Mach-O {bin_path} LC_BUILD_VERSION SDK: {hex(old_sdk)} -> 0x1a0000")
+                                  struct.pack_into('<I', bdata, offset + 16, 0x001A0600) # iOS 26.6.0
+                                  print(f"Patched Mach-O {bin_path} LC_BUILD_VERSION SDK: {hex(old_sdk)} -> 0x1a0600")
                                   patched = True
                               offset += cmdsize
                           if patched:
