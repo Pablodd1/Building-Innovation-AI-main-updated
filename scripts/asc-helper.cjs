@@ -58,7 +58,34 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
   });
 }
 
-module.exports = { apiRequest, generateToken };
+async function setEncryption(buildId) {
+  const payload = {
+    data: {
+      type: 'builds',
+      id: buildId,
+      attributes: {
+        usesNonExemptEncryption: false
+      }
+    }
+  };
+  const res = await apiRequest(`/v1/builds/${buildId}`, 'PATCH', payload);
+  console.log(`Set encryption response [${res.status}]:`, JSON.stringify(res.data, null, 2));
+  return res;
+}
+
+async function attachBuildToVersion(versionId, buildId) {
+  const payload = {
+    data: {
+      type: 'builds',
+      id: buildId
+    }
+  };
+  const res = await apiRequest(`/v1/appStoreVersions/${versionId}/relationships/build`, 'PATCH', payload);
+  console.log(`Attach build response [${res.status}]:`, JSON.stringify(res.data, null, 2));
+  return res;
+}
+
+module.exports = { apiRequest, generateToken, setEncryption, attachBuildToVersion };
 
 if (require.main === module) {
   const action = process.argv[2] || 'status';
@@ -66,8 +93,6 @@ if (require.main === module) {
     try {
       if (action === 'status') {
         const appRes = await apiRequest('/v1/apps?filter[bundleId]=com.buildinginnovation.app');
-        console.log('App info:', JSON.stringify(appRes.data, null, 2));
-
         const appId = appRes.data?.data?.[0]?.id;
         if (appId) {
           const buildsRes = await apiRequest(`/v1/builds?filter[app]=${appId}&sort=-uploadedDate&limit=10`);
@@ -85,6 +110,53 @@ if (require.main === module) {
       } else if (action === 'xcode-versions') {
         const res = await apiRequest('/v1/ciXcodeVersions');
         console.log('Xcode versions:', JSON.stringify(res.data, null, 2));
+      } else if (action === 'set-encryption') {
+        const buildId = process.argv[3];
+        if (!buildId) throw new Error('Missing buildId');
+        await setEncryption(buildId);
+      } else if (action === 'attach-build') {
+        const versionId = process.argv[3] || 'd404823e-67f7-4394-95b6-7e0416804bab';
+        const buildId = process.argv[4];
+        if (!buildId) throw new Error('Missing buildId');
+        await attachBuildToVersion(versionId, buildId);
+      } else if (action === 'watch-and-attach') {
+        const targetVersion = process.argv[3] || '10';
+        const versionId = process.argv[4] || 'd404823e-67f7-4394-95b6-7e0416804bab';
+        console.log(`Watching for build ${targetVersion} to become VALID and attaching to version ${versionId}...`);
+
+        const appRes = await apiRequest('/v1/apps?filter[bundleId]=com.buildinginnovation.app');
+        const appId = appRes.data?.data?.[0]?.id;
+        if (!appId) throw new Error('App not found');
+
+        let attempts = 0;
+        const maxAttempts = 40; // 40 * 15s = 10 mins
+        while (attempts < maxAttempts) {
+          attempts++;
+          const buildsRes = await apiRequest(`/v1/builds?filter[app]=${appId}&sort=-uploadedDate&limit=5`);
+          const build = (buildsRes.data?.data || []).find(b => b.attributes.version === targetVersion);
+          
+          if (build) {
+            console.log(`[Attempt ${attempts}] Found Build ${targetVersion} (ID: ${build.id}): State = ${build.attributes.processingState}, UsesEncryption = ${build.attributes.usesNonExemptEncryption}`);
+            
+            if (build.attributes.processingState === 'VALID') {
+              if (build.attributes.usesNonExemptEncryption === null || build.attributes.usesNonExemptEncryption === undefined) {
+                console.log('Setting usesNonExemptEncryption = false...');
+                await setEncryption(build.id);
+              }
+              console.log(`Attaching Build ${build.id} to App Store Version ${versionId}...`);
+              await attachBuildToVersion(versionId, build.id);
+              console.log('SUCCESS: Build attached to App Store Version!');
+              return;
+            } else if (build.attributes.processingState === 'FAILED' || build.attributes.processingState === 'INVALID') {
+              console.error(`Build processing failed with state: ${build.attributes.processingState}`);
+              return;
+            }
+          } else {
+            console.log(`[Attempt ${attempts}] Build ${targetVersion} not yet visible in App Store Connect...`);
+          }
+          await new Promise(r => setTimeout(r, 15000));
+        }
+        console.error('Timed out waiting for build.');
       }
     } catch (err) {
       console.error('Error:', err);
