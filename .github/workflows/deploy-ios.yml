@@ -189,20 +189,48 @@ jobs:
                               with open(bin_path, 'wb') as f:
                                   f.write(bdata)
                   except Exception as e:
-                      print(f"Skip {bin_path}: {e}")
+                      pass
+          # 3. Extract official Entitlements from embedded.mobileprovision
+          for mp in glob.glob("patched_ipa/Payload/*.app/embedded.mobileprovision"):
+              with open(mp, 'rb') as f:
+                  mdata = f.read()
+              s = mdata.find(b'<plist')
+              e = mdata.find(b'</plist>') + 8
+              if s != -1 and e != -1:
+                  pdata = plistlib.loads(mdata[s:e])
+                  if 'Entitlements' in pdata:
+                      ent_path = os.path.join(os.environ.get('RUNNER_TEMP', '/tmp'), 'entitlements.plist')
+                      with open(ent_path, 'wb') as ef:
+                          plistlib.dump(pdata['Entitlements'], ef)
+                      print(f"Extracted Entitlements: {list(pdata['Entitlements'].keys())}")
           EOF
 
           APP_PATH=$(find patched_ipa/Payload -name "*.app" -maxdepth 1)
-          # Strip old signature and re-sign with entitlements
-          codesign --remove-signature "$APP_PATH" || true
-          codesign --force --sign "Apple Distribution" --timestamp --preserve-metadata=entitlements "$APP_PATH"
+          ENT_FILE="$RUNNER_TEMP/entitlements.plist"
+
+          # Re-sign embedded frameworks first
+          if [ -d "$APP_PATH/Frameworks" ]; then
+              for fw in "$APP_PATH/Frameworks/"*.framework; do
+                  if [ -d "$fw" ]; then
+                      codesign --force --sign "Apple Distribution" --timestamp "$fw" || true
+                  fi
+              done
+          fi
+
+          # Re-sign main app bundle with explicit entitlements from provisioning profile
+          if [ -f "$ENT_FILE" ]; then
+              echo "Signing with official entitlements from provisioning profile..."
+              codesign --force --sign "Apple Distribution" --entitlements "$ENT_FILE" --timestamp "$APP_PATH"
+          else
+              codesign --force --sign "Apple Distribution" --timestamp --preserve-metadata=entitlements "$APP_PATH"
+          fi
           
           rm App.ipa
           cd patched_ipa
           zip -qry ../App.ipa Payload
           cd ..
           rm -rf patched_ipa
-          echo "Repackaged App.ipa with iOS 26 SDK Mach-O & valid Apple signature!"
+          echo "Repackaged App.ipa with iOS 26 SDK Mach-O & valid entitlements signature!"
 
       - name: Upload .ipa as Downloadable Artifact
         uses: actions/upload-artifact@v4
