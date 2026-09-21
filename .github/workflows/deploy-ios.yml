@@ -102,6 +102,7 @@ jobs:
 
       - name: Build Xcode Archive (.xcarchive)
         run: |
+          rm -rf ~/Library/Caches/org.swift.swiftpm ~/Library/Developer/Xcode/DerivedData
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
