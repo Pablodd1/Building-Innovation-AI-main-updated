@@ -356,7 +356,16 @@ const App: React.FC = () => {
         const originalFetch = window.fetch;
         window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
             let finalInput = input;
-            const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
+            let apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
+            if (!apiBase) {
+                const isNativeMobile =
+                    Boolean((window as any).Capacitor?.isNativePlatform?.()) ||
+                    window.location.protocol === 'capacitor:' ||
+                    (window.location.hostname === 'localhost' && window.location.port !== '5173' && window.location.port !== '3000');
+                if (isNativeMobile) {
+                    apiBase = 'https://buildingapp.us';
+                }
+            }
             if (typeof input === 'string') {
                 if (input.startsWith('/api/') && apiBase) {
                     finalInput = `${apiBase}${input}`;

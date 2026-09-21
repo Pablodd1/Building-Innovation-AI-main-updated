@@ -95,6 +95,26 @@ export const useAppState = () => {
     useEffect(() => {
         const originalFetch = window.fetch;
         window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            let finalInput = input;
+            let apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
+            if (!apiBase) {
+                const isNativeMobile =
+                    Boolean((window as any).Capacitor?.isNativePlatform?.()) ||
+                    window.location.protocol === 'capacitor:' ||
+                    (window.location.hostname === 'localhost' && window.location.port !== '5173' && window.location.port !== '3000');
+                if (isNativeMobile) {
+                    apiBase = 'https://buildingapp.us';
+                }
+            }
+            if (typeof input === 'string') {
+                if (input.startsWith('/api/') && apiBase) {
+                    finalInput = `${apiBase}${input}`;
+                }
+            } else if (input instanceof URL) {
+                if (input.pathname.startsWith('/api/') && apiBase) {
+                    finalInput = new URL(input.pathname + input.search, apiBase).href;
+                }
+            }
             const stored = localStorage.getItem('constructviz_user');
             let token = '';
             if (stored) {
@@ -114,7 +134,7 @@ export const useAppState = () => {
                     }
                 }
             }
-            return originalFetch(input, init);
+            return originalFetch(finalInput, init);
         };
         try {
             const saved = localStorage.getItem('constructviz_user');
