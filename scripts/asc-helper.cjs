@@ -119,44 +119,56 @@ if (require.main === module) {
         const buildId = process.argv[4];
         if (!buildId) throw new Error('Missing buildId');
         await attachBuildToVersion(versionId, buildId);
-      } else if (action === 'watch-and-attach') {
-        const targetVersion = process.argv[3] || '10';
-        const versionId = process.argv[4] || 'd404823e-67f7-4394-95b6-7e0416804bab';
-        console.log(`Watching for build ${targetVersion} to become VALID and attaching to version ${versionId}...`);
+      } else if (action === 'update-review-notes') {
+        const reviewDetailId = process.argv[3] || '9adb07af-8a64-4803-8dc5-b4265652a930';
+        const reviewNotes = [
+          '[GUIDELINE 2.1 COMPLIANCE INFORMATION & REVIEWER INSTRUCTIONS]',
+          '',
+          '1. APP PURPOSE & TARGET AUDIENCE:',
+          'Building Innovation AI is designed for homeowners, interior designers, contractors, and architects to visualize architectural finishes (SPC wall panels, PVC marble sheets, acoustic slats, and flooring) in real physical rooms. The app eliminates guesswork by rendering real catalog materials in perspective with accurate lighting and calculates material quantities, surface area, and estimated project costs.',
+          '',
+          '2. DEMO ACCOUNT & CREDENTIALS:',
+          '- Demo Email: reviewer@buildingapp.us',
+          '- Demo Password: Reviewer2026!',
+          '- Demo Account Required: Yes (or tap "Skip for now (Demo)" to test in guest mode)',
+          '',
+          '3. STEP-BY-STEP REVIEWER TESTING INSTRUCTIONS:',
+          'a. Launch the app and log in with the demo credentials above (or tap Demo mode).',
+          'b. Select any sample room photo from the built-in gallery or take a picture with the camera.',
+          'c. The AI automatically analyzes room lighting, surface geometry, and dimensions.',
+          'd. Browse the material catalog and select any wall/floor product (e.g. "Lamina PVC Blanco Brillante").',
+          'e. Tap "GENERATE VIEW" to render the realistic material overlay with interactive before/after split slider.',
+          'f. Review the Instant Material Estimator calculating panel count, square meters, and budget.',
+          'g. Account Deletion (Guideline 5.1.1(v)): Tap the delete account icon in the header, confirm the permanent wipe prompt, and verify that the account session and data are removed.',
+          '',
+          '4. CORE EXTERNAL SERVICES & INTEGRATIONS:',
+          '- AI Processing: Google Gemini API & OpenAI Inpainting for room analysis and texture perspective rendering.',
+          '- Database & Backend: Secure Node.js VPS backend (https://buildingapp.us) with user and catalog database.',
+          '- Media Storage: Cloudinary CDN for fast, high-res material catalog texture delivery.',
+          '- Payment Processing: Stripe API (for optional subscription tier upgrades).',
+          '',
+          '5. REGIONAL CONSISTENCY:',
+          'The app operates consistently worldwide across all 175 storefronts with no regional restrictions or geofencing. Bilingual support (English & Spanish) and unit system toggles (Imperial / Metric) are built-in.',
+          '',
+          '6. REGULATORY & IP COMPLIANCE:',
+          'Building Innovation AI operates in the architectural visualization space. All catalog items, brand assets, and textures are proprietary property of Building Innovation LLC and authorized partners.'
+        ].join('\n');
 
-        const appRes = await apiRequest('/v1/apps?filter[bundleId]=com.buildinginnovation.app');
-        const appId = appRes.data?.data?.[0]?.id;
-        if (!appId) throw new Error('App not found');
-
-        let attempts = 0;
-        const maxAttempts = 40; // 40 * 15s = 10 mins
-        while (attempts < maxAttempts) {
-          attempts++;
-          const buildsRes = await apiRequest(`/v1/builds?filter[app]=${appId}&sort=-uploadedDate&limit=5`);
-          const build = (buildsRes.data?.data || []).find(b => b.attributes.version === targetVersion);
-          
-          if (build) {
-            console.log(`[Attempt ${attempts}] Found Build ${targetVersion} (ID: ${build.id}): State = ${build.attributes.processingState}, UsesEncryption = ${build.attributes.usesNonExemptEncryption}`);
-            
-            if (build.attributes.processingState === 'VALID') {
-              if (build.attributes.usesNonExemptEncryption === null || build.attributes.usesNonExemptEncryption === undefined) {
-                console.log('Setting usesNonExemptEncryption = false...');
-                await setEncryption(build.id);
-              }
-              console.log(`Attaching Build ${build.id} to App Store Version ${versionId}...`);
-              await attachBuildToVersion(versionId, build.id);
-              console.log('SUCCESS: Build attached to App Store Version!');
-              return;
-            } else if (build.attributes.processingState === 'FAILED' || build.attributes.processingState === 'INVALID') {
-              console.error(`Build processing failed with state: ${build.attributes.processingState}`);
-              return;
+        const payload = {
+          data: {
+            type: 'appStoreReviewDetails',
+            id: reviewDetailId,
+            attributes: {
+              demoAccountName: 'reviewer@buildingapp.us',
+              demoAccountPassword: 'Reviewer2026!',
+              demoAccountRequired: true,
+              notes: reviewNotes
             }
-          } else {
-            console.log(`[Attempt ${attempts}] Build ${targetVersion} not yet visible in App Store Connect...`);
           }
-          await new Promise(r => setTimeout(r, 15000));
-        }
-        console.error('Timed out waiting for build.');
+        };
+
+        const res = await apiRequest(`/v1/appStoreReviewDetails/${reviewDetailId}`, 'PATCH', payload);
+        console.log(`Update Review Notes response [status ${res.status}]:`, JSON.stringify(res.data, null, 2));
       }
     } catch (err) {
       console.error('Error:', err);

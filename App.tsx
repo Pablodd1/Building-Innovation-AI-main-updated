@@ -2344,6 +2344,28 @@ const App: React.FC = () => {
                                 ? "Registrarse"
                                 : "Sign Up"}
                     </button>
+                    <div className="pt-2 border-t border-gray-300/80">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setCurrentUser({
+                                    id: 0,
+                                    name: "Guest User",
+                                    email: "guest@buildingapp.us",
+                                    role: "user",
+                                    tier: "Free",
+                                    generations_used: 0,
+                                });
+                                setSessionToken("demo_guest_token");
+                                setView(AppView.LANDING);
+                            }}
+                            className="w-full py-3.5 px-4 bg-white/90 hover:bg-white text-gray-800 rounded-xl font-bold text-sm transition-all border border-gray-300 shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
+                        >
+                            <span>🚀</span>
+                            {lang === "es" ? "Continuar como Invitado (Demo)" : "Continue as Guest (Demo)"}
+                        </button>
+                    </div>
+
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
                             <span>
@@ -6239,7 +6261,7 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
             {view === AppView.ADMIN && renderAdmin()}
             {view === AppView.GALLERY && renderGallery()}
             {view === AppView.CAMERA && (
-                <div className="h-screen h-[100dvh] flex flex-col bg-black pb-[env(safe-area-inset-bottom)]">
+                <div className="min-h-screen min-h-[100dvh] flex flex-col bg-slate-950 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                     <div className="p-4 flex justify-between items-center z-10 pt-[max(1rem,env(safe-area-inset-top))]">
                         <Button
                             variant="ghost"
@@ -6248,9 +6270,10 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                         >
                             ← {t.common.back}
                         </Button>
+                        <LanguageToggle />
                     </div>
-                    <div className="flex-1 p-4 md:p-8 flex items-center justify-center">
-                        <div className="w-full max-w-md h-full max-h-[600px]">
+                    <div className="flex-1 px-3 py-2 sm:p-6 flex items-center justify-center overflow-y-auto">
+                        <div className="w-full max-w-lg">
                             <CameraCapture
                                 onImageCapture={handleImageCapture}
                                 lang={lang}

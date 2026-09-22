@@ -1038,6 +1038,69 @@ const requireAuth = async (req: Request, res: Response, next: any) => {
     }
 };
 
+// Security Middleware: Optional authorization (supports registered users, reviewers, and guest demo visitors)
+const optionalAuth = async (req: Request, res: Response, next: any) => {
+    try {
+        let token = '';
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            token = req.headers.authorization.substring(7);
+        } else if (req.query.token) {
+            token = req.query.token as string;
+        }
+
+        if (!token || token === 'demo_guest_token') {
+            (req as any).user = {
+                id: 0,
+                name: 'Guest User',
+                email: 'guest@buildingapp.us',
+                role: 'user',
+                tier: 'Free',
+                generations_used: 0,
+            };
+            return next();
+        }
+
+        let user: any = null;
+        try {
+            const result = await query('SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, session_token FROM users WHERE session_token = $1', [token]);
+            if (result.rows.length > 0) {
+                user = result.rows[0];
+            }
+        } catch (dbErr) {}
+
+        if (!user) {
+            const users = await getUsers();
+            user = users.find((u: any) => u.session_token === token);
+        }
+
+        if (!user) {
+            (req as any).user = {
+                id: 0,
+                name: 'Guest User',
+                email: 'guest@buildingapp.us',
+                role: 'user',
+                tier: 'Free',
+                generations_used: 0,
+            };
+            return next();
+        }
+
+        (req as any).user = user;
+        next();
+    } catch (error: any) {
+        console.error('optionalAuth middleware error:', error);
+        (req as any).user = {
+            id: 0,
+            name: 'Guest User',
+            email: 'guest@buildingapp.us',
+            role: 'user',
+            tier: 'Free',
+            generations_used: 0,
+        };
+        next();
+    }
+};
+
 // Security Middleware: Require admin role
 const requireAdmin = async (req: Request, res: Response, next: any) => {
     try {
@@ -2113,10 +2176,8 @@ const getServerApiKey = (): string => {
 };
 
 // POST /api/ai/generate-overlay — Multi-provider AI image generation
-// SECURITY: requireAuth enforced — this endpoint bills OpenAI/Gemini per call.
-// The authenticated user's id is taken from req.user (set by requireAuth),
-// NOT from the request body, so clients cannot spoof another user's quota.
-app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Response) => {
+// Supports registered users, reviewers, and guest demo visitors
+app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Response) => {
     try {
         const authenticatedUserId = (req as any).user?.id;
         const authenticatedUserRole = (req as any).user?.role;
@@ -2334,9 +2395,8 @@ app.post("/api/ai/generate-overlay", requireAuth, async (req: Request, res: Resp
 });
 
 // POST /api/ai/analyze-room — Multi-provider room analysis
-// SECURITY: requireAuth enforced — this endpoint bills the AI provider per call.
-// Authenticated userId comes from req.user, not the request body.
-app.post("/api/ai/analyze-room", requireAuth, async (req: Request, res: Response) => {
+// Supports registered users, reviewers, and guest demo visitors
+app.post("/api/ai/analyze-room", optionalAuth, async (req: Request, res: Response) => {
     try {
         const authenticatedUserId = (req as any).user?.id;
         const { image, lang, provider: userProvider } = req.body;
@@ -3876,6 +3936,9 @@ app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) =>
 // ===== AI GENERATION PROXY (Quota Enforced) =====
 
 async function checkQuota(userId: number): Promise<{ allowed: boolean; limit?: number; used?: number; error?: string }> {
+    if (!userId || userId === 0) {
+        return { allowed: true, limit: 100, used: 0 };
+    }
     try {
         const result = await query('SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1', [userId]);
         if (result.rows.length === 0) return { allowed: false, error: 'User not found' };
@@ -3929,6 +3992,9 @@ async function checkQuota(userId: number): Promise<{ allowed: boolean; limit?: n
 }
 
 async function incrementQuota(userId: number): Promise<void> {
+    if (!userId || userId === 0) {
+        return;
+    }
     try {
         await query('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', [userId]);
     } catch (e: any) {

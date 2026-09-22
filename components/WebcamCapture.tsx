@@ -11,10 +11,9 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [error, setError] = useState<string | null>(null);
-    // 'environment' = back/rear camera (default — better for scanning rooms),
-    // 'user' = front/selfie camera. Toggled by the flip button below.
     const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
     const [hasMultipleCameras, setHasMultipleCameras] = useState(true);
+    const [isFlashing, setIsFlashing] = useState(false);
 
     const stopStream = (s: MediaStream | null) => {
         s?.getTracks().forEach((track) => track.stop());
@@ -22,9 +21,6 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
 
     const startCamera = async (mode: 'user' | 'environment' = facingMode) => {
         setError(null);
-        // Stop any existing stream before requesting a new one — switching
-        // facingMode requires a fresh getUserMedia call; browsers do not let
-        // you swap the camera on a live track.
         stopStream(stream);
         try {
             let mediaStream: MediaStream;
@@ -33,10 +29,7 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
                     video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: { ideal: mode } }
                 });
             } catch (constrainedErr) {
-                // Fallback: some laptops/older Android WebViews reject width/height/facingMode
-                // constraints outright (NotReadableError, OverconstrainedError). Retry with a
-                // bare video:true request so the camera still opens even without facingMode control.
-                console.warn('[Webcam] Constrained request failed, retrying with basic facingMode:', constrainedErr?.name);
+                console.warn('[Webcam] Constrained request failed, retrying with basic facingMode:', constrainedErr);
                 try {
                     mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
                 } catch {
@@ -54,33 +47,30 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
             const isInUse = err?.name === 'NotReadableError' || err?.name === 'AbortError';
             setError(lang === 'es'
                 ? (isDenied
-                    ? 'Permiso de cámara denegado. Haz clic en el ícono del candado en la barra de direcciones y permite el acceso a la cámara.'
+                    ? 'Permiso de cámara denegado. Por favor permite el acceso a la cámara en los ajustes de tu navegador.'
                     : isInUse
-                    ? 'La cámara está siendo usada por otra aplicación. Ciérrala e inténtalo de nuevo, o sube una foto.'
-                    : 'No se pudo acceder a la cámara. Puedes subir una foto de tu dispositivo.')
+                    ? 'La cámara está siendo usada por otra aplicación. Ciérrala o sube una foto desde tu galería.'
+                    : 'No se pudo iniciar la cámara. Puedes subir una foto desde tu galería.')
                 : (isDenied
-                    ? 'Camera permission denied. Click the padlock icon in the URL bar and allow camera access.'
+                    ? 'Camera permission denied. Please allow camera access in your browser settings.'
                     : isInUse
-                    ? 'Camera is in use by another app. Close it and retry, or upload a photo instead.'
+                    ? 'Camera is in use by another app. Close it or upload a photo from your gallery.'
                     : 'Could not access camera. You can upload a photo from your device instead.')
             );
         }
     };
 
-    // Detect if the device actually has more than one camera (some tablets/
-    // laptops only have one). Skips showing a flip button that would do nothing.
     useEffect(() => {
         navigator.mediaDevices?.enumerateDevices?.()
             .then((devices) => {
                 const videoInputs = devices.filter((d) => d.kind === 'videoinput');
                 setHasMultipleCameras(videoInputs.length > 1);
             })
-            .catch(() => setHasMultipleCameras(true)); // assume yes if we can't detect
+            .catch(() => setHasMultipleCameras(true));
     }, []);
 
     useEffect(() => {
         startCamera(facingMode);
-        // Cleanup stream on unmount
         return () => {
             stopStream(stream);
         };
@@ -96,6 +86,10 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
     const handleCapture = () => {
         if (!videoRef.current) return;
 
+        // Flash visual feedback
+        setIsFlashing(true);
+        setTimeout(() => setIsFlashing(false), 250);
+
         const video = videoRef.current;
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth || 1280;
@@ -103,9 +97,6 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
 
         const ctx = canvas.getContext('2d');
         if (ctx) {
-            // Only mirror the preview for the front/selfie camera — the rear
-            // camera should capture un-mirrored (what you actually see through
-            // the lens), which is what users expect for room/wall photos.
             if (facingMode === 'user') {
                 ctx.translate(canvas.width, 0);
                 ctx.scale(-1, 1);
@@ -113,7 +104,8 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             canvas.toBlob((blob) => {
                 if (blob) {
-                    const file = new File([blob], `webcam_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    const file = new File([blob], `camera_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    stopStream(stream);
                     onCapture(file);
                 }
             }, 'image/jpeg', 0.9);
@@ -122,111 +114,180 @@ export const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onCapture, onClose
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) onCapture(file);
+        if (file) {
+            stopStream(stream);
+            onCapture(file);
+        }
         if (e.target) e.target.value = '';
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4">
-            <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-fadeIn">
-                {/* Header */}
-                <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-                    <h3 className="text-white font-semibold">
-                        {lang === 'es' ? 'Tomar Foto (Cámara)' : 'Take Photo (Camera)'}
-                    </h3>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-white transition-colors"
-                    >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
+        <div className="fixed inset-0 z-[9999] bg-black flex flex-col justify-between overflow-hidden select-none touch-none">
+            {/* Shutter Flash Animation */}
+            {isFlashing && (
+                <div className="absolute inset-0 z-50 bg-white opacity-80 pointer-events-none transition-opacity duration-200" />
+            )}
 
-                {/* Stream / Error View */}
-                <div className="relative flex-1 bg-black aspect-video flex items-center justify-center">
-                    {error ? (
-                        <div className="p-6 text-center max-w-sm">
-                            <svg className="w-12 h-12 mx-auto mb-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3l18 18" />
+            {/* Video Viewport / Background */}
+            <div className="absolute inset-0 w-full h-full bg-black overflow-hidden flex items-center justify-center">
+                {error ? (
+                    <div className="relative z-20 max-w-sm mx-4 p-6 bg-slate-900/95 border border-slate-700 rounded-3xl text-center shadow-2xl backdrop-blur-xl">
+                        <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center">
+                            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" />
                             </svg>
-                            <p className="text-red-400 font-medium text-sm mb-4">{error}</p>
-                            {/* Upload alternative — primary action when camera fails */}
+                        </div>
+                        <h4 className="text-white font-bold text-base mb-2">
+                            {lang === 'es' ? 'Acceso a Cámara' : 'Camera Access'}
+                        </h4>
+                        <p className="text-gray-300 text-xs mb-6 leading-relaxed">
+                            {error}
+                        </p>
+                        <div className="flex flex-col gap-3">
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="w-full px-5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 mb-2"
+                                className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl text-white font-bold text-sm shadow-lg flex items-center justify-center gap-2"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
-                                {lang === 'es' ? 'Subir Foto del Dispositivo' : 'Upload Photo from Device'}
+                                {lang === 'es' ? 'Elegir de Galería / Archivos' : 'Choose from Gallery / Files'}
                             </button>
                             <button
                                 onClick={() => startCamera(facingMode)}
-                                className="w-full px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-gray-300 font-semibold text-sm transition-colors"
+                                className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-gray-200 border border-slate-600 rounded-xl text-xs font-semibold"
                             >
                                 {lang === 'es' ? 'Reintentar Cámara' : 'Retry Camera'}
                             </button>
+                            <button
+                                onClick={onClose}
+                                className="w-full py-2.5 px-4 text-gray-400 hover:text-white text-xs font-medium"
+                            >
+                                {lang === 'es' ? 'Cerrar' : 'Close'}
+                            </button>
                         </div>
-                    ) : (
-                        <>
-                            <video
-                                ref={videoRef}
-                                autoPlay
-                                playsInline
-                                muted
-                                className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
-                            />
-                            {/* Flip camera button — top-right corner, always visible when streaming.
-                                Works on iOS Safari 14.3+ and all modern Android Chrome/WebView via
-                                getUserMedia facingMode constraint — no dependency on OS-level camera
-                                app UI, so it's consistent across every Android and iPhone model. */}
-                            {hasMultipleCameras && (
-                                <button
-                                    onClick={handleFlipCamera}
-                                    aria-label={lang === 'es' ? 'Cambiar cámara' : 'Flip camera'}
-                                    className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white transition-colors"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                    </svg>
-                                </button>
-                            )}
-                            {/* Current camera indicator */}
-                            <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-[10px] font-semibold uppercase tracking-wide">
-                                {facingMode === 'environment'
-                                    ? (lang === 'es' ? 'Trasera' : 'Back')
-                                    : (lang === 'es' ? 'Frontal' : 'Front')}
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Controls */}
-                <div className="p-4 border-t border-slate-800 flex justify-center gap-4 bg-slate-950">
-                    <button
-                        onClick={onClose}
-                        className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-gray-300 font-semibold text-sm transition-colors"
-                    >
-                        {lang === 'es' ? 'Cancelar' : 'Cancel'}
-                    </button>
-                    {!error && (
-                        <button
-                            onClick={handleCapture}
-                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-semibold text-sm transition-colors flex items-center gap-2"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                            </svg>
-                            {lang === 'es' ? 'Capturar' : 'Capture'}
-                        </button>
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <>
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                        />
+                        {/* Framing guide / grid for room alignment */}
+                        <div className="absolute inset-0 pointer-events-none opacity-20 border-[1.5px] border-white/40 m-6 rounded-2xl grid grid-cols-3 grid-rows-3">
+                            <div className="border-r border-b border-white/30" />
+                            <div className="border-r border-b border-white/30" />
+                            <div className="border-b border-white/30" />
+                            <div className="border-r border-b border-white/30" />
+                            <div className="border-r border-b border-white/30" />
+                            <div className="border-b border-white/30" />
+                            <div className="border-r border-white/30" />
+                            <div className="border-r border-white/30" />
+                            <div />
+                        </div>
+                    </>
+                )}
             </div>
 
-            {/* Hidden file input for upload fallback */}
+            {/* Top Bar Floating Controls */}
+            <div className="relative z-20 w-full pt-[max(1rem,env(safe-area-inset-top,16px))] px-4 pb-3 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+                <button
+                    onClick={onClose}
+                    aria-label={lang === 'es' ? 'Cerrar cámara' : 'Close camera'}
+                    className="w-11 h-11 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/20 flex items-center justify-center text-white transition-all active:scale-95"
+                >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+
+                {/* Status Indicator */}
+                {!error && (
+                    <div className="px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        {facingMode === 'environment'
+                            ? (lang === 'es' ? 'Cámara Trasera' : 'Rear Camera')
+                            : (lang === 'es' ? 'Cámara Frontal' : 'Front Camera')}
+                    </div>
+                )}
+
+                {/* Flip Camera Button */}
+                {!error && hasMultipleCameras ? (
+                    <button
+                        onClick={handleFlipCamera}
+                        aria-label={lang === 'es' ? 'Cambiar cámara' : 'Flip camera'}
+                        className="w-11 h-11 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/20 flex items-center justify-center text-white transition-all active:scale-95"
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                ) : (
+                    <div className="w-11 h-11" />
+                )}
+            </div>
+
+            {/* Bottom Bar Floating Shutter & Controls */}
+            {!error && (
+                <div className="relative z-20 w-full pb-[max(2.25rem,env(safe-area-inset-bottom,28px))] pt-6 px-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+                    <div className="max-w-md mx-auto flex items-center justify-around">
+                        {/* Gallery / File Picker button on the left */}
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex flex-col items-center gap-1 text-white/90 hover:text-white transition-opacity active:scale-95"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-lg">
+                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                            <span className="text-[11px] font-semibold text-white/80">
+                                {lang === 'es' ? 'Galería' : 'Gallery'}
+                            </span>
+                        </button>
+
+                        {/* Large Circular Shutter Button in the center */}
+                        <button
+                            onClick={handleCapture}
+                            aria-label={lang === 'es' ? 'Tomar foto' : 'Take photo'}
+                            className="group relative flex items-center justify-center p-1 rounded-full active:scale-90 transition-transform duration-150"
+                        >
+                            <div className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center shadow-2xl bg-white/10 backdrop-blur-sm group-hover:scale-105 transition-transform">
+                                <div className="w-16 h-16 rounded-full bg-white group-active:bg-gray-200 transition-colors shadow-inner" />
+                            </div>
+                        </button>
+
+                        {/* Flip camera / Back button on the right */}
+                        <button
+                            onClick={hasMultipleCameras ? handleFlipCamera : onClose}
+                            className="flex flex-col items-center gap-1 text-white/90 hover:text-white transition-opacity active:scale-95"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-lg">
+                                {hasMultipleCameras ? (
+                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                )}
+                            </div>
+                            <span className="text-[11px] font-semibold text-white/80">
+                                {hasMultipleCameras
+                                    ? (lang === 'es' ? 'Girar' : 'Flip')
+                                    : (lang === 'es' ? 'Salir' : 'Exit')}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Hidden file input for gallery fallback */}
             <input
                 ref={fileInputRef}
                 type="file"
