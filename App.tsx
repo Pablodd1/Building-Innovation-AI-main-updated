@@ -2348,15 +2348,17 @@ const App: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => {
-                                setCurrentUser({
+                                const guestUser = {
                                     id: 0,
                                     name: "Guest User",
                                     email: "guest@buildingapp.us",
-                                    role: "user",
+                                    role: "user" as const,
                                     tier: "Free",
                                     generations_used: 0,
-                                });
-                                setSessionToken("demo_guest_token");
+                                    session_token: "demo_guest_token",
+                                };
+                                setCurrentUser(guestUser);
+                                localStorage.setItem('constructviz_user', JSON.stringify(guestUser));
                                 setView(AppView.LANDING);
                             }}
                             className="w-full py-3.5 px-4 bg-white/90 hover:bg-white text-gray-800 rounded-xl font-bold text-sm transition-all border border-gray-300 shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
