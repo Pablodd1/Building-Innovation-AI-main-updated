@@ -219,6 +219,7 @@ const App: React.FC = () => {
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+    const [showProfileModal, setShowProfileModal] = useState(false);
     const [tiersConfig, setTiersConfig] = useState<any>(null);
     const [editableTiers, setEditableTiers] = useState<any>(null);
     const [isSavingTiers, setIsSavingTiers] = useState(false);
@@ -2422,7 +2423,7 @@ const App: React.FC = () => {
     );
 
     const renderLanding = () => (
-        <div className="min-h-screen bg-gray-100 px-4 py-6 sm:p-6 pb-28 sm:pb-28 flex flex-col relative">
+        <div className="min-h-screen min-h-[100dvh] bg-gray-100 px-3 sm:px-6 pt-[max(1rem,env(safe-area-inset-top,16px))] pb-28 sm:pb-28 flex flex-col relative overflow-x-hidden">
             <div
                 className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-50"
                 style={{
@@ -2430,84 +2431,57 @@ const App: React.FC = () => {
                         "url('https://res.cloudinary.com/dsex1a9tu/image/upload/v1768992973/APP_Horizontal_-07_ydmd3m.jpg')",
                 }}
             />
-            <header className="relative z-10 flex justify-between items-center mb-4">
-                <div className="text-gray-700 text-sm flex items-center gap-2">
-                    {currentUser && (
-                        <>
-                            {/* User Avatar */}
-                            <div className="w-8 h-8 rounded-full bg-blue-200 border-2 border-blue-300 overflow-hidden flex-shrink-0">
-                                {currentUser.photoURL ? (
-                                    <img
-                                        src={currentUser.photoURL}
-                                        alt={currentUser.name}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                            (e.target as HTMLImageElement).style.display = 'none';
-                                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                                        }}
-                                    />
-                                ) : null}
-                                {/* Initials fallback */}
-                                <div className={`w-full h-full flex items-center justify-center text-xs font-bold bg-blue-200 text-blue-800 ${currentUser.photoURL ? 'hidden' : ''}`}>
-                                    {currentUser.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                </div>
-                            </div>
-                            <span className="font-medium">{currentUser.name}</span>
-                        </>
-                    )}
-                </div>
-                <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            <header className="relative z-10 flex items-center justify-between gap-2 mb-4 w-full">
+                {/* Left: User Avatar & Name Button (Tappable on mobile to open Profile) */}
+                <button
+                    type="button"
+                    onClick={() => setShowProfileModal(true)}
+                    className="flex items-center gap-1.5 sm:gap-2 min-w-0 max-w-[130px] sm:max-w-[220px] text-gray-800 text-xs sm:text-sm font-semibold hover:opacity-80 transition-opacity bg-white/80 backdrop-blur-sm px-2.5 py-1.5 rounded-full border border-gray-200 shadow-sm shrink text-left"
+                    title={lang === "es" ? "Ver perfil y ajustes" : "View profile & settings"}
+                >
+                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 overflow-hidden">
+                        {currentUser?.photoURL ? (
+                            <img src={currentUser.photoURL} alt={currentUser.name} className="w-full h-full object-cover" />
+                        ) : (
+                            currentUser?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
+                        )}
+                    </div>
+                    <span className="truncate">{currentUser?.name || (lang === "es" ? "Invitado" : "Guest")}</span>
+                </button>
+
+                {/* Right: Actions (Language, Cart, Admin, Credit Meter, and Guaranteed-Visible Red Logout Button) */}
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     <LanguageToggle />
+                    
                     <button
                         onClick={() => setView(AppView.CART)}
-                        className="relative p-1.5 sm:p-2 text-gray-600 hover:text-gray-900"
+                        className="relative p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-white/70 hover:bg-white rounded-lg border border-gray-200 transition-colors"
+                        title={lang === "es" ? "Carrito" : "Cart"}
                     >
-                        <svg
-                            className="w-5 h-5 sm:w-6 sm:h-6"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                            />
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                         </svg>
                         {cartCount > 0 && (
-                            <span className="absolute top-0 right-0 w-4 h-4 bg-blue-500 rounded-full text-[10px] font-bold text-gray-700 flex items-center justify-center">
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center">
                                 {cartCount}
                             </span>
                         )}
                     </button>
+
                     {currentUser?.role === "admin" && (
                         <button
                             onClick={() => setView(AppView.ADMIN)}
-                            className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900"
+                            className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900 bg-white/70 hover:bg-white rounded-lg border border-gray-200 transition-colors"
+                            title="Admin"
                         >
-                            <svg
-                                className="w-5 h-5 sm:w-6 sm:h-6"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                                />
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                         </button>
                     )}
-                    {/* Credit Meter */}
+
+                    {/* Credit Meter (Desktop Only) */}
                     {currentUser && (
                         <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-full">
                             <div className="flex flex-col">
@@ -2517,16 +2491,6 @@ const App: React.FC = () => {
                                         {currentUser.generations_used} / {getTierLimit(currentUser.tier || 'Free') >= 999999 ? '∞' : getTierLimit(currentUser.tier || 'Free')}
                                     </span>
                                 </div>
-                                {currentUser.tier_expires_at && currentUser.tier?.toUpperCase() !== 'FREE' && (
-                                    <div className="text-[8px] text-amber-600 font-semibold mt-0.5">
-                                        {(() => {
-                                            const days = Math.max(0, Math.ceil((new Date(currentUser.tier_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-                                            if (days <= 3) return `${days}d left — renew now!`;
-                                            if (days <= 7) return `${days}d remaining`;
-                                            return null;
-                                        })()}
-                                    </div>
-                                )}
                                 <div className="w-24 h-1 bg-blue-200 rounded-full overflow-hidden mt-0.5">
                                     <div 
                                         className="h-full bg-blue-600 transition-all duration-500" 
@@ -2534,82 +2498,27 @@ const App: React.FC = () => {
                                     ></div>
                                 </div>
                             </div>
-                            <button 
-                                onClick={() => setShowSubscriptionModal(true)}
-                                className="p-1 hover:bg-blue-100 rounded-full text-blue-600"
-                                title="Upgrade Tier"
-                            >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                            </button>
                         </div>
                     )}
 
+                    {/* Prominent Red Logout Button - ALWAYS VISIBLE ON ALL PHONES */}
                     {currentUser && (
-                        <>
-                            <button
-                                onClick={() => {
-                                    setCurrentUser(null);
-                                    localStorage.removeItem('constructviz_user');
-                                    setView(AppView.LOGIN);
-                                }}
-                                className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-900"
-                                title={lang === "es" ? "Cerrar sesión" : "Logout"}
-                            >
-                                <svg
-                                    className="w-5 h-5 sm:w-6 sm:h-6"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                                    />
-                                </svg>
-                            </button>
-                            {/* App Store Compliance: Delete Account Button (Guideline 5.1.1(v)) */}
-                            <button
-                                onClick={async () => {
-                                    const msg = lang === "es" 
-                                        ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos de nuestros servidores. Esta acción no se puede deshacer. ¿Desea continuar?" 
-                                        : "WARNING: This will permanently delete your account and all your personal data from our servers. This action cannot be undone. Do you wish to proceed?";
-                                    
-                                    if (window.confirm(msg)) {
-                                        try {
-                                            if (currentUser?.id) {
-                                                const res = await fetch("/api/auth/delete-account", {
-                                                    method: "POST",
-                                                    headers: { "Content-Type": "application/json" },
-                                                    body: JSON.stringify({
-                                                        userId: currentUser.id,
-                                                        sessionToken: (currentUser as any).session_token
-                                                    })
-                                                });
-                                                const data = await res.json();
-                                                if (!res.ok) {
-                                                    throw new Error(data.error || "Failed to delete account on server");
-                                                }
-                                            }
-                                            localStorage.removeItem('constructviz_user');
-                                            localStorage.removeItem('constructVizCart');
-                                            alert(lang === "es" ? "Su cuenta y datos personales han sido eliminados de forma permanente." : "Your account and personal data have been permanently deleted.");
-                                            setCurrentUser(null);
-                                            setView(AppView.LOGIN);
-                                        } catch (e: any) {
-                                            alert(lang === "es" ? `Error al eliminar la cuenta: ${e.message}` : `Failed to delete account: ${e.message}`);
-                                        }
-                                    }
-                                }}
-                                className="p-1.5 sm:p-2 text-red-500 hover:text-red-700"
-                                title={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
-                            >
-                                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                            </button>
-                        </>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setCurrentUser(null);
+                                localStorage.removeItem('constructviz_user');
+                                setView(AppView.LOGIN);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 shrink-0"
+                            title={lang === "es" ? "Cerrar sesión" : "Logout"}
+                            aria-label={lang === "es" ? "Cerrar sesión" : "Logout"}
+                        >
+                            <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            <span className="text-[11px] font-bold">{lang === "es" ? "Salir" : "Logout"}</span>
+                        </button>
                     )}
                 </div>
             </header>
@@ -4628,16 +4537,26 @@ const App: React.FC = () => {
                                     {t.gallery.collection}
                                 </h2>
                             </div>
-                            <div className="flex sm:hidden items-center gap-2">
+                            <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+                                <LanguageToggle />
                                 {currentUser && (
-                                    <button onClick={() => setShowSubscriptionModal(true)}
-                                        className="flex items-center gap-1 bg-blue-50 border border-blue-200 px-2 py-1.5 rounded-full">
-                                        <span className="text-[9px] font-bold text-blue-700 uppercase">
-                                            {getTierLimit(currentUser.tier || 'Free') >= 999999 ? '∞' : getTierLimit(currentUser.tier || 'Free') - (currentUser.generations_used || 0)}
-                                        </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setCurrentUser(null);
+                                            localStorage.removeItem('constructviz_user');
+                                            setView(AppView.LOGIN);
+                                        }}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 shrink-0"
+                                        title={lang === "es" ? "Cerrar sesión" : "Logout"}
+                                        aria-label={lang === "es" ? "Cerrar sesión" : "Logout"}
+                                    >
+                                        <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                        <span className="text-[11px] font-bold">{lang === "es" ? "Salir" : "Logout"}</span>
                                     </button>
                                 )}
-                                <LanguageToggle />
                             </div>
                         </div>
                         <div className="flex gap-2 items-center w-full sm:w-auto">
@@ -4660,6 +4579,24 @@ const App: React.FC = () => {
                                     </button>
                                 )}
                                 <LanguageToggle />
+                                {currentUser && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setCurrentUser(null);
+                                            localStorage.removeItem('constructviz_user');
+                                            setView(AppView.LOGIN);
+                                        }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 shrink-0"
+                                        title={lang === "es" ? "Cerrar sesión" : "Logout"}
+                                        aria-label={lang === "es" ? "Cerrar sesión" : "Logout"}
+                                    >
+                                        <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                        <span className="text-xs font-bold">{lang === "es" ? "Salir" : "Logout"}</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -6245,6 +6182,173 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
         );
     };
 
+    const renderProfileModal = () => {
+        if (!showProfileModal) return null;
+
+        const tier = currentUser?.tier || 'Free';
+        const used = currentUser?.generations_used || 0;
+        const limit = getTierLimit(tier);
+        const remaining = Math.max(0, limit - used);
+
+        return (
+            <div 
+                className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
+                onClick={() => setShowProfileModal(false)}
+            >
+                <div 
+                    className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100 my-auto animate-scale-up"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {/* Header with gradient */}
+                    <div className="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white text-center">
+                        <button
+                            type="button"
+                            onClick={() => setShowProfileModal(false)}
+                            className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+                            aria-label="Cerrar"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        <div className="w-20 h-20 mx-auto rounded-full bg-white text-blue-600 text-2xl font-black flex items-center justify-center shadow-lg border-4 border-white/30 overflow-hidden mb-3">
+                            {currentUser?.photoURL ? (
+                                <img src={currentUser.photoURL} alt={currentUser.name} className="w-full h-full object-cover" />
+                            ) : (
+                                currentUser?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() || 'U'
+                            )}
+                        </div>
+
+                        <h3 className="text-xl font-bold truncate px-4">{currentUser?.name || (lang === 'es' ? 'Invitado' : 'Guest')}</h3>
+                        <p className="text-xs text-blue-100 font-medium truncate px-4 mt-0.5">{currentUser?.email || ''}</p>
+
+                        <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>{currentUser?.role === 'admin' ? 'Administrador' : (lang === 'es' ? 'Usuario Activo' : 'Active User')}</span>
+                        </div>
+                    </div>
+
+                    {/* Body */}
+                    <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                        {/* Subscription & Credit Meter Card */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <div>
+                                    <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                                        {lang === 'es' ? 'Plan de Suscripción' : 'Subscription Plan'}
+                                    </div>
+                                    <div className="text-lg font-black text-blue-600 uppercase tracking-wide">
+                                        {tier}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowProfileModal(false);
+                                        setShowSubscriptionModal(true);
+                                    }}
+                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-transform active:scale-95"
+                                >
+                                    {lang === 'es' ? 'Mejorar Plan' : 'Upgrade Plan'}
+                                </button>
+                            </div>
+
+                            <div className="mt-3">
+                                <div className="flex justify-between text-xs font-semibold text-gray-600 mb-1">
+                                    <span>{lang === 'es' ? 'Renders Utilizados' : 'Renders Used'}</span>
+                                    <span>{used} / {limit >= 999999 ? '∞' : limit}</span>
+                                </div>
+                                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-500"
+                                        style={{ width: `${Math.min(100, (used / (limit || 1)) * 100)}%` }}
+                                    />
+                                </div>
+                                <p className="text-[11px] text-gray-500 mt-1.5">
+                                    {limit >= 999999 
+                                        ? (lang === 'es' ? '✨ Tienes renders ilimitados activos' : '✨ You have unlimited renders active')
+                                        : `${remaining} ${lang === 'es' ? 'renders restantes este período' : 'renders remaining this period'}`}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Language Selector */}
+                        <div className="flex items-center justify-between p-3.5 bg-gray-50 rounded-2xl border border-gray-200">
+                            <div className="flex items-center gap-2.5">
+                                <span className="text-lg">🌐</span>
+                                <div>
+                                    <div className="text-xs font-bold text-gray-800">{lang === 'es' ? 'Idioma de la App' : 'App Language'}</div>
+                                    <div className="text-[11px] text-gray-500">{lang === 'es' ? 'Español / English' : 'Spanish / English'}</div>
+                                </div>
+                            </div>
+                            <LanguageToggle />
+                        </div>
+
+                        {/* BIG RED LOGOUT BUTTON */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowProfileModal(false);
+                                setCurrentUser(null);
+                                localStorage.removeItem('constructviz_user');
+                                setView(AppView.LOGIN);
+                            }}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white rounded-2xl font-bold text-sm shadow-lg shadow-red-500/20 transition-all"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            <span>{lang === 'es' ? 'Cerrar Sesión (Log Out)' : 'Sign Out / Log Out'}</span>
+                        </button>
+
+                        {/* App Store Compliance: Delete Account (Guideline 5.1.1(v)) */}
+                        <div className="pt-2 border-t border-gray-100 text-center">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const msg = lang === "es" 
+                                        ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos de nuestros servidores. Esta acción no se puede deshacer. ¿Desea continuar?" 
+                                        : "WARNING: This will permanently delete your account and all your personal data from our servers. This action cannot be undone. Do you wish to proceed?";
+                                    
+                                    if (window.confirm(msg)) {
+                                        try {
+                                            if (currentUser?.id) {
+                                                const res = await fetch("/api/auth/delete-account", {
+                                                    method: "POST",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({
+                                                        userId: currentUser.id,
+                                                        sessionToken: (currentUser as any).session_token
+                                                    })
+                                                });
+                                                const data = await res.json();
+                                                if (!res.ok) {
+                                                    throw new Error(data.error || "Failed to delete account on server");
+                                                }
+                                            }
+                                            localStorage.removeItem('constructviz_user');
+                                            localStorage.removeItem('constructVizCart');
+                                            alert(lang === "es" ? "Su cuenta y datos personales han sido eliminados de forma permanente." : "Your account and personal data have been permanently deleted.");
+                                            setShowProfileModal(false);
+                                            setCurrentUser(null);
+                                            setView(AppView.LOGIN);
+                                        } catch (e: any) {
+                                            alert(lang === "es" ? `Error al eliminar la cuenta: ${e.message}` : `Failed to delete account: ${e.message}`);
+                                        }
+                                    }
+                                }}
+                                className="text-xs text-red-500 hover:text-red-700 underline underline-offset-2 transition-colors py-1"
+                            >
+                                {lang === 'es' ? 'Eliminar mi cuenta de forma permanente' : 'Delete my account permanently'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700 overflow-x-hidden w-full max-w-full">
             {/* Floating Toast Notification */}
@@ -6340,70 +6444,76 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
             {view === AppView.CART && renderCart()}
             {showSubscriptionModal && renderSubscriptionModal()}
             {showUserDetailModal && renderUserDetailModal()}
+            {renderProfileModal()}
             {renderProbeModal()}
 
             {/* ── Bottom Navigation Bar ── */}
             {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART, AppView.CAMERA].includes(view) && (
                 <nav className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100/95 backdrop-blur-md border-t border-gray-300 safe-area-bottom">
-                    <div className="flex justify-around items-center h-[72px] max-w-lg mx-auto px-2 pb-[env(safe-area-inset-bottom,8px)]">
+                    <div className="flex justify-around items-center h-[72px] max-w-lg mx-auto px-1 sm:px-2 pb-[env(safe-area-inset-bottom,8px)]">
                         {/* Home */}
                         <button
+                            type="button"
                             onClick={() => setView(AppView.LANDING)}
-                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.LANDING ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1 rounded-xl transition-colors min-w-[54px] sm:min-w-[64px] ${view === AppView.LANDING ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                         >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.LANDING ? 2.5 : 1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                             </svg>
-                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Inicio' : 'Home'}</span>
+                            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === 'es' ? 'Inicio' : 'Home'}</span>
                         </button>
 
                         {/* Gallery */}
                         <button
+                            type="button"
                             onClick={() => setView(AppView.GALLERY)}
-                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.GALLERY ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1 rounded-xl transition-colors min-w-[54px] sm:min-w-[64px] ${view === AppView.GALLERY ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                         >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.GALLERY ? 2.5 : 1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Catálogo' : 'Catalog'}</span>
+                            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === 'es' ? 'Catálogo' : 'Catalog'}</span>
                         </button>
 
                         {/* Camera */}
                         <button
+                            type="button"
                             onClick={() => {
                                 setOriginalImage(null);
                                 setGenerationState(prev => ({ ...prev, resultImage: null, error: null, analysis: null }));
                                 setView(AppView.CAMERA);
                             }}
-                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.CAMERA ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1 rounded-xl transition-colors min-w-[54px] sm:min-w-[64px] ${view === AppView.CAMERA ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                         >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CAMERA ? 2.5 : 1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CAMERA ? 2.5 : 1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
-                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Cámara' : 'Camera'}</span>
+                            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === 'es' ? 'Cámara' : 'Camera'}</span>
                         </button>
 
                         {/* Admin (only if admin) */}
                         {currentUser?.role === 'admin' && (
                             <button
+                                type="button"
                                 onClick={() => setView(AppView.ADMIN)}
-                                className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] ${view === AppView.ADMIN ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                className={`flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1 rounded-xl transition-colors min-w-[54px] sm:min-w-[64px] ${view === AppView.ADMIN ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                             >
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.ADMIN ? 2.5 : 1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.ADMIN ? 2.5 : 1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                 </svg>
-                                <span className="text-[11px] font-semibold">{lang === 'es' ? 'Admin' : 'Admin'}</span>
+                                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === 'es' ? 'Admin' : 'Admin'}</span>
                             </button>
                         )}
 
                         {/* Cart */}
                         <button
+                            type="button"
                             onClick={() => setView(AppView.CART)}
-                            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[64px] relative ${view === AppView.CART ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1 rounded-xl transition-colors min-w-[54px] sm:min-w-[64px] relative ${view === AppView.CART ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                         >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={view === AppView.CART ? 2.5 : 1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                             </svg>
                             {cartCount > 0 && (
@@ -6411,7 +6521,26 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                                     {cartCount}
                                 </span>
                             )}
-                            <span className="text-[11px] font-semibold">{lang === 'es' ? 'Cotizar' : 'Quote'}</span>
+                            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === 'es' ? 'Cotizar' : 'Quote'}</span>
+                        </button>
+
+                        {/* Profile / Account Modal */}
+                        <button
+                            type="button"
+                            onClick={() => setShowProfileModal(true)}
+                            className={`flex flex-col items-center gap-0.5 px-2 sm:px-3 py-1 rounded-xl transition-colors min-w-[54px] sm:min-w-[64px] ${showProfileModal ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            title={lang === 'es' ? 'Mi Perfil' : 'My Profile'}
+                        >
+                            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-slate-200 border border-gray-300 flex items-center justify-center overflow-hidden text-gray-700 font-bold text-[9px]">
+                                {currentUser?.photoURL ? (
+                                    <img src={currentUser.photoURL} alt={currentUser.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                )}
+                            </div>
+                            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === 'es' ? 'Perfil' : 'Profile'}</span>
                         </button>
                     </div>
                 </nav>

@@ -15,9 +15,11 @@ data/config.json
 data/*.json
 !data/.gitkeep
 
-# Android signing
+# Android signing & binaries
 *.keystore
 *.jks
+*.aab
+*.apk
 android/keystore.properties
 
 # Apple iOS signing & credentials
