@@ -2231,12 +2231,7 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
         // tool here — it can tile a texture but can't realistically relight,
         // preserve perspective, or handle complex wall shapes. OpenAI handles
         // all of that natively when given a mask.
-        if (mode === "inpaint" && config.OPENAI_API_KEY) {
-            if (!analysis?.surfaces || analysis.surfaces.length === 0) {
-                return res.status(400).json({
-                    error: "Room analysis is required for Realistic Render. Wait for analysis to complete, then try again."
-                });
-            }
+        if (mode === "inpaint" && config.OPENAI_API_KEY && analysis?.surfaces?.length > 0) {
             try {
                 const result = await generateOverlay({
                     originalImage: cleanedImage,
@@ -2274,7 +2269,8 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
                 });
                 if (userId) await incrementQuota(userId);
                 return res.json({ success: true, image: result.image, provider: result.provider, model: result.model, mode: "inpaint" });
-            } catch (error: any) {
+            } catch (inpaintError: any) {
+                console.warn("[AI] Inpaint render encountered an error, falling back to sharp compositor:", inpaintError?.message);
                 pushGenerationLog({
                     timestamp: new Date().toISOString(),
                     userId,
@@ -2283,11 +2279,10 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
                     category: material?.category,
                     success: false,
                     durationMs: 0,
-                    model: "openai-inpaint-error",
-                    error: getErrorMessage(error),
+                    model: "openai-inpaint-fallback",
+                    error: getErrorMessage(inpaintError),
                 });
-                console.error("Inpaint render failed:", error);
-                return res.status(500).json({ error: getErrorMessage(error) });
+                // Seamlessly fall through to deterministic Sharp compositor below
             }
         }
 

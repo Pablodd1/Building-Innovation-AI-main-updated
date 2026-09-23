@@ -124409,6 +124409,63 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: "Internal server error during authorization" });
     }
   };
+  const optionalAuth = async (req, res, next) => {
+    try {
+      let token = "";
+      if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+        token = req.headers.authorization.substring(7);
+      } else if (req.query.token) {
+        token = req.query.token;
+      }
+      if (!token || token === "demo_guest_token") {
+        req.user = {
+          id: 0,
+          name: "Guest User",
+          email: "guest@buildingapp.us",
+          role: "user",
+          tier: "Free",
+          generations_used: 0
+        };
+        return next();
+      }
+      let user = null;
+      try {
+        const result = await query("SELECT id, name, email, phone, address, role, tier, generations_used, tier_expires_at, session_token FROM users WHERE session_token = $1", [token]);
+        if (result.rows.length > 0) {
+          user = result.rows[0];
+        }
+      } catch (dbErr) {
+      }
+      if (!user) {
+        const users = await getUsers();
+        user = users.find((u) => u.session_token === token);
+      }
+      if (!user) {
+        req.user = {
+          id: 0,
+          name: "Guest User",
+          email: "guest@buildingapp.us",
+          role: "user",
+          tier: "Free",
+          generations_used: 0
+        };
+        return next();
+      }
+      req.user = user;
+      next();
+    } catch (error) {
+      console.error("optionalAuth middleware error:", error);
+      req.user = {
+        id: 0,
+        name: "Guest User",
+        email: "guest@buildingapp.us",
+        role: "user",
+        tier: "Free",
+        generations_used: 0
+      };
+      next();
+    }
+  };
   const requireAdmin = async (req, res, next) => {
     try {
       let token = "";
@@ -125237,7 +125294,7 @@ Auto-downgraded to Free.`
     const config = loadConfig();
     return config.GEMINI_API_KEY;
   };
-  app.post("/api/ai/generate-overlay", requireAuth, async (req, res) => {
+  app.post("/api/ai/generate-overlay", optionalAuth, async (req, res) => {
     try {
       const authenticatedUserId = req.user?.id;
       const authenticatedUserRole = req.user?.role;
@@ -125273,12 +125330,7 @@ Auto-downgraded to Free.`
       }
       const config = loadConfig();
       const provider = userProvider || config.AI_PROVIDER || "gemini";
-      if (mode === "inpaint" && config.OPENAI_API_KEY) {
-        if (!analysis?.surfaces || analysis.surfaces.length === 0) {
-          return res.status(400).json({
-            error: "Room analysis is required for Realistic Render. Wait for analysis to complete, then try again."
-          });
-        }
+      if (mode === "inpaint" && config.OPENAI_API_KEY && analysis?.surfaces?.length > 0) {
         try {
           const result2 = await generateOverlay({
             originalImage: cleanedImage,
@@ -125315,7 +125367,8 @@ Auto-downgraded to Free.`
           });
           if (userId) await incrementQuota(userId);
           return res.json({ success: true, image: result2.image, provider: result2.provider, model: result2.model, mode: "inpaint" });
-        } catch (error) {
+        } catch (inpaintError) {
+          console.warn("[AI] Inpaint render encountered an error, falling back to sharp compositor:", inpaintError?.message);
           pushGenerationLog({
             timestamp: (/* @__PURE__ */ new Date()).toISOString(),
             userId,
@@ -125324,11 +125377,9 @@ Auto-downgraded to Free.`
             category: material?.category,
             success: false,
             durationMs: 0,
-            model: "openai-inpaint-error",
-            error: getErrorMessage(error)
+            model: "openai-inpaint-fallback",
+            error: getErrorMessage(inpaintError)
           });
-          console.error("Inpaint render failed:", error);
-          return res.status(500).json({ error: getErrorMessage(error) });
         }
       }
       const compositeResult = await compositeProductOntoPhoto({
@@ -125422,7 +125473,7 @@ Auto-downgraded to Free.`
       res.status(500).json({ error: getErrorMessage(error) });
     }
   });
-  app.post("/api/ai/analyze-room", requireAuth, async (req, res) => {
+  app.post("/api/ai/analyze-room", optionalAuth, async (req, res) => {
     try {
       const authenticatedUserId = req.user?.id;
       const { image, lang, provider: userProvider } = req.body;
@@ -126735,6 +126786,9 @@ Auto-downgraded to Free.`
     }
   });
   async function checkQuota(userId) {
+    if (!userId || userId === 0) {
+      return { allowed: true, limit: 100, used: 0 };
+    }
     try {
       const result = await query("SELECT id, email, tier, generations_used, tier_expires_at FROM users WHERE id = $1", [userId]);
       if (result.rows.length === 0) return { allowed: false, error: "User not found" };
@@ -126774,6 +126828,9 @@ Auto-downgraded to Free.`
     }
   }
   async function incrementQuota(userId) {
+    if (!userId || userId === 0) {
+      return;
+    }
     try {
       await query("UPDATE users SET generations_used = generations_used + 1 WHERE id = $1", [userId]);
     } catch (e2) {
