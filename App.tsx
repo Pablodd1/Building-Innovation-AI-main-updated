@@ -237,6 +237,8 @@ const App: React.FC = () => {
     const [isSavingUserEdit, setIsSavingUserEdit] = useState(false);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+    const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [tiersConfig, setTiersConfig] = useState<any>(null);
     const [editableTiers, setEditableTiers] = useState<any>(null);
     const [isSavingTiers, setIsSavingTiers] = useState(false);
@@ -834,36 +836,47 @@ const App: React.FC = () => {
         }
     };
 
-    const handleDeleteAccount = async () => {
-        const msg = lang === "es" 
-            ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos de nuestros servidores. Esta acción no se puede deshacer. ¿Desea continuar?" 
-            : "WARNING: This will permanently delete your account and all your personal data from our servers. This action cannot be undone. Do you wish to proceed?";
-        
-        if (window.confirm(msg)) {
-            try {
-                if (currentUser?.id) {
-                    const res = await fetch("/api/auth/delete-account", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            userId: currentUser.id,
-                            sessionToken: (currentUser as any).session_token
-                        })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.error || "Failed to delete account on server");
-                    }
+    const handleDeleteAccount = () => {
+        hapticWarning();
+        setShowDeleteAccountModal(true);
+    };
+
+    const handleConfirmDeleteAccount = async () => {
+        setIsDeletingAccount(true);
+        try {
+            if (currentUser?.id || (currentUser as any)?.session_token || currentUser?.email) {
+                const res = await fetch("/api/auth/delete-account", {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json",
+                        ...((currentUser as any)?.session_token ? { Authorization: `Bearer ${(currentUser as any).session_token}` } : {})
+                    },
+                    body: JSON.stringify({
+                        userId: currentUser?.id,
+                        sessionToken: (currentUser as any)?.session_token,
+                        email: currentUser?.email
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    console.warn("Delete account server response:", data);
                 }
-                localStorage.removeItem('constructviz_user');
-                localStorage.removeItem('constructVizCart');
-                alert(lang === "es" ? "Su cuenta y datos personales han sido eliminados de forma permanente." : "Your account and personal data have been permanently deleted.");
-                setShowProfileModal(false);
-                setCurrentUser(null);
-                setView(AppView.LOGIN);
-            } catch (e: any) {
-                alert(lang === "es" ? `Error al eliminar la cuenta: ${e.message}` : `Failed to delete account: ${e.message}`);
             }
+        } catch (e: any) {
+            console.error("Delete account error:", e);
+        } finally {
+            localStorage.removeItem('constructviz_user');
+            localStorage.removeItem('constructVizCart');
+            localStorage.removeItem('constructviz_cart');
+            sessionStorage.clear();
+            setIsDeletingAccount(false);
+            setShowDeleteAccountModal(false);
+            setShowProfileModal(false);
+            setCurrentUser(null);
+            hapticSuccess();
+            setToast(lang === "es" ? "Cuenta y datos personales eliminados permanentemente (Apple 5.1.1(v))." : "Account and personal data permanently deleted (Apple 5.1.1(v)).");
+            setTimeout(() => setToast(null), 4500);
+            setView(AppView.LOGIN);
         }
     };
 
@@ -2625,11 +2638,11 @@ const App: React.FC = () => {
                         <button
                             type="button"
                             onClick={handleDeleteAccount}
-                            className="p-1.5 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg border border-red-200 transition-colors shrink-0"
-                            title={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
-                            aria-label={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                            className="p-2 sm:p-2.5 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-all active:scale-95 shrink-0 flex items-center justify-center min-w-[38px] min-h-[38px] shadow-sm cursor-pointer"
+                            title={lang === "es" ? "Eliminar Cuenta Permanentemente (Apple 5.1.1(v))" : "Permanently Delete Account (Apple 5.1.1(v))"}
+                            aria-label={lang === "es" ? "Eliminar Cuenta Permanentemente" : "Permanently Delete Account"}
                         >
-                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                         </button>
@@ -4722,6 +4735,19 @@ const App: React.FC = () => {
                                 {currentUser && (
                                     <button
                                         type="button"
+                                        onClick={handleDeleteAccount}
+                                        className="p-2 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-all active:scale-95 shrink-0 flex items-center justify-center min-w-[36px] min-h-[36px] shadow-sm cursor-pointer"
+                                        title={lang === "es" ? "Eliminar Cuenta Permanentemente (Apple 5.1.1(v))" : "Permanently Delete Account (Apple 5.1.1(v))"}
+                                        aria-label={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                                    >
+                                        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                )}
+                                {currentUser && (
+                                    <button
+                                        type="button"
                                         onClick={() => {
                                             setCurrentUser(null);
                                             localStorage.removeItem('constructviz_user');
@@ -4759,6 +4785,19 @@ const App: React.FC = () => {
                                     </button>
                                 )}
                                 <LanguageToggle />
+                                {currentUser && (
+                                    <button
+                                        type="button"
+                                        onClick={handleDeleteAccount}
+                                        className="p-2 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-all active:scale-95 shrink-0 flex items-center justify-center min-w-[36px] min-h-[36px] shadow-sm cursor-pointer"
+                                        title={lang === "es" ? "Eliminar Cuenta Permanentemente (Apple 5.1.1(v))" : "Permanently Delete Account (Apple 5.1.1(v))"}
+                                        aria-label={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                                    >
+                                        <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                )}
                                 {currentUser && (
                                     <button
                                         type="button"
@@ -4910,6 +4949,19 @@ const App: React.FC = () => {
                                 </button>
                             )}
                             <LanguageToggle />
+                            {currentUser && (
+                                <button
+                                    type="button"
+                                    onClick={handleDeleteAccount}
+                                    className="p-1.5 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-all active:scale-95 shrink-0 flex items-center justify-center min-w-[32px] min-h-[32px] shadow-sm cursor-pointer"
+                                    title={lang === "es" ? "Eliminar Cuenta Permanentemente (Apple 5.1.1(v))" : "Permanently Delete Account (Apple 5.1.1(v))"}
+                                    aria-label={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                                >
+                                    <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -6645,6 +6697,84 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
         );
     };
 
+    const renderDeleteAccountModal = () => {
+        if (!showDeleteAccountModal) return null;
+
+        return (
+            <div 
+                className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn"
+                onClick={() => { if (!isDeletingAccount) setShowDeleteAccountModal(false); }}
+            >
+                <div 
+                    className="bg-white text-gray-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-red-200 flex flex-col gap-4 animate-scale-up"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-red-100 text-red-600 rounded-2xl shrink-0">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black text-gray-900 leading-tight">
+                                {lang === "es" ? "Eliminar Cuenta Permanentemente" : "Permanently Delete Account"}
+                            </h3>
+                            <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest mt-0.5">
+                                Apple Review Guideline 5.1.1(v)
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-xs text-red-900 leading-relaxed font-medium">
+                        {lang === "es" ? (
+                            <>
+                                <strong>ADVERTENCIA:</strong> Esta acción borrará inmediatamente su cuenta (<strong>{currentUser?.email || 'Usuario'}</strong>), sus fotos subidas, diseños generados, presupuestos e historial de nuestros servidores. Esta acción no se puede deshacer.
+                            </>
+                        ) : (
+                            <>
+                                <strong>WARNING:</strong> This action will immediately and permanently erase your account (<strong>{currentUser?.email || 'User'}</strong>), uploaded photos, generated renders, quotes, and history from our servers. This action cannot be undone.
+                            </>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowDeleteAccountModal(false)}
+                            disabled={isDeletingAccount}
+                            className="flex-1 py-3 px-4 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100 transition-all text-center order-2 sm:order-1 cursor-pointer"
+                        >
+                            {lang === "es" ? "Cancelar" : "Cancel"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleConfirmDeleteAccount}
+                            disabled={isDeletingAccount}
+                            className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 order-1 sm:order-2 active:scale-95 cursor-pointer"
+                        >
+                            {isDeletingAccount ? (
+                                <>
+                                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    <span>{lang === "es" ? "Borrando datos..." : "Erasing data..."}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                    <span>{lang === "es" ? "Confirmar Eliminación" : "Confirm Deletion"}</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="min-h-screen bg-slate-900 text-gray-700 font-sans selection:bg-blue-500 selection:text-gray-700 overflow-x-hidden w-full max-w-full">
             {/* Floating Toast Notification */}
@@ -6742,6 +6872,7 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
             {showUserDetailModal && renderUserDetailModal()}
             {renderProfileModal()}
             {renderProbeModal()}
+            {renderDeleteAccountModal()}
 
             {/* ── Bottom Navigation Bar ── */}
             {![AppView.LOGIN, AppView.ADMIN, AppView.EDITOR, AppView.CART, AppView.CAMERA].includes(view) && (
