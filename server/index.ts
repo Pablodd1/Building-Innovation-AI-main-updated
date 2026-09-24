@@ -3866,6 +3866,155 @@ app.delete('/api/users/:id/delete-account', requireAuth, async (req: Request, re
     }
 });
 
+// Admin: Delete / Erase User permanently
+app.delete('/api/admin/users/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id as string);
+        const requestingAdmin = (req as any).user;
+
+        // Prevent admin from accidentally deleting their own account via admin user list
+        if (requestingAdmin && String(requestingAdmin.id) === String(id)) {
+            return res.status(400).json({ error: 'Cannot delete your own active admin account from the user manager' });
+        }
+
+        let userEmail = 'unknown';
+        try {
+            const uResult = await query('SELECT email, name FROM users WHERE id = $1', [userId]);
+            if (uResult.rows.length > 0) userEmail = uResult.rows[0].email;
+        } catch (e) {}
+        if (userEmail === 'unknown') {
+            try {
+                const fallbackUsers = await getUsers();
+                const foundU = fallbackUsers.find((u: any) => String(u.id) === String(id));
+                if (foundU) userEmail = foundU.email;
+            } catch (e) {}
+        }
+
+        // 1. Delete from PostgreSQL database
+        try {
+            await query('DELETE FROM user_memories WHERE user_id = $1', [userId]).catch(() => {});
+            await query('DELETE FROM generation_history WHERE user_id = $1', [userId]).catch(() => {});
+            await query('DELETE FROM users WHERE id = $1', [userId]);
+        } catch (dbErr: any) {
+            console.warn('DB delete user failed, using JSON fallback:', dbErr.message);
+        }
+
+        // 2. Delete from JSON fallback
+        try {
+            if (fs.existsSync(JSON_USERS_PATH)) {
+                let users = await getUsers();
+                users = users.filter((u: any) => String(u.id) !== String(id));
+                saveToJSON(JSON_USERS_PATH, users);
+            }
+        } catch (jErr: any) {
+            console.warn('JSON store delete failed:', jErr.message);
+        }
+
+        try {
+            if (fs.existsSync(JSON_MEMORIES_PATH)) {
+                const data = JSON.parse(fs.readFileSync(JSON_MEMORIES_PATH, 'utf8') || '{}');
+                if (data[id as string]) {
+                    delete data[id as string];
+                    fs.writeFileSync(JSON_MEMORIES_PATH, JSON.stringify(data, null, 2), 'utf8');
+                }
+            }
+        } catch (_) {}
+
+        await logAdminAction(
+            req, 
+            requestingAdmin, 
+            'DELETE_USER', 
+            `Admin deleted user ID ${id} (${userEmail})`
+        );
+
+        res.json({ success: true, message: `User ${userEmail} permanently deleted.` });
+    } catch (e: any) {
+        console.error('Error in admin delete user:', e);
+        res.status(500).json({ error: e.message || 'Internal server error' });
+    }
+});
+
+// Admin: Update user details (Name, Email, Role, Tier, Expiration Date, Generations)
+app.patch('/api/admin/users/:id', requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id as string);
+        const { name, email, role, tier, tier_expires_at, generations_used } = req.body;
+        const requestingAdmin = (req as any).user;
+
+        let userEmail = email || 'unknown';
+        let updatedUser: any = null;
+
+        // Try updating in PostgreSQL
+        try {
+            const result = await query(
+                `UPDATE users 
+                 SET name = COALESCE($1, name),
+                     email = COALESCE($2, email),
+                     role = COALESCE($3, role),
+                     tier = COALESCE($4, tier),
+                     tier_expires_at = $5,
+                     generations_used = COALESCE($6, generations_used),
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = $7
+                 RETURNING id, name, email, role, tier, generations_used, tier_expires_at, created_at`,
+                [
+                    name ?? null,
+                    email ?? null,
+                    role ?? null,
+                    tier ?? null,
+                    tier_expires_at !== undefined ? (tier_expires_at || null) : null,
+                    typeof generations_used === 'number' ? generations_used : null,
+                    userId
+                ]
+            );
+            if (result.rows.length > 0) {
+                updatedUser = result.rows[0];
+            }
+        } catch (dbErr: any) {
+            console.warn('DB update user failed, falling back to JSON:', dbErr.message);
+        }
+
+        // Also update JSON fallback store
+        try {
+            const users = await getUsers();
+            const idx = users.findIndex((u: any) => String(u.id) === String(id));
+            if (idx >= 0) {
+                if (name !== undefined) users[idx].name = name;
+                if (email !== undefined) users[idx].email = email;
+                if (role !== undefined) users[idx].role = role;
+                if (tier !== undefined) users[idx].tier = tier;
+                if (tier_expires_at !== undefined) users[idx].tier_expires_at = tier_expires_at;
+                if (generations_used !== undefined) users[idx].generations_used = generations_used;
+                users[idx].updated_at = new Date().toISOString();
+                saveToJSON(JSON_USERS_PATH, users);
+                if (!updatedUser) {
+                    updatedUser = users[idx];
+                }
+            }
+        } catch (jErr: any) {
+            console.warn('JSON store update failed:', jErr.message);
+        }
+
+        if (!updatedUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        await logAdminAction(
+            req, 
+            requestingAdmin, 
+            'UPDATE_USER_DETAILS', 
+            `Admin updated user ID ${id} (${updatedUser.email}): Name=${updatedUser.name}, Role=${updatedUser.role}, Tier=${updatedUser.tier}, Expires=${updatedUser.tier_expires_at || 'Never'}`
+        );
+
+        res.json({ success: true, user: updatedUser });
+    } catch (e: any) {
+        console.error('Error updating user details:', e);
+        res.status(500).json({ error: e.message || 'Internal server error' });
+    }
+});
+
 // Create Admin User (Admin only)
 app.post('/api/admin/users/create-admin', requireAdmin, async (req: Request, res: Response) => {
     try {

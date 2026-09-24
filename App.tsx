@@ -217,7 +217,24 @@ const App: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState("");
 
     const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [adminUserSearch, setAdminUserSearch] = useState("");
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    const [userEditForm, setUserEditForm] = useState<{
+        name: string;
+        email: string;
+        role: string;
+        tier: string;
+        tier_expires_at: string;
+        generations_used: number;
+    }>({
+        name: "",
+        email: "",
+        role: "customer",
+        tier: "FREE",
+        tier_expires_at: "",
+        generations_used: 0,
+    });
+    const [isSavingUserEdit, setIsSavingUserEdit] = useState(false);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
     const [tiersConfig, setTiersConfig] = useState<any>(null);
@@ -745,6 +762,108 @@ const App: React.FC = () => {
             }
         } catch (e) {
             console.error("Failed to update generations", e);
+        }
+    };
+
+    const handleDeleteUser = async (userId: number, userName?: string, userEmail?: string) => {
+        const confirmMsg = lang === "es"
+            ? `¿Está seguro de que desea eliminar permanentemente al usuario "${userName || userId}" (${userEmail || ''})?\n\nEsta acción borrará todos sus datos, memorias e historial de diseño de forma permanente.`
+            : `Are you sure you want to permanently delete user "${userName || userId}" (${userEmail || ''})?\n\nThis will permanently erase all their data, memories, and design history.`;
+        
+        if (!window.confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch(`/api/admin/users/${userId}`, {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {})
+                }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setAllUsers(prev => prev.filter(u => u.id !== userId));
+                if (selectedUserDetail && selectedUserDetail.id === userId) {
+                    setShowUserDetailModal(false);
+                    setSelectedUserDetail(null);
+                }
+                setToast(lang === "es" ? "Usuario eliminado exitosamente" : "User permanently deleted");
+                setTimeout(() => setToast(null), 3500);
+            } else {
+                alert(data.error || "Failed to delete user");
+            }
+        } catch (e: any) {
+            console.error("Delete user error:", e);
+            alert("Error deleting user: " + (e.message || "Network error"));
+        }
+    };
+
+    const handleSaveUserDetails = async (userId: number) => {
+        setIsSavingUserEdit(true);
+        try {
+            const res = await fetch(`/api/admin/users/${userId}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {})
+                },
+                body: JSON.stringify({
+                    name: userEditForm.name.trim(),
+                    email: userEditForm.email.trim(),
+                    role: userEditForm.role,
+                    tier: userEditForm.tier,
+                    tier_expires_at: userEditForm.tier_expires_at ? new Date(userEditForm.tier_expires_at).toISOString() : null,
+                    generations_used: Number(userEditForm.generations_used) || 0,
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const updated = data.user;
+                setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updated } : u));
+                setSelectedUserDetail(prev => prev && prev.id === userId ? { ...prev, ...updated } : prev);
+                setToast(lang === "es" ? "Usuario actualizado exitosamente" : "User details updated successfully");
+                setTimeout(() => setToast(null), 3500);
+            } else {
+                alert(data.error || "Failed to update user details");
+            }
+        } catch (e: any) {
+            console.error("Update user details error:", e);
+            alert("Error saving user details: " + (e.message || "Network error"));
+        } finally {
+            setIsSavingUserEdit(false);
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        const msg = lang === "es" 
+            ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos de nuestros servidores. Esta acción no se puede deshacer. ¿Desea continuar?" 
+            : "WARNING: This will permanently delete your account and all your personal data from our servers. This action cannot be undone. Do you wish to proceed?";
+        
+        if (window.confirm(msg)) {
+            try {
+                if (currentUser?.id) {
+                    const res = await fetch("/api/auth/delete-account", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            userId: currentUser.id,
+                            sessionToken: (currentUser as any).session_token
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.error || "Failed to delete account on server");
+                    }
+                }
+                localStorage.removeItem('constructviz_user');
+                localStorage.removeItem('constructVizCart');
+                alert(lang === "es" ? "Su cuenta y datos personales han sido eliminados de forma permanente." : "Your account and personal data have been permanently deleted.");
+                setShowProfileModal(false);
+                setCurrentUser(null);
+                setView(AppView.LOGIN);
+            } catch (e: any) {
+                alert(lang === "es" ? `Error al eliminar la cuenta: ${e.message}` : `Failed to delete account: ${e.message}`);
+            }
         }
     };
 
@@ -2501,6 +2620,21 @@ const App: React.FC = () => {
                         </div>
                     )}
 
+                    {/* App Store Compliance: Delete Account Trash Icon (Guideline 5.1.1(v)) */}
+                    {currentUser && (
+                        <button
+                            type="button"
+                            onClick={handleDeleteAccount}
+                            className="p-1.5 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg border border-red-200 transition-colors shrink-0"
+                            title={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                            aria-label={lang === "es" ? "Eliminar Cuenta" : "Delete Account"}
+                        >
+                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    )}
+
                     {/* Prominent Red Logout Button - ALWAYS VISIBLE ON ALL PHONES */}
                     {currentUser && (
                         <button
@@ -3923,19 +4057,45 @@ const App: React.FC = () => {
                             </p>
                         </div>
 
+                        {/* Search and User List Header */}
+                        <div className="bg-white p-4 rounded-xl border border-gray-300 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-3">
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <span className="text-gray-400">🔍</span>
+                                <input
+                                    type="text"
+                                    placeholder={lang === "es" ? "Buscar usuario por nombre, correo o ID..." : "Search user by name, email, or ID..."}
+                                    value={adminUserSearch}
+                                    onChange={(e) => setAdminUserSearch(e.target.value)}
+                                    className="bg-gray-50 border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-700 w-full sm:w-80 outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div className="text-xs font-semibold text-gray-500">
+                                {lang === "es" ? `Total: ${allUsers.length} usuarios` : `Total: ${allUsers.length} users`}
+                            </div>
+                        </div>
+
                         <div className="bg-white rounded-xl border border-gray-300 overflow-hidden shadow-sm">
                             <table className="w-full text-left text-sm text-gray-600">
                                 <thead className="bg-gray-50 text-gray-700 uppercase text-[10px] font-bold border-b border-gray-200">
                                     <tr>
                                         <th className="p-4">User</th>
                                         <th className="p-4">Email / Role</th>
-                                        <th className="p-4">Current Tier</th>
+                                        <th className="p-4">Current Tier & Expiry</th>
                                         <th className="p-4">Usage</th>
                                         <th className="p-4 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {allUsers.map((u) => (
+                                    {allUsers
+                                        .filter(u => {
+                                            if (!adminUserSearch.trim()) return true;
+                                            const q = adminUserSearch.toLowerCase();
+                                            return (u.name || '').toLowerCase().includes(q) ||
+                                                   (u.email || '').toLowerCase().includes(q) ||
+                                                   String(u.id).includes(q) ||
+                                                   (u.tier || '').toLowerCase().includes(q);
+                                        })
+                                        .map((u) => (
                                         <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="p-4">
                                                 <div className="font-bold text-gray-800">{u.name}</div>
@@ -3948,12 +4108,23 @@ const App: React.FC = () => {
                                                 </span>
                                             </td>
                                             <td className="p-4">
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${
-                                                    u.tier === 'Enterprise' ? 'bg-purple-100 text-purple-700' : 
-                                                    u.tier === 'Pro' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-                                                }`}>
-                                                    {u.tier}
-                                                </span>
+                                                <div className="flex flex-col gap-1">
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold w-fit ${
+                                                        u.tier === 'Enterprise' || u.tier === 'LUXURY' ? 'bg-purple-100 text-purple-700' : 
+                                                        u.tier === 'Pro' || u.tier === 'PREMIUM' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                                                    }`}>
+                                                        {u.tier}
+                                                    </span>
+                                                    {u.tier_expires_at ? (
+                                                        <span className="text-[9px] text-amber-700 font-medium">
+                                                            📅 {new Date(u.tier_expires_at).toLocaleDateString()}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[9px] text-gray-400">
+                                                            {lang === "es" ? "Sin expiración" : "No expiry"}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="p-4">
                                                 <div className="w-24 bg-gray-200 rounded-full h-1.5 mb-1">
@@ -3969,9 +4140,18 @@ const App: React.FC = () => {
                                                 <button
                                                     onClick={() => handleViewUserDetail(u.id)}
                                                     className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-600 transition-colors flex items-center justify-center border border-blue-200 text-xs font-bold shadow-sm"
-                                                    title="Manage User & View Analytics"
+                                                    title={lang === "es" ? "Administrar usuario, editar datos y ver analítica" : "Manage User, Edit Details & View Analytics"}
                                                 >
-                                                    Manage User
+                                                    {lang === "es" ? "Editar / Ver" : "Edit / Manage"}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteUser(u.id, u.name, u.email)}
+                                                    className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg text-red-600 transition-colors flex items-center justify-center border border-red-200 text-xs font-bold shadow-sm"
+                                                    title={lang === "es" ? "Eliminar usuario permanentemente" : "Delete user permanently"}
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                    </svg>
                                                 </button>
                                             </td>
                                         </tr>
@@ -5793,10 +5973,22 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
     const handleViewUserDetail = async (userId: number) => {
         setIsLoadingUserDetail(true);
         try {
-            const res = await fetch(`/api/admin/users/${userId}/detail`);
+            const res = await fetch(`/api/admin/users/${userId}/detail`, {
+                headers: {
+                    ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {})
+                }
+            });
             if (res.ok) {
                 const data = await res.json();
                 setSelectedUserDetail(data);
+                setUserEditForm({
+                    name: data.name || "",
+                    email: data.email || "",
+                    role: data.role || "customer",
+                    tier: (data.tier || "FREE").toUpperCase(),
+                    tier_expires_at: data.tier_expires_at ? new Date(data.tier_expires_at).toISOString().split('T')[0] : "",
+                    generations_used: data.generations_used || 0,
+                });
                 setShowUserDetailModal(true);
             } else {
                 alert("Failed to load user detail");
@@ -5822,14 +6014,14 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
 
         return (
             <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fadeIn">
-                <div className="bg-white text-black rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl flex flex-col h-full max-h-[85vh]">
+                <div className="bg-white text-black rounded-3xl max-w-5xl w-full overflow-hidden shadow-2xl flex flex-col h-full max-h-[90vh]">
                     {/* Header */}
                     <div className="flex justify-between items-start bg-gray-50 border-b border-gray-150 p-6">
                         <div>
                             <div className="flex items-center gap-2">
                                 <h2 className="text-2xl font-black text-gray-800 uppercase tracking-tighter">{u.name}</h2>
-                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${u.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{u.role}</span>
-                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700`}>{u.tier}</span>
+                                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${userEditForm.role === 'admin' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{userEditForm.role}</span>
+                                <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700`}>{userEditForm.tier}</span>
                             </div>
                             <p className="text-gray-500 text-xs mt-1">User ID: {u.id} • Registered: {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}</p>
                         </div>
@@ -5843,9 +6035,9 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                         {/* Profile & Live Workspace State */}
                         <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col gap-4">
                             <div>
-                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Contact Details</h3>
+                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Contact & Identification</h3>
                                 <div className="space-y-2 text-xs">
-                                    <div className="flex justify-between"><span className="text-gray-400">Email:</span><span className="font-medium text-gray-800">{u.email}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">UID:</span><span className="font-mono text-gray-800">{u.id}</span></div>
                                     <div className="flex justify-between"><span className="text-gray-400">Phone:</span><span className="font-medium text-gray-800">{u.phone || 'None'}</span></div>
                                     <div className="flex justify-between"><span className="text-gray-400">Address:</span><span className="font-medium text-gray-800">{u.address || 'None'}</span></div>
                                 </div>
@@ -5854,7 +6046,7 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                             <hr className="border-gray-200" />
 
                             <div>
-                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Last Active State</h3>
+                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Last Active Workspace</h3>
                                 {Object.keys(lastState).length === 0 ? (
                                     <p className="text-xs text-gray-400 italic">No workspace state captured yet.</p>
                                 ) : (
@@ -5881,14 +6073,14 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                             </div>
                         </div>
 
-                        {/* Behaviors & Counts */}
+                        {/* Behaviors & Activity */}
                         <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col gap-4">
                             <div>
-                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Feature Interactions</h3>
+                                <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Feature Usage Metrics</h3>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="p-3 bg-white border border-gray-150 rounded-xl">
                                         <div className="text-[9px] font-bold text-gray-400 uppercase">Generations</div>
-                                        <div className="text-2xl font-black text-blue-600">{u.generations_used || 0}</div>
+                                        <div className="text-2xl font-black text-blue-600">{userEditForm.generations_used || 0}</div>
                                     </div>
                                     <div className="p-3 bg-white border border-gray-150 rounded-xl">
                                         <div className="text-[9px] font-bold text-gray-400 uppercase">Downloads</div>
@@ -5924,7 +6116,7 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                             </div>
                         </div>
 
-                        {/* Generation History (Images generated) */}
+                        {/* Generation History */}
                         <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col">
                             <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest mb-3">Design History ({historyList.length})</h3>
                             {historyList.length === 0 ? (
@@ -5950,81 +6142,216 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                                         </div>
                                     ))}
                                 </div>
-                                )}
-                                </div>
-                                </div>
+                            )}
+                        </div>
+                    </div>
 
-                                {/* Admin Management Controls */}
-                                <div className="bg-gray-100 p-6 border-t border-gray-200 mt-auto">
-                                    <h3 className="font-bold text-gray-800 uppercase text-xs tracking-widest mb-4">Manage User</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        
-                                        {/* Control Tiers */}
-                                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
-                                            <h4 className="font-bold text-blue-700 uppercase text-[10px] tracking-widest mb-2">Subscription Tier</h4>
-                                            <select 
-                                                className="w-full bg-white border border-blue-200 rounded-lg text-xs p-2 text-gray-700 outline-none"
-                                                value={(u.tier || 'FREE').toUpperCase()}
-                                                onChange={(e) => handleUpdateUserTier(u.id, e.target.value)}
-                                            >
-                                                <option value="FREE">FREE</option>
-                                                <option value="STANDARD">STANDARD</option>
-                                                <option value="PREMIUM">PREMIUM</option>
-                                                <option value="LUXURY">LUXURY</option>
-                                            </select>
-                                        </div>
+                    {/* Interactive User Editor & Management Suite */}
+                    <div className="bg-gray-100 p-6 border-t border-gray-200 mt-auto">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-gray-800 uppercase text-xs tracking-widest">
+                                {lang === "es" ? "Panel de Edición y Control del Usuario" : "User Edit & Control Suite"}
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => handleDeleteUser(u.id, u.name, u.email)}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                <span>{lang === "es" ? "Eliminar Usuario" : "Erase User"}</span>
+                            </button>
+                        </div>
 
-                                        {/* Control Usages */}
-                                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-200">
-                                            <h4 className="font-bold text-purple-700 uppercase text-[10px] tracking-widest mb-2">Generations Usage</h4>
-                                            <div className="flex items-center gap-2">
-                                                <input 
-                                                    type="number"
-                                                    min="0"
-                                                    className="flex-1 min-w-0 bg-white border border-purple-200 rounded-lg text-xs p-2 text-gray-700 outline-none"
-                                                    value={u.generations_used || 0}
-                                                    onChange={(e) => handleUpdateUserGenerations(u.id, Math.max(0, parseInt(e.target.value) || 0))}
-                                                />
-                                                <span className="text-xs text-gray-500 font-semibold w-12">/ {getTierLimit(u.tier || 'Free')}</span>
-                                            </div>
-                                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                            {/* Edit Name */}
+                            <div className="bg-white p-3.5 rounded-xl border border-gray-200">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                    {lang === "es" ? "Nombre Completo" : "Full Name"}
+                                </label>
+                                <input
+                                    type="text"
+                                    value={userEditForm.name}
+                                    onChange={(e) => setUserEditForm(prev => ({ ...prev, name: e.target.value }))}
+                                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                                />
+                            </div>
 
-                                        {/* Reset Password */}
-                                        <div className="bg-red-50 p-4 rounded-xl border border-red-200">
-                                            <h4 className="font-bold text-red-700 uppercase text-[10px] tracking-widest mb-2">Reset Password</h4>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    placeholder="New pwd (min 4)"
-                                                    className="flex-1 min-w-0 bg-white border border-red-200 rounded-lg p-2 text-xs text-gray-700 outline-none"
-                                                    id={`reset-pwd-${u.id}`}
-                                                />
-                                                <button
-                                                    onClick={async () => {
-                                                        const inp = document.getElementById(`reset-pwd-${u.id}`) as HTMLInputElement;
-                                                        const pwd = inp?.value?.trim();
-                                                        if (!pwd || pwd.length < 4) return alert('Password must be at least 4 characters');
-                                                        try {
-                                                            const res = await fetch(`/api/admin/users/${u.id}/reset-password`, {
-                                                                method: 'POST',
-                                                                headers: {'Content-Type': 'application/json'},
-                                                                body: JSON.stringify({newPassword: pwd})
-                                                            });
-                                                            const data = await res.json();
-                                                            if (data.success) { inp.value = ''; alert('Password reset successfully'); }
-                                                            else alert('Failed: ' + (data.error || 'Unknown error'));
-                                                        } catch (e) { alert('Error resetting password'); }
-                                                    }}
-                                                    className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
-                                                >
-                                                    Reset
-                                                </button>
-                                            </div>
-                                        </div>
+                            {/* Edit Email */}
+                            <div className="bg-white p-3.5 rounded-xl border border-gray-200">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                    {lang === "es" ? "Correo Electrónico" : "Email Address"}
+                                </label>
+                                <input
+                                    type="email"
+                                    value={userEditForm.email}
+                                    onChange={(e) => setUserEditForm(prev => ({ ...prev, email: e.target.value }))}
+                                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                                />
+                            </div>
 
-                                    </div>
+                            {/* Role Selection */}
+                            <div className="bg-white p-3.5 rounded-xl border border-gray-200">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                    {lang === "es" ? "Rol de Cuenta" : "Account Role"}
+                                </label>
+                                <select
+                                    value={userEditForm.role}
+                                    onChange={(e) => setUserEditForm(prev => ({ ...prev, role: e.target.value }))}
+                                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                                >
+                                    <option value="customer">Usuario (Customer)</option>
+                                    <option value="admin">Administrador (Admin)</option>
+                                </select>
+                            </div>
+
+                            {/* Subscription Tier */}
+                            <div className="bg-blue-50/50 p-3.5 rounded-xl border border-blue-200">
+                                <label className="block text-[10px] font-bold text-blue-700 uppercase tracking-wider mb-1">
+                                    {lang === "es" ? "Nivel de Suscripción" : "Subscription Tier"}
+                                </label>
+                                <select 
+                                    className="w-full bg-white border border-blue-300 rounded-lg text-xs p-2 text-blue-900 font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={userEditForm.tier}
+                                    onChange={(e) => setUserEditForm(prev => ({ ...prev, tier: e.target.value }))}
+                                >
+                                    <option value="FREE">FREE</option>
+                                    <option value="STANDARD">STANDARD</option>
+                                    <option value="PREMIUM">PREMIUM</option>
+                                    <option value="LUXURY">LUXURY</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            {/* Expiration Date Picker & Presets */}
+                            <div className="bg-white p-3.5 rounded-xl border border-gray-200">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                                    {lang === "es" ? "Fecha de Vencimiento del Plan" : "Tier Expiration Date"}
+                                </label>
+                                <input
+                                    type="date"
+                                    value={userEditForm.tier_expires_at}
+                                    onChange={(e) => setUserEditForm(prev => ({ ...prev, tier_expires_at: e.target.value }))}
+                                    className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 mb-2 font-medium"
+                                />
+                                <div className="flex gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const d = new Date();
+                                            d.setDate(d.getDate() + 30);
+                                            setUserEditForm(prev => ({ ...prev, tier_expires_at: d.toISOString().split('T')[0] }));
+                                        }}
+                                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-[10px] font-bold text-gray-700"
+                                    >
+                                        +30d
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const d = new Date();
+                                            d.setFullYear(d.getFullYear() + 1);
+                                            setUserEditForm(prev => ({ ...prev, tier_expires_at: d.toISOString().split('T')[0] }));
+                                        }}
+                                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-[10px] font-bold text-gray-700"
+                                    >
+                                        +1yr
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setUserEditForm(prev => ({ ...prev, tier_expires_at: "" }))}
+                                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-[10px] font-bold text-gray-700"
+                                    >
+                                        ∞ {lang === "es" ? "Sin límite" : "Never"}
+                                    </button>
                                 </div>
+                            </div>
+
+                            {/* Generations Usage Counter */}
+                            <div className="bg-purple-50/50 p-3.5 rounded-xl border border-purple-200">
+                                <label className="block text-[10px] font-bold text-purple-700 uppercase tracking-wider mb-1">
+                                    {lang === "es" ? "Uso de Generaciones" : "Generations Used"}
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="number"
+                                        min="0"
+                                        className="flex-1 min-w-0 bg-white border border-purple-300 rounded-lg text-xs p-2 text-gray-800 outline-none focus:ring-2 focus:ring-purple-500 font-bold"
+                                        value={userEditForm.generations_used}
+                                        onChange={(e) => setUserEditForm(prev => ({ ...prev, generations_used: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                    />
+                                    <span className="text-xs text-gray-500 font-semibold w-16">/ {getTierLimit(userEditForm.tier || 'Free')}</span>
                                 </div>
+                                <div className="text-[10px] text-gray-400 mt-2">
+                                    {lang === "es" ? "Define cuántas generaciones ha consumido el usuario." : "Sets the exact generations quota used."}
+                                </div>
+                            </div>
+
+                            {/* Reset Password */}
+                            <div className="bg-red-50/50 p-3.5 rounded-xl border border-red-200">
+                                <label className="block text-[10px] font-bold text-red-700 uppercase tracking-wider mb-1">
+                                    {lang === "es" ? "Restablecer Contraseña" : "Reset Password"}
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Min 4 chars"
+                                        className="flex-1 min-w-0 bg-white border border-red-200 rounded-lg p-2 text-xs text-gray-700 outline-none focus:ring-2 focus:ring-red-400"
+                                        id={`reset-pwd-${u.id}`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const inp = document.getElementById(`reset-pwd-${u.id}`) as HTMLInputElement;
+                                            const pwd = inp?.value?.trim();
+                                            if (!pwd || pwd.length < 4) return alert('Password must be at least 4 characters');
+                                            try {
+                                                const res = await fetch(`/api/admin/users/${u.id}/reset-password`, {
+                                                    method: 'POST',
+                                                    headers: {
+                                                        'Content-Type': 'application/json',
+                                                        ...(currentUser?.session_token ? { Authorization: `Bearer ${currentUser.session_token}` } : {})
+                                                    },
+                                                    body: JSON.stringify({newPassword: pwd})
+                                                });
+                                                const data = await res.json();
+                                                if (data.success) { 
+                                                    inp.value = ''; 
+                                                    setToast(lang === "es" ? "Contraseña restablecida exitosamente" : "Password reset successfully");
+                                                    setTimeout(() => setToast(null), 3500);
+                                                }
+                                                else alert('Failed: ' + (data.error || 'Unknown error'));
+                                            } catch (e) { alert('Error resetting password'); }
+                                        }}
+                                        className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm active:scale-95"
+                                    >
+                                        Reset
+                                    </button>
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-2">
+                                    {lang === "es" ? "Cambia la clave inmediatamente sin confirmación." : "Instantly updates user password."}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Save Changes Button */}
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => handleSaveUserDetails(u.id)}
+                                disabled={isSavingUserEdit}
+                                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>{isSavingUserEdit ? (lang === "es" ? "Guardando..." : "Saving...") : (lang === "es" ? "Guardar Cambios del Usuario" : "Save User Changes")}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     };
@@ -6306,38 +6633,7 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                         <div className="pt-2 border-t border-gray-100 text-center">
                             <button
                                 type="button"
-                                onClick={async () => {
-                                    const msg = lang === "es" 
-                                        ? "ADVERTENCIA: Esta acción eliminará permanentemente su cuenta y todos sus datos de nuestros servidores. Esta acción no se puede deshacer. ¿Desea continuar?" 
-                                        : "WARNING: This will permanently delete your account and all your personal data from our servers. This action cannot be undone. Do you wish to proceed?";
-                                    
-                                    if (window.confirm(msg)) {
-                                        try {
-                                            if (currentUser?.id) {
-                                                const res = await fetch("/api/auth/delete-account", {
-                                                    method: "POST",
-                                                    headers: { "Content-Type": "application/json" },
-                                                    body: JSON.stringify({
-                                                        userId: currentUser.id,
-                                                        sessionToken: (currentUser as any).session_token
-                                                    })
-                                                });
-                                                const data = await res.json();
-                                                if (!res.ok) {
-                                                    throw new Error(data.error || "Failed to delete account on server");
-                                                }
-                                            }
-                                            localStorage.removeItem('constructviz_user');
-                                            localStorage.removeItem('constructVizCart');
-                                            alert(lang === "es" ? "Su cuenta y datos personales han sido eliminados de forma permanente." : "Your account and personal data have been permanently deleted.");
-                                            setShowProfileModal(false);
-                                            setCurrentUser(null);
-                                            setView(AppView.LOGIN);
-                                        } catch (e: any) {
-                                            alert(lang === "es" ? `Error al eliminar la cuenta: ${e.message}` : `Failed to delete account: ${e.message}`);
-                                        }
-                                    }
-                                }}
+                                onClick={handleDeleteAccount}
                                 className="text-xs text-red-500 hover:text-red-700 underline underline-offset-2 transition-colors py-1"
                             >
                                 {lang === 'es' ? 'Eliminar mi cuenta de forma permanente' : 'Delete my account permanently'}
