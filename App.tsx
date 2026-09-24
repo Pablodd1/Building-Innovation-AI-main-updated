@@ -32,7 +32,7 @@ import {
 } from "./services/geminiService";
 import { formatMetersUSA } from "./services/unitUtils";
 import { HashRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { hapticLight, hapticMedium, hapticSuccess } from "./utils/haptics";
+import { hapticLight, hapticMedium, hapticSuccess, hapticWarning, hapticError } from "./utils/haptics";
 import { Capacitor } from "@capacitor/core";
 
 interface HistoryItem {

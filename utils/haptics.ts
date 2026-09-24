@@ -30,3 +30,23 @@ export const hapticSuccess = () => {
         // Silently ignore
     }
 };
+
+export const hapticWarning = () => {
+    try {
+        if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in navigator) {
+            navigator.vibrate([30, 50, 30]);
+        }
+    } catch {
+        // Silently ignore
+    }
+};
+
+export const hapticError = () => {
+    try {
+        if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in navigator) {
+            navigator.vibrate([50, 100, 50, 100, 50]);
+        }
+    } catch {
+        // Silently ignore
+    }
+};
