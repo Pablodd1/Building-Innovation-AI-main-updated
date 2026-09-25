@@ -2540,13 +2540,17 @@ const App: React.FC = () => {
                     </div>
                     
                     {/* App Store Compliance: Legal Links */}
-                    <div className="mt-6 flex justify-center space-x-4 text-xs text-gray-500">
-                        <a href="https://www.unitecusadesign.com/policies/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                    <div className="mt-6 flex flex-wrap justify-center items-center gap-3 text-xs text-gray-500">
+                        <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                            {lang === "es" ? "Términos de Uso (EULA)" : "Terms of Use (EULA)"}
+                        </a>
+                        <span>•</span>
+                        <a href="https://www.unitecusadesign.com/politicas/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Política de Privacidad" : "Privacy Policy"}
                         </a>
-                        <span>|</span>
-                        <a href="https://www.unitecusadesign.com/policies/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
-                            {lang === "es" ? "Términos de Servicio" : "Terms of Service"}
+                        <span>•</span>
+                        <a href="https://www.unitecusadesign.com/politicas/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                            {lang === "es" ? "Términos del Servicio" : "Terms of Service"}
                         </a>
                     </div>
                 </form>
