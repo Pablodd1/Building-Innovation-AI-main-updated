@@ -950,32 +950,25 @@ const App: React.FC = () => {
         
         // Apple/Google Store Compliance: On native mobile, external web checkouts for digital tiers are forbidden
         if (Capacitor.getPlatform() === 'ios' || Capacitor.getPlatform() === 'android') {
-            const name = prompt(
-                lang === 'es' 
-                    ? 'Nombre para solicitud de activación de plan:' 
-                    : 'Name for plan activation request:', 
-                currentUser.name || ''
-            );
-            if (name) {
-                try {
-                    await fetch("/api/purchase-requests", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            user_id: currentUser.id,
-                            customer_name: name,
-                            customer_email: currentUser.email,
-                            customer_phone: (currentUser as any).phone || "Mobile App Request",
-                            customer_address: "Mobile App In-App Tier Request",
-                            cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
-                            total_estimate: 0,
-                            project_notes: `Mobile App Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
-                        }),
-                    });
-                    setToast(lang === 'es' ? `Solicitud para ${newTier} recibida. Te contactaremos.` : `Request for ${newTier} received. We will contact you.`);
-                } catch {
-                    setToast(lang === 'es' ? `Error al enviar. Contacta a soporte.` : `Failed to submit. Contact support.`);
-                }
+            try {
+                await fetch("/api/purchase-requests", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_id: currentUser.id,
+                        customer_name: currentUser.name || (lang === 'es' ? 'Usuario Móvil' : 'Mobile User'),
+                        customer_email: currentUser.email,
+                        customer_phone: (currentUser as any).phone || "Mobile App Request",
+                        customer_address: "Mobile App In-App Tier Request",
+                        cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
+                        total_estimate: 0,
+                        project_notes: `Mobile App Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
+                    }),
+                });
+                hapticSuccess();
+                setToast(lang === 'es' ? `Solicitud para plan ${newTier} enviada. Te contactaremos.` : `Request for ${newTier} plan sent. We will contact you.`);
+            } catch {
+                setToast(lang === 'es' ? `Error al enviar. Contacta a soporte.` : `Failed to submit. Contact support.`);
             }
             setShowSubscriptionModal(false);
             setTimeout(() => setToast(null), 4000);
@@ -992,29 +985,26 @@ const App: React.FC = () => {
             const data = await res.json();
             
             if (data.isMock) {
-                // Stripe not configured — collect info and send email to admin
-                const name = prompt(lang === 'es' ? 'Tu nombre:' : 'Your name:');
-                const email = prompt(lang === 'es' ? 'Tu email:' : 'Your email:');
-                if (name && email) {
-                    try {
-                        await fetch("/api/purchase-requests", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                user_id: currentUser.id,
-                                customer_name: name,
-                                customer_email: email,
-                                customer_phone: "Not provided",
-                                customer_address: "Not provided",
-                                cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
-                                total_estimate: 0,
-                                project_notes: `Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
-                            }),
-                        });
-                        setToast(lang === 'es' ? `Solicitud de ${newTier} enviada. Te contactaremos.` : `${newTier} upgrade request sent. We'll contact you.`);
-                    } catch {
-                        setToast(lang === 'es' ? `Error al enviar. Contacta al administrador.` : `Failed to send. Contact administrator.`);
-                    }
+                // Stripe in mock mode — submit request directly
+                try {
+                    await fetch("/api/purchase-requests", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: currentUser.id,
+                            customer_name: currentUser.name || "Customer",
+                            customer_email: currentUser.email,
+                            customer_phone: (currentUser as any).phone || "Not provided",
+                            customer_address: "Web Checkout Request",
+                            cart_items: [{ name: `Tier Upgrade: ${newTier}`, quantity: 1, totalCost: 0 }],
+                            total_estimate: 0,
+                            project_notes: `Tier upgrade request from ${currentUser.tier || 'Free'} to ${newTier}`
+                        }),
+                    });
+                    hapticSuccess();
+                    setToast(lang === 'es' ? `Solicitud de plan ${newTier} recibida. Te contactaremos.` : `${newTier} plan request received. We will contact you.`);
+                } catch {
+                    setToast(lang === 'es' ? `Error al enviar solicitud.` : `Failed to send request.`);
                 }
                 setShowSubscriptionModal(false);
                 setTimeout(() => setToast(null), 4000);
