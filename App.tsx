@@ -2529,17 +2529,17 @@ const App: React.FC = () => {
                         )}
                     </div>
                     
-                    {/* App Store Compliance: Legal Links */}
+                    {/* App Store & Google Play Compliance: Legal Links */}
                     <div className="mt-6 flex flex-wrap justify-center items-center gap-3 text-xs text-gray-500">
                         <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Términos de Uso (EULA)" : "Terms of Use (EULA)"}
                         </a>
                         <span>•</span>
-                        <a href="https://www.unitecusadesign.com/politicas/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                        <a href="/privacy" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Política de Privacidad" : "Privacy Policy"}
                         </a>
                         <span>•</span>
-                        <a href="https://www.unitecusadesign.com/politicas/" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
+                        <a href="/terms" target="_blank" rel="noreferrer" className="hover:underline hover:text-gray-700">
                             {lang === "es" ? "Términos del Servicio" : "Terms of Service"}
                         </a>
                     </div>
@@ -5264,39 +5264,35 @@ const App: React.FC = () => {
             title: { en: 'Privacy Policy', es: 'Política de Privacidad' },
             body: { en: `Building Innovation AI respects your privacy.
 
-We collect only the information you provide: name, email, phone number, and address for account creation. Photos you upload are transmitted securely to OpenAI for AI processing and are not stored permanently on our servers.
+We collect only the information strictly necessary to operate: name and email for account authentication, and room photos for AI visualization and material calculation. Uploaded photos are encrypted via TLS 1.3/HTTPS, processed securely for real-time visualization, and never sold to third parties or used for foundation model training without consent.
 
-We do NOT sell, share, or monetize your personal data. We do not use tracking cookies or advertising identifiers.
+We do NOT sell, share, or monetize your personal data. You can delete your account and all data at any time via the in-app delete option or at https://buildingapp.us/account-deletion.
 
-For the complete policy, visit https://www.unitecusadesign.com/politicas/.`,
+For the complete policy, visit https://buildingapp.us/privacy.`,
                 es: `Building Innovation AI respeta su privacidad.
 
-Recopilamos solo la información que usted proporciona: nombre, correo electrónico, teléfono y dirección para crear su cuenta. Las fotos que sube se transmiten de forma segura a OpenAI para procesamiento de IA y no se almacenan permanentemente en nuestros servidores.
+Recopilamos únicamente la información estrictamente necesaria: nombre y correo electrónico para autenticación de cuenta, y fotos de espacios para visualización con IA y cálculo de materiales. Las fotos subidas se transmiten cifradas mediante TLS 1.3/HTTPS, se procesan de forma segura para la visualización en tiempo real y nunca se venden a terceros ni se utilizan para entrenar modelos públicos sin consentimiento.
 
-NO vendemos, compartimos ni monetizamos sus datos personales. No utilizamos cookies de seguimiento ni identificadores publicitarios.
+NO vendemos, compartimos ni comercializamos sus datos personales. Puede eliminar su cuenta y todos sus datos en cualquier momento desde la app o en https://buildingapp.us/account-deletion.
 
-Para la política completa, visite https://www.unitecusadesign.com/politicas/.`
+Para la política completa, visite https://buildingapp.us/privacy.`
             }
         } : {
             title: { en: 'Terms of Service', es: 'Términos de Servicio' },
             body: { en: `By using Building Innovation AI, you agree to these terms.
 
-The app provides AI-powered material visualization for informational purposes. Renders are AI-generated approximations and may not perfectly represent real-world results.
+The app provides AI-powered material visualization and material takeoffs for informational and planning purposes. Renders are AI-generated simulations and on-site measurements should be verified before ordering.
 
-Free accounts include 5 renders. Paid tiers unlock additional renders as described in the app.
+Free accounts include starter renders. Paid tiers (Standard, Premium, Luxury) unlock additional renders and high-resolution features.
 
-We reserve the right to modify these terms. Continued use constitutes acceptance.
-
-For complete terms, visit https://www.unitecusadesign.com/politicas/.`,
+For complete terms and Apple EULA, visit https://buildingapp.us/terms.`,
                 es: `Al usar Building Innovation AI, usted acepta estos términos.
 
-La aplicación proporciona visualización de materiales con IA con fines informativos. Los renders son aproximaciones generadas por IA y pueden no representar perfectamente los resultados del mundo real.
+La aplicación proporciona visualización de materiales y estimaciones con IA con fines de diseño y planificación. Los renders son simulaciones referenciales y las medidas en obra deben verificarse antes de realizar cortes o pedidos.
 
-Las cuentas gratuitas incluyen 5 renders. Los planes pagos desbloquean renders adicionales según se describe en la aplicación.
+Las cuentas gratuitas incluyen renders iniciales. Los planes pagos (Standard, Premium, Luxury) desbloquean renders adicionales y funciones de alta resolución.
 
-Nos reservamos el derecho de modificar estos términos. El uso continuo constituye aceptación.
-
-Para los términos completos, visite https://www.unitecusadesign.com/politicas/.`
+Para los términos completos y EULA de Apple, visite https://buildingapp.us/terms.`
             }
         };
 
@@ -5317,9 +5313,9 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                     {lang === 'es' ? content.body.es : content.body.en}
                 </div>
                 <div className="mt-6 text-center">
-                    <a href="https://www.unitecusadesign.com/politicas/" target="_blank" rel="noreferrer"
-                        className="text-blue-600 hover:underline text-sm">
-                        {lang === 'es' ? 'Ver política completa →' : 'View full policy →'}
+                    <a href={isPrivacy ? "/privacy" : "/terms"} target="_blank" rel="noreferrer"
+                        className="text-blue-600 hover:underline text-sm font-medium">
+                        {lang === 'es' ? 'Ver documento completo en la web →' : 'View full policy on web →'}
                     </a>
                 </div>
             </div>
@@ -6534,7 +6530,7 @@ Para los términos completos, visite https://www.unitecusadesign.com/politicas/.
                                 </a>
                                 <span className="text-gray-600">•</span>
                                 <a
-                                    href="https://www.unitecusadesign.com/politicas/"
+                                    href="/privacy"
                                     target="_blank"
                                     rel="noreferrer"
                                     className="hover:text-purple-300 underline underline-offset-2 transition-colors"

@@ -1,7 +1,18 @@
-Privacy Policy URL: https://buildingapp.us/#/privacy
+Privacy Policy URL for Google Play Console:
+https://buildingapp.us/privacy
 
-Data Safety Section for Google Play:
-- No user data collected (email/password stored for account only)
-- Photos uploaded for AI processing are transmitted to OpenAI API (encrypted)
-- No location data collected
-- No advertising ID used
+Data Deletion URL for Google Play Console:
+https://buildingapp.us/account-deletion
+
+Google Play Data Safety Section Details:
+1. Data Collected:
+   - Photos & Videos (Photos): Collected for app functionality (AI room visualization & material estimation). Encrypted in transit (HTTPS/TLS). Ephemeral / deleted after processing or stored in user project gallery until user requests deletion.
+   - Personal Info (Name, Email Address): Collected for account management and authentication.
+   - Financial Info (Purchase History): Collected for subscription and quota management.
+   - App Info & Performance (Crash logs, Diagnostics): Collected for analytics and app stability.
+2. Data Sharing:
+   - No data shared with 3rd-party advertisers or data brokers.
+   - Photos transmitted securely over HTTPS to Google Gemini Vision API strictly for user-requested image rendering.
+3. Security & Deletion:
+   - Data is encrypted in transit (TLS 1.3).
+   - Users can request data and account deletion in-app and via web URL: https://buildingapp.us/account-deletion

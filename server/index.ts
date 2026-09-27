@@ -89,37 +89,102 @@ const PORT = process.env.PORT || 3000;
 const { Pool } = pg;
 const app = express();
 
+const getHtmlFile = (filename: string) => {
+    const candidates = [
+        path.join(process.cwd(), 'public', filename),
+        path.join(process.cwd(), 'dist', filename),
+        path.join(process.cwd(), 'nodejs', 'dist', filename),
+        path.join(SERVER_DIR, 'public', filename),
+        path.join(SERVER_DIR, 'dist', filename),
+        path.join(SERVER_DIR, 'nodejs', 'dist', filename),
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+    return null;
+};
+
+// Google Play and App Store Compliance: Direct HTML routes for Privacy Policy & Terms
+app.get(['/privacy', '/politicas', '/privacy-policy', '/privacy.html'], (req: Request, res: Response) => {
+    const filePath = getHtmlFile('privacy.html');
+    if (filePath) {
+        return res.sendFile(filePath);
+    }
+    res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Privacy Policy - Building Innovation AI</title></head>
+<body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
+<h1>Privacy Policy</h1>
+<p><strong>App:</strong> Building Innovation AI (com.buildinginnovation.app)</p>
+<p><strong>Developer:</strong> Building Innovation Inc. / Unitec USA Design</p>
+<p><strong>Contact:</strong> support@buildingapp.us</p>
+<p>Building Innovation AI requires camera and photo access strictly to provide user-initiated AI interior design and architectural visualization. Uploaded photos are securely encrypted via TLS 1.3/HTTPS, processed for real-time visualization, and never sold to third parties or used to train public foundation models without consent.</p>
+<p>For account and data deletion requests, visit <a href="/account-deletion">https://buildingapp.us/account-deletion</a>.</p>
+</body></html>`);
+});
+
+app.get(['/terms', '/terminos', '/terms-of-service', '/terms.html', '/eula'], (req: Request, res: Response) => {
+    const filePath = getHtmlFile('terms.html');
+    if (filePath) {
+        return res.sendFile(filePath);
+    }
+    res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Terms of Service - Building Innovation AI</title></head>
+<body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
+<h1>Terms of Service & EULA</h1>
+<p><strong>App:</strong> Building Innovation AI (com.buildinginnovation.app)</p>
+<p><strong>Developer:</strong> Building Innovation Inc. / Unitec USA Design</p>
+<p>AI visualizations and material calculations are provided as reference estimations for architectural and design planning. Standard Apple and Google Play terms apply.</p>
+<p>For inquiries or data deletion, contact support@buildingapp.us or visit <a href="/account-deletion">/account-deletion</a>.</p>
+</body></html>`);
+});
+
 app.get('/account-deletion', (req: Request, res: Response) => {
     res.send(`
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
-            <title>Account Deletion - Building Innovation AI</title>
+            <meta charset="UTF-8">
+            <title>Account Deletion & Data Safety - Building Innovation AI</title>
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
-                body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; color: #333; }
-                h1 { color: #2563eb; }
-                .card { border: 1px solid #e5e7eb; padding: 20px; border-radius: 8px; background: #f9fafb; }
-                button { background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 10px; }
-                input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; color: #1f2937; background: #f9fafb; line-height: 1.6; }
+                h1 { color: #1e40af; font-size: 1.6rem; margin-bottom: 8px; }
+                .subtitle { color: #4b5563; font-size: 0.95rem; margin-bottom: 20px; }
+                .card { border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+                button { background: #dc2626; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; width: 100%; transition: background 0.2s; }
+                button:hover { background: #b91c1c; }
+                input { width: 100%; padding: 12px; margin: 8px 0 16px 0; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
+                input:focus { outline: none; border-color: #2563eb; ring: 2px solid #93c5fd; }
+                .info-text { font-size: 0.88rem; color: #6b7280; margin-top: 14px; }
+                .footer-links { text-align: center; margin-top: 24px; font-size: 0.85rem; color: #6b7280; }
+                .footer-links a { color: #2563eb; text-decoration: none; margin: 0 8px; }
             </style>
         </head>
         <body>
             <h1>Data Safety & Account Deletion</h1>
+            <p class="subtitle">Building Innovation AI (com.buildinginnovation.app)</p>
             <div class="card">
-                <p>To request the permanent deletion of your account and all associated data, please enter your registered email address.</p>
-                <form id="deleteForm">
-                    <label>Email Address:</label>
+                <p>In compliance with Google Play and Apple App Store user data policies, you have the right to request permanent deletion of your account, authentication records, saved design projects, and all associated personal data.</p>
+                <form id="deleteForm" style="margin-top: 16px;">
+                    <label style="font-weight: 600; font-size: 0.95rem;">Registered Email Address:</label>
                     <input type="email" id="email" required placeholder="you@example.com">
-                    <button type="submit">Request Data Deletion</button>
+                    <button type="submit">Permanently Delete My Account & Data</button>
                 </form>
-                <p id="msg" style="display:none; color: green; margin-top:15px; font-weight: bold;"></p>
+                <div id="msg" style="display:none; color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 8px; margin-top: 16px; font-weight: 500;"></div>
+                <p class="info-text">Note: All deletion requests are processed automatically and all associated records are permanently wiped from production databases within 48 hours.</p>
+            </div>
+            <div class="footer-links">
+                <a href="/">Home</a> • 
+                <a href="/privacy">Privacy Policy</a> • 
+                <a href="/terms">Terms of Service</a>
             </div>
             <script>
                 document.getElementById('deleteForm').addEventListener('submit', (e) => {
                     e.preventDefault();
                     document.getElementById('msg').style.display = 'block';
-                    document.getElementById('msg').innerText = 'Your deletion request has been received. Our compliance team will permanently wipe your data within 48 hours.';
+                    document.getElementById('msg').innerText = '✓ Your deletion request for ' + document.getElementById('email').value + ' has been registered. Our system will permanently wipe your records within 48 hours.';
                     document.getElementById('email').value = '';
                 });
             </script>

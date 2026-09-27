@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms of Service & EULA - Building Innovation AI</title>
+    <link rel="icon" href="/vite.svg">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --text: #1f2937;
+            --text-muted: #4b5563;
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --border: #e5e7eb;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+            line-height: 1.65;
+            color: var(--text);
+            background-color: var(--bg);
+            padding: 24px 16px;
+        }
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+            background-color: var(--card-bg);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+        }
+        .badge {
+            display: inline-block;
+            background: #eff6ff;
+            color: var(--primary);
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        h1 {
+            color: #111827;
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+        h2 {
+            color: var(--primary-dark);
+            font-size: 1.3rem;
+            margin-top: 32px;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        p {
+            margin-bottom: 14px;
+            color: var(--text-muted);
+            font-size: 0.98rem;
+        }
+        ul {
+            margin-bottom: 16px;
+            padding-left: 24px;
+            color: var(--text-muted);
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        strong {
+            color: #111827;
+        }
+        .lang-toggle {
+            display: flex;
+            gap: 8px;
+        }
+        .lang-btn {
+            background: #e5e7eb;
+            color: #374151;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .footer {
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            font-size: 0.88rem;
+            color: #6b7280;
+            text-align: center;
+        }
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .lang-section {
+            display: block;
+        }
+        .lang-section.hidden {
+            display: none;
+        }
+        @media (max-width: 600px) {
+            .container { padding: 24px 16px; }
+            h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <span class="badge">Terms of Service & EULA</span>
+                <h1>Terms of Service / Términos de Servicio</h1>
+            </div>
+            <div class="lang-toggle">
+                <button id="btn-en" class="lang-btn active" onclick="switchLang('en')">English</button>
+                <button id="btn-es" class="lang-btn" onclick="switchLang('es')">Español</button>
+            </div>
+        </div>
+
+        <!-- ================= ENGLISH SECTION ================= -->
+        <div id="section-en" class="lang-section">
+            <p><strong>Last Updated:</strong> September 27, 2026</p>
+            <p>
+                Welcome to <strong>Building Innovation AI</strong> (package: <code>com.buildinginnovation.app</code>), owned and operated by 
+                Building Innovation Inc. / Unitec USA Design ("we", "us", or "our"). By downloading, accessing, or using our mobile application 
+                or website (https://buildingapp.us), you agree to be bound by these Terms of Service and End User License Agreement (EULA).
+            </p>
+
+            <h2>1. License and Permitted Use</h2>
+            <p>
+                We grant you a non-exclusive, non-transferable, revocable license to use the Building Innovation AI application on your mobile device 
+                and web browser for your personal or commercial architectural visualization and material estimation purposes in accordance with these Terms.
+            </p>
+
+            <h2>2. AI-Generated Visualizations & Estimation Disclaimer</h2>
+            <p>
+                Building Innovation AI uses advanced artificial intelligence to render realistic visual simulations of PVC wall panels, SPC flooring, 
+                and architectural surfaces in your uploaded room images.
+            </p>
+            <ul>
+                <li><strong>Visual Approximations:</strong> AI-generated renderings and material simulations are provided for visual planning, inspiration, and preliminary estimation only. Actual physical textures, lighting reflections, and installation colors may vary depending on ambient light and manufacturing batches.</li>
+                <li><strong>Measurements and Takeoffs:</strong> Instant material calculators provide estimated panel counts and surface areas based on standard room dimensions. You are encouraged to verify exact on-site physical measurements before purchasing or cutting materials.</li>
+            </ul>
+
+            <h2>3. Subscriptions, Purchases, and In-App Billing</h2>
+            <ul>
+                <li>Free tier accounts include starter generation credits. Paid subscriptions (Standard, Premium, Luxury) and credit top-ups unlock enhanced high-resolution generation and higher quotas.</li>
+                <li>Subscriptions purchased through Google Play or Apple App Store are managed through your respective store account settings and are subject to the standard terms and conditions of Google Play and Apple.</li>
+                <li>Subscriptions renew automatically unless cancelled at least 24 hours prior to the end of the current billing cycle.</li>
+            </ul>
+
+            <h2>4. User Content and Conduct</h2>
+            <p>
+                You retain ownership of any photographs you capture or upload. You grant us a limited, worldwide license solely to process, 
+                format, and transform your images as required to deliver the AI visualizer services to you. You agree not to upload content that 
+                is unlawful, defamatory, or infringes on third-party intellectual property rights.
+            </p>
+
+            <h2>5. Account Deletion and Data Management</h2>
+            <p>
+                You may request account and data deletion at any time in-app or via our web deletion portal at 
+                <a href="/account-deletion" style="color: var(--primary);">https://buildingapp.us/account-deletion</a>.
+            </p>
+
+            <h2>6. Standard Apple EULA</h2>
+            <p>
+                For iOS users, this agreement also incorporates Apple's Standard Licensed Application End User License Agreement (EULA), 
+                accessible at <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noreferrer" style="color: var(--primary);">Apple Standard EULA</a>.
+            </p>
+
+            <h2>7. Contact Information</h2>
+            <p>
+                For inquiries regarding these Terms, contact us at: <strong>support@buildingapp.us</strong>
+            </p>
+        </div>
+
+        <!-- ================= SPANISH SECTION ================= -->
+        <div id="section-es" class="lang-section hidden">
+            <p><strong>Última actualización:</strong> 27 de Septiembre de 2026</p>
+            <p>
+                Bienvenido a <strong>Building Innovation AI</strong> (paquete: <code>com.buildinginnovation.app</code>), operado por 
+                Building Innovation Inc. / Unitec USA Design ("nosotros"). Al descargar, instalar o utilizar nuestra aplicación móvil 
+                o plataforma web (https://buildingapp.us), acepta quedar vinculado por estos Términos de Servicio y Acuerdo de Licencia de Usuario Final (EULA).
+            </p>
+
+            <h2>1. Licencia de Uso</h2>
+            <p>
+                Le otorgamos una licencia no exclusiva, intransferible y revocable para utilizar la aplicación Building Innovation AI en sus 
+                dispositivos móviles y web con fines de diseño, visualización de acabados y cálculo de materiales.
+            </p>
+
+            <h2>2. Descargo de Responsabilidad de Renderizado con IA</h2>
+            <p>
+                Building Innovation AI emplea modelos avanzados de inteligencia artificial para simular acabados como paneles PVC, pisos SPC y revestimientos.
+            </p>
+            <ul>
+                <li><strong>Aproximaciones Visuales:</strong> Los renders generados son simulaciones referenciales para planificación estética. Los tonos y texturas reales pueden presentar ligeras variaciones según la iluminación ambiental y el lote de fabricación del material.</li>
+                <li><strong>Cálculos y Metrajes:</strong> Las herramientas de cálculo proporcionan cantidades estimadas de producto y áreas superficiales. Recomendamos verificar medidas físicas exactas en obra antes de cortar e instalar los materiales.</li>
+            </ul>
+
+            <h2>3. Suscripciones y Pagos</h2>
+            <ul>
+                <li>Los planes gratuitos incluyen créditos iniciales. Las suscripciones pagas (Standard, Premium, Luxury) desbloquean mayor resolución y cuotas ampliadas de renderizado.</li>
+                <li>Las suscripciones contratadas a través de Google Play o Apple App Store se gestionan desde la configuración de su cuenta en la tienda correspondiente y se renuevan automáticamente salvo cancelación con 24 horas de antelación.</li>
+            </ul>
+
+            <h2>4. Eliminación de Cuentas</h2>
+            <p>
+                Puede solicitar la eliminación de su cuenta y datos en cualquier momento desde la aplicación o a través de nuestro portal web en 
+                <a href="/account-deletion" style="color: var(--primary);">https://buildingapp.us/account-deletion</a>.
+            </p>
+
+            <h2>5. Contacto</h2>
+            <p>
+                Para cualquier consulta sobre estos términos, escríbanos a: <strong>support@buildingapp.us</strong>
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2026 Building Innovation Inc. / Unitec USA Design. All rights reserved.</p>
+            <p style="margin-top: 8px;">
+                <a href="/">Home</a> • 
+                <a href="/terms">Terms of Service</a> • 
+                <a href="/privacy">Privacy Policy</a> • 
+                <a href="/account-deletion">Account Deletion</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function switchLang(lang) {
+            if (lang === 'es') {
+                document.getElementById('section-en').classList.add('hidden');
+                document.getElementById('section-es').classList.remove('hidden');
+                document.getElementById('btn-es').classList.add('active');
+                document.getElementById('btn-en').classList.remove('active');
+            } else {
+                document.getElementById('section-es').classList.add('hidden');
+                document.getElementById('section-en').classList.remove('hidden');
+                document.getElementById('btn-en').classList.add('active');
+                document.getElementById('btn-es').classList.remove('active');
+            }
+        }
+        if (navigator.language && navigator.language.startsWith('es')) {
+            switchLang('es');
+        }
+    </script>
+</body>
+</html>
