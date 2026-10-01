@@ -1,0 +1,194 @@
+import sharp from 'sharp';
+import fs from 'fs';
+import path from 'path';
+
+const iconSvg = `
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1120" />
+      <stop offset="40%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
+
+    <!-- Radial Glow behind emblem -->
+    <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35" />
+      <stop offset="50%" stop-color="#6366f1" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Top Isometric Face Gradient (Floor / Ceiling Plan) -->
+    <linearGradient id="topFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+
+    <!-- Left Isometric Face Gradient (Acoustic / Marble Wall) -->
+    <linearGradient id="leftFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d4ed8" />
+      <stop offset="100%" stop-color="#0f2b6e" />
+    </linearGradient>
+
+    <!-- Right Isometric Face Gradient (Luxury Wood / Fluted Panel) -->
+    <linearGradient id="rightFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#431407" />
+    </linearGradient>
+
+    <!-- Inner AI Spatial Core Gradient -->
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+
+    <!-- Gold Accent for Architecture Excellence -->
+    <linearGradient id="goldAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#eab308" />
+    </linearGradient>
+
+    <!-- Drop Shadow Filter for 3D depth -->
+    <filter id="cubeShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="32" flood-color="#000000" flood-opacity="0.7" />
+    </filter>
+    
+    <filter id="glowSparkle" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="16" flood-color="#38bdf8" flood-opacity="0.9" />
+    </filter>
+  </defs>
+
+  <!-- Solid Opaque Background (App Store Requirement: 0% transparency) -->
+  <rect width="1024" height="1024" fill="url(#bgGrad)" />
+
+  <!-- Ambient Glow -->
+  <circle cx="512" cy="512" r="460" fill="url(#centerGlow)" />
+
+  <!-- Architectural Spatial Laser Grid Circles -->
+  <circle cx="512" cy="512" r="380" fill="none" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.2" stroke-dasharray="12 8" />
+  <circle cx="512" cy="512" r="320" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-opacity="0.25" />
+  <circle cx="512" cy="512" r="260" fill="none" stroke="#c084fc" stroke-width="2" stroke-opacity="0.15" stroke-dasharray="8 6" />
+
+  <!-- Outer Isometric Architectural Prism -->
+  <g filter="url(#cubeShadow)">
+    <!-- Top Face (Perspective Room Roof / Ceiling Horizon) -->
+    <!-- Center vertex: (512, 430), Top: (512, 230), Left: (292, 330), Right: (732, 330) -->
+    <polygon points="512,230 732,330 512,430 292,330" fill="url(#topFace)" />
+    <!-- Architectural grid lines on top face -->
+    <line x1="402" y1="280" x2="622" y2="380" stroke="#ffffff" stroke-width="2.5" stroke-opacity="0.4" />
+    <line x1="622" y1="280" x2="402" y2="380" stroke="#ffffff" stroke-width="2.5" stroke-opacity="0.4" />
+    <polygon points="512,230 732,330 512,430 292,330" fill="none" stroke="#ffffff" stroke-width="3" stroke-opacity="0.6" />
+
+    <!-- Left Face (Wall Panel / Marbled Texture Perspective) -->
+    <!-- Top-Left: (292, 330), Top-Center: (512, 430), Bottom-Center: (512, 690), Bottom-Left: (292, 590) -->
+    <polygon points="292,330 512,430 512,690 292,590" fill="url(#leftFace)" />
+    <!-- Vertical Wall Paneling Grooves (Slatting) -->
+    <line x1="336" y1="350" x2="336" y2="610" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.45" />
+    <line x1="380" y1="370" x2="380" y2="630" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.45" />
+    <line x1="424" y1="390" x2="424" y2="650" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.45" />
+    <line x1="468" y1="410" x2="468" y2="670" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.45" />
+    <polygon points="292,330 512,430 512,690 292,590" fill="none" stroke="#60a5fa" stroke-width="3" stroke-opacity="0.6" />
+
+    <!-- Right Face (Accent Wall / Luxury Veneer Perspective) -->
+    <!-- Top-Center: (512, 430), Top-Right: (732, 330), Bottom-Right: (732, 590), Bottom-Center: (512, 690) -->
+    <polygon points="512,430 732,330 732,590 512,690" fill="url(#rightFace)" />
+    <!-- Horizontal Linear Cladding Grooves -->
+    <line x1="512" y1="482" x2="732" y2="382" stroke="#a78bfa" stroke-width="3.5" stroke-opacity="0.4" />
+    <line x1="512" y1="534" x2="732" y2="434" stroke="#a78bfa" stroke-width="3.5" stroke-opacity="0.4" />
+    <line x1="512" y1="586" x2="732" y2="486" stroke="#a78bfa" stroke-width="3.5" stroke-opacity="0.4" />
+    <line x1="512" y1="638" x2="732" y2="538" stroke="#a78bfa" stroke-width="3.5" stroke-opacity="0.4" />
+    <polygon points="512,430 732,330 732,590 512,690" fill="none" stroke="#c084fc" stroke-width="3" stroke-opacity="0.6" />
+
+    <!-- Isometric Highlight Edges -->
+    <line x1="512" y1="230" x2="512" y2="690" stroke="#ffffff" stroke-width="4.5" stroke-opacity="0.75" />
+  </g>
+
+  <!-- Central AI Vision Prism (Floating Diamond Star at the room origin) -->
+  <g filter="url(#glowSparkle)">
+    <!-- 4-Point Radiant AI Star / Spatial Spark -->
+    <path d="M 512 360 Q 512 430 442 430 Q 512 430 512 500 Q 512 430 582 430 Q 512 430 512 360 Z" fill="#ffffff" />
+    <path d="M 512 380 Q 512 430 462 430 Q 512 430 512 480 Q 512 430 562 430 Q 512 430 512 380 Z" fill="url(#goldAccent)" />
+    <circle cx="512" cy="430" r="10" fill="#ffffff" />
+  </g>
+
+  <!-- Minor AI Sparkles around the structure -->
+  <g opacity="0.9">
+    <path d="M 270 280 Q 270 300 250 300 Q 270 300 270 320 Q 270 300 290 300 Q 270 300 270 280 Z" fill="#38bdf8" />
+    <path d="M 750 260 Q 750 280 730 280 Q 750 280 750 300 Q 750 280 770 280 Q 750 280 750 260 Z" fill="#c084fc" />
+    <path d="M 512 750 Q 512 765 497 765 Q 512 765 512 780 Q 512 765 527 765 Q 512 765 512 750 Z" fill="#fde047" />
+  </g>
+
+  <!-- Sleek Modern Bottom Framing Arc -->
+  <path d="M 260 760 C 340 820, 684 820, 764 760" fill="none" stroke="url(#coreGrad)" stroke-width="5" stroke-linecap="round" opacity="0.7" />
+  <circle cx="260" cy="760" r="6" fill="#38bdf8" />
+  <circle cx="764" cy="760" r="6" fill="#c084fc" />
+</svg>
+`;
+
+async function generateAllIcons() {
+    console.log('Generating ultra-premium App Store & Android icons...');
+
+    const svgBuffer = Buffer.from(iconSvg);
+
+    // 1. Generate Master 1024x1024 PNG (Opaque RGB, 0 alpha)
+    const master1024 = await sharp(svgBuffer)
+        .resize(1024, 1024)
+        .flatten({ background: '#0b1120' }) // Ensure 100% opaque RGB with no alpha channel (Apple requirement)
+        .png({ quality: 100 })
+        .toBuffer();
+
+    // Paths
+    const iosAppIconPath = path.resolve('ios', 'App', 'App', 'Assets.xcassets', 'AppIcon.appiconset', 'AppIcon-512@2x.png');
+    const public512 = path.resolve('public', 'icon-512.png');
+    const public512Maskable = path.resolve('public', 'icon-512-maskable.png');
+    const public192 = path.resolve('public', 'icon-192.png');
+    const publicSvg = path.resolve('public', 'icon.svg');
+    const desktopIcon = path.resolve('C:\\Users\\jasme\\Desktop\\app_store_icon_1024x1024.png');
+
+    // Save Master Icon to Desktop for manual App Store Connect upload if needed
+    fs.writeFileSync(desktopIcon, master1024);
+    console.log(`✓ Saved App Store Icon (1024x1024) to: ${desktopIcon}`);
+
+    // Save iOS Project AppIcon
+    fs.writeFileSync(iosAppIconPath, master1024);
+    console.log(`✓ Updated iOS AppIcon-512@2x.png (1024x1024): ${iosAppIconPath}`);
+
+    // Save Web Icons
+    fs.writeFileSync(public512, await sharp(master1024).resize(512, 512).png().toBuffer());
+    fs.writeFileSync(public512Maskable, await sharp(master1024).resize(512, 512).png().toBuffer());
+    fs.writeFileSync(public192, await sharp(master1024).resize(192, 192).png().toBuffer());
+    fs.writeFileSync(publicSvg, iconSvg);
+    console.log('✓ Updated public/icon-512.png, public/icon-192.png, public/icon.svg');
+
+    // Also update android mipmap icons
+    const androidRes = path.resolve('android', 'app', 'src', 'main', 'res');
+    if (fs.existsSync(androidRes)) {
+        const mipmaps = [
+            { folder: 'mipmap-mdpi', size: 48 },
+            { folder: 'mipmap-hdpi', size: 72 },
+            { folder: 'mipmap-xhdpi', size: 96 },
+            { folder: 'mipmap-xxhdpi', size: 144 },
+            { folder: 'mipmap-xxxhdpi', size: 192 }
+        ];
+
+        for (const mm of mipmaps) {
+            const dir = path.join(androidRes, mm.folder);
+            if (fs.existsSync(dir)) {
+                const buf = await sharp(master1024).resize(mm.size, mm.size).png().toBuffer();
+                fs.writeFileSync(path.join(dir, 'ic_launcher.png'), buf);
+                fs.writeFileSync(path.join(dir, 'ic_launcher_round.png'), buf);
+                fs.writeFileSync(path.join(dir, 'ic_launcher_foreground.png'), buf);
+            }
+        }
+        console.log('✓ Updated all Android mipmap launcher icons');
+    }
+
+    console.log('🎉 All icons successfully generated and synchronized across iOS, Android, Web, and Desktop!');
+}
+
+generateAllIcons().catch(err => {
+    console.error('Error generating icons:', err);
+    process.exit(1);
+});
