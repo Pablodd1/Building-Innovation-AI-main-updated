@@ -140,6 +140,23 @@ app.get(['/terms', '/terminos', '/terms-of-service', '/terms.html', '/eula'], (r
 </body></html>`);
 });
 
+app.get(['/support', '/soporte', '/contact', '/help', '/support.html'], (req: Request, res: Response) => {
+    const filePath = getHtmlFile('support.html');
+    if (filePath) {
+        return res.sendFile(filePath);
+    }
+    res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Support - Building Innovation AI</title></head>
+<body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
+<h1>Building Innovation AI Support</h1>
+<p><strong>Email:</strong> <a href="mailto:support@buildingapp.us">support@buildingapp.us</a></p>
+<p><strong>Response Time:</strong> Within 24-48 business hours.</p>
+<p>For account and data deletion requests, visit <a href="/account-deletion">/account-deletion</a>.</p>
+<p>For privacy inquiries, view our <a href="/privacy">Privacy Policy</a>.</p>
+</body></html>`);
+});
+
 app.get('/account-deletion', (req: Request, res: Response) => {
     res.send(`
         <!DOCTYPE html>
