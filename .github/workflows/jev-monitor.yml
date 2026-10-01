@@ -1,0 +1,42 @@
+name: Jev Web Error Monitor & Route Audit
+
+on:
+  schedule:
+    # Runs every 6 hours
+    - cron: '0 */6 * * *'
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Base URL to audit (defaults to https://buildingapp.us)'
+        required: false
+        default: 'https://buildingapp.us'
+
+jobs:
+  jev-route-audit:
+    name: Execute Jev System-1 Route Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Jev Route & Error Classification Audit
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || vars.BASE_URL || 'https://buildingapp.us' }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY || 'apikey_2238961ff151c1db4465b99ec5ef660f41f7_cc5fc6a87e2c7952cf9d512d8c75940ce0aa132dcb4b165a8687ef924c89e878' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL || vars.NOTIFICATION_EMAIL || 'comercial.buildinginnovation@gmail.com' }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: node scripts/jev-audit.mjs

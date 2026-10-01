@@ -104,13 +104,22 @@ const getHtmlFile = (filename: string) => {
     return null;
 };
 
-// Google Play and App Store Compliance: Direct HTML routes for Privacy Policy & Terms
-app.get(['/privacy', '/politicas', '/privacy-policy', '/privacy.html'], (req: Request, res: Response) => {
-    const filePath = getHtmlFile('privacy.html');
+const sendHtmlOrFallback = (res: Response, filename: string, fallbackHtml: string, contentType = 'text/html; charset=utf-8') => {
+    const filePath = getHtmlFile(filename);
     if (filePath) {
-        return res.sendFile(filePath);
+        try {
+            const content = fs.readFileSync(filePath, 'utf8');
+            return res.type(contentType).send(content);
+        } catch (e) {
+            console.warn(`[Static Route] Error reading ${filePath}:`, e.message);
+        }
     }
-    res.type('html').send(`<!DOCTYPE html>
+    return res.type(contentType).send(fallbackHtml);
+};
+
+// Google Play and App Store Compliance: Direct HTML routes for Privacy Policy, Terms & Support
+app.get(['/privacy', '/politicas', '/privacy-policy', '/privacy.html'], (req: Request, res: Response) => {
+    sendHtmlOrFallback(res, 'privacy.html', `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Privacy Policy - Building Innovation AI</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
@@ -124,11 +133,7 @@ app.get(['/privacy', '/politicas', '/privacy-policy', '/privacy.html'], (req: Re
 });
 
 app.get(['/terms', '/terminos', '/terms-of-service', '/terms.html', '/eula'], (req: Request, res: Response) => {
-    const filePath = getHtmlFile('terms.html');
-    if (filePath) {
-        return res.sendFile(filePath);
-    }
-    res.type('html').send(`<!DOCTYPE html>
+    sendHtmlOrFallback(res, 'terms.html', `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Terms of Service - Building Innovation AI</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
@@ -141,11 +146,7 @@ app.get(['/terms', '/terminos', '/terms-of-service', '/terms.html', '/eula'], (r
 });
 
 app.get(['/support', '/soporte', '/contact', '/help', '/support.html'], (req: Request, res: Response) => {
-    const filePath = getHtmlFile('support.html');
-    if (filePath) {
-        return res.sendFile(filePath);
-    }
-    res.type('html').send(`<!DOCTYPE html>
+    sendHtmlOrFallback(res, 'support.html', `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Support - Building Innovation AI</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
@@ -155,6 +156,14 @@ app.get(['/support', '/soporte', '/contact', '/help', '/support.html'], (req: Re
 <p>For account and data deletion requests, visit <a href="/account-deletion">/account-deletion</a>.</p>
 <p>For privacy inquiries, view our <a href="/privacy">Privacy Policy</a>.</p>
 </body></html>`);
+});
+
+app.get('/robots.txt', (req: Request, res: Response) => {
+    sendHtmlOrFallback(res, 'robots.txt', "User-agent: *\nAllow: /\n\nSitemap: https://buildingapp.us/sitemap.xml\n", 'text/plain; charset=utf-8');
+});
+
+app.get('/sitemap.xml', (req: Request, res: Response) => {
+    sendHtmlOrFallback(res, 'sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://buildingapp.us/</loc><lastmod>2026-10-01</lastmod><priority>1.0</priority></url><url><loc>https://buildingapp.us/support</loc><lastmod>2026-10-01</lastmod><priority>0.8</priority></url><url><loc>https://buildingapp.us/privacy</loc><lastmod>2026-10-01</lastmod><priority>0.7</priority></url><url><loc>https://buildingapp.us/terms</loc><lastmod>2026-10-01</lastmod><priority>0.7</priority></url></urlset>`, 'application/xml; charset=utf-8');
 });
 
 app.get('/account-deletion', (req: Request, res: Response) => {

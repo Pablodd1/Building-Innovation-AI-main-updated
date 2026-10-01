@@ -123736,12 +123736,20 @@ try {
     }
     return null;
   };
-  app.get(["/privacy", "/politicas", "/privacy-policy", "/privacy.html"], (req, res) => {
-    const filePath = getHtmlFile("privacy.html");
+  const sendHtmlOrFallback = (res, filename, fallbackHtml, contentType = "text/html; charset=utf-8") => {
+    const filePath = getHtmlFile(filename);
     if (filePath) {
-      return res.sendFile(filePath);
+      try {
+        const content = import_fs3.default.readFileSync(filePath, "utf8");
+        return res.type(contentType).send(content);
+      } catch (e2) {
+        console.warn(`[Static Route] Error reading ${filePath}:`, e2.message);
+      }
     }
-    res.type("html").send(`<!DOCTYPE html>
+    return res.type(contentType).send(fallbackHtml);
+  };
+  app.get(["/privacy", "/politicas", "/privacy-policy", "/privacy.html"], (req, res) => {
+    sendHtmlOrFallback(res, "privacy.html", `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Privacy Policy - Building Innovation AI</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
@@ -123754,11 +123762,7 @@ try {
 </body></html>`);
   });
   app.get(["/terms", "/terminos", "/terms-of-service", "/terms.html", "/eula"], (req, res) => {
-    const filePath = getHtmlFile("terms.html");
-    if (filePath) {
-      return res.sendFile(filePath);
-    }
-    res.type("html").send(`<!DOCTYPE html>
+    sendHtmlOrFallback(res, "terms.html", `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Terms of Service - Building Innovation AI</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
@@ -123770,11 +123774,7 @@ try {
 </body></html>`);
   });
   app.get(["/support", "/soporte", "/contact", "/help", "/support.html"], (req, res) => {
-    const filePath = getHtmlFile("support.html");
-    if (filePath) {
-      return res.sendFile(filePath);
-    }
-    res.type("html").send(`<!DOCTYPE html>
+    sendHtmlOrFallback(res, "support.html", `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Support - Building Innovation AI</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
@@ -123784,6 +123784,12 @@ try {
 <p>For account and data deletion requests, visit <a href="/account-deletion">/account-deletion</a>.</p>
 <p>For privacy inquiries, view our <a href="/privacy">Privacy Policy</a>.</p>
 </body></html>`);
+  });
+  app.get("/robots.txt", (req, res) => {
+    sendHtmlOrFallback(res, "robots.txt", "User-agent: *\nAllow: /\n\nSitemap: https://buildingapp.us/sitemap.xml\n", "text/plain; charset=utf-8");
+  });
+  app.get("/sitemap.xml", (req, res) => {
+    sendHtmlOrFallback(res, "sitemap.xml", `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://buildingapp.us/</loc><lastmod>2026-10-01</lastmod><priority>1.0</priority></url><url><loc>https://buildingapp.us/support</loc><lastmod>2026-10-01</lastmod><priority>0.8</priority></url><url><loc>https://buildingapp.us/privacy</loc><lastmod>2026-10-01</lastmod><priority>0.7</priority></url><url><loc>https://buildingapp.us/terms</loc><lastmod>2026-10-01</lastmod><priority>0.7</priority></url></urlset>`, "application/xml; charset=utf-8");
   });
   app.get("/account-deletion", (req, res) => {
     res.send(`
