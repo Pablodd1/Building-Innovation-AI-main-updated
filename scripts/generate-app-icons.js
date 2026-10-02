@@ -155,11 +155,21 @@ async function generateAllIcons() {
     fs.writeFileSync(iosAppIconPath, master1024);
     console.log(`✓ Updated iOS AppIcon-512@2x.png (1024x1024): ${iosAppIconPath}`);
 
-    // Save Web Icons
-    fs.writeFileSync(public512, await sharp(master1024).resize(512, 512).png().toBuffer());
-    fs.writeFileSync(public512Maskable, await sharp(master1024).resize(512, 512).png().toBuffer());
+    // Save Web Icons & Google Play Hi-Res Icon
+    const playStoreIcon512 = await sharp(master1024).resize(512, 512).png().toBuffer();
+    fs.writeFileSync(public512, playStoreIcon512);
+    fs.writeFileSync(public512Maskable, playStoreIcon512);
     fs.writeFileSync(public192, await sharp(master1024).resize(192, 192).png().toBuffer());
     fs.writeFileSync(publicSvg, iconSvg);
+
+    // Save Google Play Hi-Res Icon (512x512) to Desktop
+    const desktopPlayIcon = path.resolve('C:\\Users\\jasme\\Desktop\\google_play_hi_res_icon_512x512.png');
+    const playstoreFolderIcon = path.resolve('C:\\Users\\jasme\\Desktop\\screenshots_playstore\\hi_res_icon_512x512.png');
+    const playstoreGraphicsIcon = path.resolve('google-play-listing\\graphics\\hi-res-icon-512x512.png');
+    fs.writeFileSync(desktopPlayIcon, playStoreIcon512);
+    if (fs.existsSync(path.dirname(playstoreFolderIcon))) fs.writeFileSync(playstoreFolderIcon, playStoreIcon512);
+    if (fs.existsSync(path.dirname(playstoreGraphicsIcon))) fs.writeFileSync(playstoreGraphicsIcon, playStoreIcon512);
+    console.log(`✓ Saved Google Play Hi-Res Icon (512x512) to: ${desktopPlayIcon}`);
     console.log('✓ Updated public/icon-512.png, public/icon-192.png, public/icon.svg');
 
     // Also update android mipmap icons
