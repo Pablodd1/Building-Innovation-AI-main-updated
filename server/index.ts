@@ -125,8 +125,8 @@ app.get(['/privacy', '/politicas', '/privacy-policy', '/privacy.html'], (req: Re
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
 <h1>Privacy Policy</h1>
 <p><strong>App:</strong> Building Innovation AI (com.buildinginnovation.app)</p>
-<p><strong>Developer:</strong> Building Innovation Inc. / Unitec USA Design</p>
-<p><strong>Contact:</strong> support@buildingapp.us</p>
+<p><strong>Developer:</strong> Building Innovation Inc. / Jasmel Acosta</p>
+<p><strong>Contact:</strong> comercial.buildinginnovation@gmail.com</p>
 <p>Building Innovation AI requires camera and photo access strictly to provide user-initiated AI interior design and architectural visualization. Uploaded photos are securely encrypted via TLS 1.3/HTTPS, processed for real-time visualization, and never sold to third parties or used to train public foundation models without consent.</p>
 <p>For account and data deletion requests, visit <a href="/account-deletion">https://buildingapp.us/account-deletion</a>.</p>
 </body></html>`);
@@ -139,9 +139,9 @@ app.get(['/terms', '/terminos', '/terms-of-service', '/terms.html', '/eula'], (r
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
 <h1>Terms of Service & EULA</h1>
 <p><strong>App:</strong> Building Innovation AI (com.buildinginnovation.app)</p>
-<p><strong>Developer:</strong> Building Innovation Inc. / Unitec USA Design</p>
+<p><strong>Developer:</strong> Building Innovation Inc. / Jasmel Acosta</p>
 <p>AI visualizations and material calculations are provided as reference estimations for architectural and design planning. Standard Apple and Google Play terms apply.</p>
-<p>For inquiries or data deletion, contact support@buildingapp.us or visit <a href="/account-deletion">/account-deletion</a>.</p>
+<p>For inquiries or data deletion, contact comercial.buildinginnovation@gmail.com or visit <a href="/account-deletion">/account-deletion</a>.</p>
 </body></html>`);
 });
 
@@ -151,7 +151,8 @@ app.get(['/support', '/soporte', '/contact', '/help', '/support.html'], (req: Re
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Support - Building Innovation AI</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6;">
 <h1>Building Innovation AI Support</h1>
-<p><strong>Email:</strong> <a href="mailto:support@buildingapp.us">support@buildingapp.us</a></p>
+<p><strong>Email:</strong> <a href="mailto:comercial.buildinginnovation@gmail.com">comercial.buildinginnovation@gmail.com</a></p>
+<p><strong>Alternative Email:</strong> support@buildingapp.us</p>
 <p><strong>Response Time:</strong> Within 24-48 business hours.</p>
 <p>For account and data deletion requests, visit <a href="/account-deletion">/account-deletion</a>.</p>
 <p>For privacy inquiries, view our <a href="/privacy">Privacy Policy</a>.</p>
