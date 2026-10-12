@@ -49,6 +49,17 @@ export const telegramAlerts = {
     },
 
     async sendErrorAlert(error: Error, context?: string): Promise<void> {
+        // Dedup: production fired this alert four times in a row for the SAME 30 s image-proxy
+        // failure. One page per error per window, not one per request.
+        const dedupKey = `${(error?.message || String(error)).substring(0, 120)}|${context ? context.substring(0, 60) : ''}`;
+        const store: Map<string, number> = ((globalThis as any).__tgAlertDedup ||= new Map());
+        const nowMs = Date.now();
+        if ((store.get(dedupKey) || 0) + 10 * 60 * 1000 > nowMs) {
+            console.warn('[Telegram] alert deduped within 10 min window:', dedupKey.slice(0, 90));
+            return;
+        }
+        store.set(dedupKey, nowMs);
+        if (store.size > 300) store.clear();
         const msg = `<b>🚨 Error Alert</b>\n\n<b>Error:</b> <code>${(error.message || String(error)).substring(0, 300)}</code>${context ? `\n<b>Context:</b> ${context.substring(0, 300)}` : ''}`;
         await sendTelegramMessage(msg, 'HTML');
     },

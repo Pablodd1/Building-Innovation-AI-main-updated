@@ -4613,12 +4613,26 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
             return res.status(403).json({ error: 'Domain not allowed' });
         }
 
-        const imageRes = await fetch(url, {
+        // The upstream (Google Drive / lh3) sometimes hangs. An unbounded fetch turned that into a
+        // 30 s wait and then a 500 — production alerted this four times in a row (30.0-30.2 s each).
+        // Bound it: 8 s per attempt, one retry ONLY after a timeout, then fail fast and honestly.
+        const fetchImage = (signal: AbortSignal) => fetch(url, {
+            signal,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Referer': 'https://drive.google.com'
             }
         });
+        let imageRes: any;
+        try {
+            imageRes = await fetchImage(AbortSignal.timeout(8000));
+        } catch (e1: any) {
+            if (e1?.name === 'TimeoutError' || e1?.name === 'AbortError') {
+                imageRes = await fetchImage(AbortSignal.timeout(8000));
+            } else {
+                throw e1;
+            }
+        }
 
         if (!imageRes.ok) {
             return res.status(imageRes.status).json({ error: 'Image fetch failed', status: imageRes.status });
@@ -4637,8 +4651,13 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
         const buffer = await imageRes.arrayBuffer();
         res.send(Buffer.from(buffer));
     } catch (e: any) {
-        console.error('Image proxy error:', e.message);
-        res.status(500).json({ error: e.message });
+        const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+        console.error('Image proxy error:', timedOut ? 'upstream timeout after 8s (retried once)' : e.message);
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(timedOut ? 504 : 502).json({
+            error: timedOut ? 'Upstream image timed out' : 'Upstream image error',
+            upstream: e?.message || String(e)
+        });
     }
 });
 
