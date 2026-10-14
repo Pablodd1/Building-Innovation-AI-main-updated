@@ -2467,29 +2467,6 @@ const App: React.FC = () => {
                                 ? "Registrarse"
                                 : "Sign Up"}
                     </button>
-                    <div className="pt-2 border-t border-gray-300/80">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const guestUser = {
-                                    id: 0,
-                                    name: "Guest User",
-                                    email: "guest@buildingapp.us",
-                                    role: "user" as const,
-                                    tier: "Free",
-                                    generations_used: 0,
-                                    session_token: "demo_guest_token",
-                                };
-                                setCurrentUser(guestUser);
-                                localStorage.setItem('constructviz_user', JSON.stringify(guestUser));
-                                setView(AppView.LANDING);
-                            }}
-                            className="w-full py-3.5 px-4 bg-white/90 hover:bg-white text-gray-800 rounded-xl font-bold text-sm transition-all border border-gray-300 shadow-sm flex items-center justify-center gap-2 active:scale-[0.98]"
-                        >
-                            <span>🚀</span>
-                            {lang === "es" ? "Continuar como Invitado (Demo)" : "Continue as Guest (Demo)"}
-                        </button>
-                    </div>
 
                     <div className="text-center text-sm text-gray-600">
                         {authMode === "login" ? (
