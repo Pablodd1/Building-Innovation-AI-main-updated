@@ -17,6 +17,7 @@ import crypto from 'crypto';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 import { telegramAlerts } from './telegramAlerts';
 import mysql from 'mysql2/promise';
+import { triageRenderPrompt, classifyPurchaseLead, classifyCatalogQuery } from './services/jevClassifier.js';
 
 // SERVER_DIR: use process.cwd() for CJS bundled output, or compute from import.meta.url for ESM dev
 const SERVER_DIR = path.resolve();
@@ -2318,6 +2319,30 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
         const config = loadConfig();
         const provider = (userProvider as AIProvider) || config.AI_PROVIDER || "gemini";
 
+        // Jev System-1 Pre-Render Prompt Triage (<50ms):
+        // 1. Blocks unsafe/abusive prompts before spending OpenAI/Gemini credits
+        // 2. Automatically infers target surface scope (floor vs accent wall vs all walls) when not explicitly set
+        const jevTriage = await triageRenderPrompt(
+            userInstruction || "",
+            material?.name,
+            material?.category
+        );
+        if (!jevTriage.isSafeArchitecturalRequest) {
+            return res.status(400).json({
+                error: "Invalid instruction",
+                message: lang === "es"
+                    ? "Por favor ingresa únicamente instrucciones relacionadas con diseño arquitectónico o acabados de interiores."
+                    : "Please enter instructions related only to architectural design or interior finishes."
+            });
+        }
+
+        const enrichedRenderOptions = {
+            ...(renderOptions || {}),
+            jevDetectedSurface: jevTriage.detectedSurfaceScope,
+            jevLightingMood: jevTriage.lightingMood,
+            jevSource: jevTriage.source,
+        };
+
         // INPAINT MODE: skip the sharp compositor entirely and go straight to
         // OpenAI gpt-image with a wall-region mask. The compositor is the wrong
         // tool here — it can tile a texture but can't realistically relight,
@@ -2329,7 +2354,7 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
                     originalImage: cleanedImage,
                     material,
                     userInstruction: userInstruction || "",
-                    renderOptions,
+                    renderOptions: enrichedRenderOptions,
                     mode: "inpaint",
                     analysis,
                     forceProvider: debugForceProvider,
@@ -2562,6 +2587,41 @@ app.get('/api/materials', async (req: Request, res: Response) => {
         res.json(materials);
     } catch (error: any) {
         console.error('Get materials error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Smart natural-language catalog search powered by Jev System-1 (`jev-1`)
+app.post('/api/materials/smart-search', async (req: Request, res: Response) => {
+    try {
+        const queryText = String(req.body?.query || req.query?.q || '').trim();
+        const materials = await getMaterials();
+        if (!queryText) {
+            return res.json({ intent: null, count: materials.length, materials });
+        }
+
+        const intent = await classifyCatalogQuery(queryText);
+        const filtered = materials.filter((m: any) => {
+            const cat = String(m.category || '').toUpperCase();
+            const textBlob = `${m.name || ''} ${m.category || ''} ${m.subcategory || ''} ${m.description || ''} ${m.usage || ''}`.toLowerCase();
+
+            if (intent.recommendedCategory !== 'ALL' && !cat.includes(intent.recommendedCategory.replace('PANEL ', ''))) {
+                // Allow keyword match override
+                if (!textBlob.includes(queryText.toLowerCase())) return false;
+            }
+            if (intent.environment === 'exterior' && /interior\s*only/i.test(textBlob)) {
+                return false;
+            }
+            return true;
+        });
+
+        res.json({
+            intent,
+            count: filtered.length,
+            materials: filtered.length > 0 ? filtered : materials.slice(0, 24),
+        });
+    } catch (error: any) {
+        console.error('Smart catalog search error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -2850,6 +2910,14 @@ app.post('/api/purchase-requests', requireAuth, async (req: Request, res: Respon
 
         const purchaseRequest = result.rows[0];
 
+        const leadClassification = await classifyPurchaseLead({
+            customerName: customer_name,
+            customerEmail: customer_email,
+            totalEstimate: Number(total_estimate),
+            itemCount: cart_items.length,
+            notes: project_notes,
+        });
+
         logUserActivity({
             userId: user_id || undefined,
             action: 'PURCHASE_MOCK',
@@ -2859,6 +2927,8 @@ app.post('/api/purchase-requests', requireAuth, async (req: Request, res: Respon
                 total_estimate,
                 currency: currency || 'USD',
                 itemCount: cart_items.length,
+                jevPriority: leadClassification.priority,
+                jevProjectScale: leadClassification.projectScale,
             },
         });
 
