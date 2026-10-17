@@ -4462,13 +4462,22 @@ app.post('/api/log-error', (req: Request, res: Response) => {
     if (errorLog.length > 50) errorLog.pop();
     console.error('Frontend Error:', entry);
 
-    // Dispatch error alert to Telegram
+    // Dispatch error alert to Telegram (skip benign legacy browser syntax errors & third-party extension noise)
     try {
-        const errorObj = new Error(typeof error === 'string' ? error : (error?.message || JSON.stringify(error)));
-        telegramAlerts.sendErrorAlert(
-            errorObj,
-            `Frontend Error (User ID: ${userId || 'Guest'})\nContext: ${context || 'N/A'}`
-        );
+        const errStr = typeof error === 'string' ? error : (error?.message || JSON.stringify(error));
+        const isBenignNoise =
+            /Unexpected token \?/i.test(errStr) ||
+            /Script error\.?$/i.test(errStr) ||
+            /ResizeObserver loop/i.test(errStr) ||
+            /ecosystem-widget\.js/i.test(errStr);
+
+        if (!isBenignNoise) {
+            const errorObj = new Error(errStr);
+            telegramAlerts.sendErrorAlert(
+                errorObj,
+                `Frontend Error (User ID: ${userId || 'Guest'})\nContext: ${context || 'N/A'}`
+            );
+        }
     } catch (tgErr) {
         console.error('Failed to send frontend error to Telegram:', tgErr);
     }

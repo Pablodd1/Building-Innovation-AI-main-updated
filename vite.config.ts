@@ -14,6 +14,9 @@ export default defineConfig({
     },
   },
   build: {
+    // Transpile nullish coalescing (??) and optional chaining (?.) down to ES2018
+    // so older Android WebViews, iOS 13, and automated crawlers never throw 'SyntaxError: Unexpected token ?'
+    target: 'es2018',
     rollupOptions: {
       output: {
         // Split React into its own chunk so it initializes FIRST,
