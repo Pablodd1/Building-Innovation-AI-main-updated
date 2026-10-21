@@ -82,10 +82,10 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=3" />
     <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png?v=3" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/assets/index-CTBIv368.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/react-vendor-DS5MNCNF.js">
-  <link rel="modulepreload" crossorigin href="/assets/vendor-CVtS0Ii9.js">
-  <link rel="stylesheet" crossorigin href="/assets/index-C8pNfuxB.css">
+  <script type="module" crossorigin src="/assets/index-CdblK3o0.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/react-vendor-CKDjLowj.js">
+  <link rel="modulepreload" crossorigin href="/assets/vendor-BnQcpnJb.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-B81wgE73.css">
 </head>
   <body class="bg-slate-900 text-white">
     <div id="root"></div>
@@ -93,16 +93,19 @@
     <!-- Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
+        window.addEventListener('load', function() {
           navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
+            .then(function(registration) {
               console.log('SW registered:', registration.scope);
             })
-            .catch((error) => {
+            .catch(function(error) {
               console.log('SW registration failed:', error);
             });
         });
       }
     </script>
+
+    <!-- Innovation Ecosystem Cross-Marketing Widget -->
+    <script src="https://www.aidynamic.pro/ecosystem-widget.js" defer></script>
   </body>
 </html>

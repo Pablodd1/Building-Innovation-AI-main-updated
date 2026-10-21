@@ -19818,20 +19818,20 @@ var require_proxy_addr = __commonJS({
         ip = ip.toIPv4Address();
       }
       var max = ip.kind() === "ipv6" ? 128 : 32;
-      var range = pos !== -1 ? note.substring(pos + 1, note.length) : null;
-      if (range === null) {
-        range = max;
-      } else if (DIGIT_REGEXP.test(range)) {
-        range = parseInt(range, 10);
-      } else if (ip.kind() === "ipv4" && isip(range)) {
-        range = parseNetmask(range);
+      var range2 = pos !== -1 ? note.substring(pos + 1, note.length) : null;
+      if (range2 === null) {
+        range2 = max;
+      } else if (DIGIT_REGEXP.test(range2)) {
+        range2 = parseInt(range2, 10);
+      } else if (ip.kind() === "ipv4" && isip(range2)) {
+        range2 = parseNetmask(range2);
       } else {
-        range = null;
+        range2 = null;
       }
-      if (range <= 0 || range > max) {
+      if (range2 <= 0 || range2 > max) {
         throw new TypeError("invalid range on address: " + note);
       }
-      return [ip, range];
+      return [ip, range2];
     }
     function parseNetmask(netmask) {
       var ip = parseip(netmask);
@@ -22094,9 +22094,9 @@ var require_range_parser = __commonJS({
       var ranges = [];
       ranges.type = str2.slice(0, index);
       for (var i2 = 0; i2 < arr.length; i2++) {
-        var range = arr[i2].split("-");
-        var start = parseInt(range[0], 10);
-        var end = parseInt(range[1], 10);
+        var range2 = arr[i2].split("-");
+        var start = parseInt(range2[0], 10);
+        var end = parseInt(range2[1], 10);
         if (isNaN(start)) {
           start = size - end;
           end = size - 1;
@@ -22122,13 +22122,13 @@ var require_range_parser = __commonJS({
     function combineRanges(ranges) {
       var ordered = ranges.map(mapWithIndex).sort(sortByRangeStart);
       for (var j = 0, i2 = 1; i2 < ordered.length; i2++) {
-        var range = ordered[i2];
+        var range2 = ordered[i2];
         var current = ordered[j];
-        if (range.start > current.end + 1) {
-          ordered[++j] = range;
-        } else if (range.end > current.end) {
-          current.end = range.end;
-          current.index = Math.min(current.index, range.index);
+        if (range2.start > current.end + 1) {
+          ordered[++j] = range2;
+        } else if (range2.end > current.end) {
+          current.end = range2.end;
+          current.index = Math.min(current.index, range2.index);
         }
       }
       ordered.length = j + 1;
@@ -22136,17 +22136,17 @@ var require_range_parser = __commonJS({
       combined.type = ranges.type;
       return combined;
     }
-    function mapWithIndex(range, index) {
+    function mapWithIndex(range2, index) {
       return {
-        start: range.start,
-        end: range.end,
+        start: range2.start,
+        end: range2.end,
         index
       };
     }
-    function mapWithoutIndex(range) {
+    function mapWithoutIndex(range2) {
       return {
-        start: range.start,
-        end: range.end
+        start: range2.start,
+        end: range2.end
       };
     }
     function sortByRangeIndex(a, b) {
@@ -22203,10 +22203,10 @@ var require_request = __commonJS({
     req.acceptsLanguages = function(...languages) {
       return accepts(this).languages(...languages);
     };
-    req.range = function range(size, options) {
-      var range2 = this.get("Range");
-      if (!range2) return;
-      return parseRange(size, range2, options);
+    req.range = function range2(size, options) {
+      var range3 = this.get("Range");
+      if (!range3) return;
+      return parseRange(size, range3, options);
     };
     defineGetter(req, "query", function query() {
       var queryparse = this.app.get("query parser fn");
@@ -23109,8 +23109,8 @@ var require_send = __commonJS({
       }
       return false;
     }
-    function contentRange(type, size, range) {
-      return type + " " + (range ? range.start + "-" + range.end : "*") + "/" + size;
+    function contentRange(type, size, range2) {
+      return type + " " + (range2 ? range2.start + "-" + range2.end : "*") + "/" + size;
     }
     function createHtmlDocument(title, body) {
       return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>' + title + "</title>\n</head>\n<body>\n<pre>" + body + "</pre>\n</body>\n</html>\n";
@@ -28173,8 +28173,8 @@ var require_client = __commonJS({
         }
         return data;
       }
-      cancel(client, query) {
-        if (client.activeQuery === query) {
+      cancel(client2, query) {
+        if (client2.activeQuery === query) {
           const con = this.connection;
           if (this.host && this.host.indexOf("/") === 0) {
             con.connect(this.host + "/.s.PGSQL." + this.port);
@@ -28182,10 +28182,10 @@ var require_client = __commonJS({
             con.connect(this.port, this.host);
           }
           con.on("connect", function() {
-            con.cancel(client.processID, client.secretKey);
+            con.cancel(client2.processID, client2.secretKey);
           });
-        } else if (client._queryQueue.indexOf(query) !== -1) {
-          client._queryQueue.splice(client._queryQueue.indexOf(query), 1);
+        } else if (client2._queryQueue.indexOf(query) !== -1) {
+          client2._queryQueue.splice(client2._queryQueue.indexOf(query), 1);
         }
       }
       setTypeParser(oid, format, parseFn) {
@@ -28354,8 +28354,8 @@ var require_pg_pool = __commonJS({
       return i2 === -1 ? void 0 : list.splice(i2, 1)[0];
     };
     var IdleItem = class {
-      constructor(client, idleListener, timeoutId) {
-        this.client = client;
+      constructor(client2, idleListener, timeoutId) {
+        this.client = client2;
         this.idleListener = idleListener;
         this.timeoutId = timeoutId;
       }
@@ -28374,8 +28374,8 @@ var require_pg_pool = __commonJS({
       }
       let rej;
       let res;
-      const cb = function(err, client) {
-        err ? rej(err) : res(client);
+      const cb = function(err, client2) {
+        err ? rej(err) : res(client2);
       };
       const result = new Promise2(function(resolve2, reject) {
         res = resolve2;
@@ -28386,15 +28386,15 @@ var require_pg_pool = __commonJS({
       });
       return { callback: cb, result };
     }
-    function makeIdleListener(pool, client) {
+    function makeIdleListener(pool, client2) {
       return function idleListener(err) {
-        err.client = client;
-        client.removeListener("error", idleListener);
-        client.on("error", () => {
+        err.client = client2;
+        client2.removeListener("error", idleListener);
+        client2.on("error", () => {
           pool.log("additional client error after disconnection due to error", err);
         });
-        pool._remove(client);
-        pool.emit("error", err, client);
+        pool._remove(client2);
+        pool.emit("error", err, client2);
       };
     }
     var Pool2 = class extends EventEmitter2 {
@@ -28477,25 +28477,25 @@ var require_pg_pool = __commonJS({
         if (this._idle.length) {
           const idleItem = this._idle.pop();
           clearTimeout(idleItem.timeoutId);
-          const client = idleItem.client;
-          client.ref && client.ref();
+          const client2 = idleItem.client;
+          client2.ref && client2.ref();
           const idleListener = idleItem.idleListener;
-          return this._acquireClient(client, pendingItem, idleListener, false);
+          return this._acquireClient(client2, pendingItem, idleListener, false);
         }
         if (!this._isFull()) {
           return this.newClient(pendingItem);
         }
         throw new Error("unexpected condition");
       }
-      _remove(client, callback) {
-        const removed = removeWhere(this._idle, (item) => item.client === client);
+      _remove(client2, callback) {
+        const removed = removeWhere(this._idle, (item) => item.client === client2);
         if (removed !== void 0) {
           clearTimeout(removed.timeoutId);
         }
-        this._clients = this._clients.filter((c) => c !== client);
+        this._clients = this._clients.filter((c) => c !== client2);
         const context = this;
-        client.end(() => {
-          context.emit("remove", client);
+        client2.end(() => {
+          context.emit("remove", client2);
           if (typeof callback === "function") {
             callback();
           }
@@ -28536,34 +28536,34 @@ var require_pg_pool = __commonJS({
         return result;
       }
       newClient(pendingItem) {
-        const client = new this.Client(this.options);
-        this._clients.push(client);
-        const idleListener = makeIdleListener(this, client);
+        const client2 = new this.Client(this.options);
+        this._clients.push(client2);
+        const idleListener = makeIdleListener(this, client2);
         this.log("checking client timeout");
         let tid;
         let timeoutHit = false;
         if (this.options.connectionTimeoutMillis) {
           tid = setTimeout(() => {
-            if (client.connection) {
+            if (client2.connection) {
               this.log("ending client due to timeout");
               timeoutHit = true;
-              client.connection.stream.destroy();
-            } else if (!client.isConnected()) {
+              client2.connection.stream.destroy();
+            } else if (!client2.isConnected()) {
               this.log("ending client due to timeout");
               timeoutHit = true;
-              client.end();
+              client2.end();
             }
           }, this.options.connectionTimeoutMillis);
         }
         this.log("connecting new client");
-        client.connect((err) => {
+        client2.connect((err) => {
           if (tid) {
             clearTimeout(tid);
           }
-          client.on("error", idleListener);
+          client2.on("error", idleListener);
           if (err) {
             this.log("client failed to connect", err);
-            this._clients = this._clients.filter((c) => c !== client);
+            this._clients = this._clients.filter((c) => c !== client2);
             if (timeoutHit) {
               err = new Error("Connection terminated due to connection timeout", { cause: err });
             }
@@ -28574,13 +28574,13 @@ var require_pg_pool = __commonJS({
           } else {
             this.log("new client connected");
             if (this.options.onConnect) {
-              this._promiseTry(() => this.options.onConnect(client)).then(
+              this._promiseTry(() => this.options.onConnect(client2)).then(
                 () => {
-                  this._afterConnect(client, pendingItem, idleListener);
+                  this._afterConnect(client2, pendingItem, idleListener);
                 },
                 (hookErr) => {
-                  this._clients = this._clients.filter((c) => c !== client);
-                  client.end(() => {
+                  this._clients = this._clients.filter((c) => c !== client2);
+                  client2.end(() => {
                     this._pulseQueue();
                     if (!pendingItem.timedOut) {
                       pendingItem.callback(hookErr, void 0, NOOP);
@@ -28590,93 +28590,93 @@ var require_pg_pool = __commonJS({
               );
               return;
             }
-            return this._afterConnect(client, pendingItem, idleListener);
+            return this._afterConnect(client2, pendingItem, idleListener);
           }
         });
       }
-      _afterConnect(client, pendingItem, idleListener) {
+      _afterConnect(client2, pendingItem, idleListener) {
         if (this.options.maxLifetimeSeconds !== 0) {
           const maxLifetimeTimeout = setTimeout(() => {
             this.log("ending client due to expired lifetime");
-            this._expired.add(client);
-            const idleIndex = this._idle.findIndex((idleItem) => idleItem.client === client);
+            this._expired.add(client2);
+            const idleIndex = this._idle.findIndex((idleItem) => idleItem.client === client2);
             if (idleIndex !== -1) {
               this._acquireClient(
-                client,
-                new PendingItem((err, client2, clientRelease) => clientRelease()),
+                client2,
+                new PendingItem((err, client3, clientRelease) => clientRelease()),
                 idleListener,
                 false
               );
             }
           }, this.options.maxLifetimeSeconds * 1e3);
           maxLifetimeTimeout.unref();
-          client.once("end", () => clearTimeout(maxLifetimeTimeout));
+          client2.once("end", () => clearTimeout(maxLifetimeTimeout));
         }
-        return this._acquireClient(client, pendingItem, idleListener, true);
+        return this._acquireClient(client2, pendingItem, idleListener, true);
       }
       // acquire a client for a pending work item
-      _acquireClient(client, pendingItem, idleListener, isNew) {
+      _acquireClient(client2, pendingItem, idleListener, isNew) {
         if (isNew) {
-          this.emit("connect", client);
+          this.emit("connect", client2);
         }
-        this.emit("acquire", client);
-        client.release = this._releaseOnce(client, idleListener);
-        client.removeListener("error", idleListener);
+        this.emit("acquire", client2);
+        client2.release = this._releaseOnce(client2, idleListener);
+        client2.removeListener("error", idleListener);
         if (!pendingItem.timedOut) {
           if (isNew && this.options.verify) {
-            this.options.verify(client, (err) => {
+            this.options.verify(client2, (err) => {
               if (err) {
-                client.release(err);
+                client2.release(err);
                 return pendingItem.callback(err, void 0, NOOP);
               }
-              pendingItem.callback(void 0, client, client.release);
+              pendingItem.callback(void 0, client2, client2.release);
             });
           } else {
-            pendingItem.callback(void 0, client, client.release);
+            pendingItem.callback(void 0, client2, client2.release);
           }
         } else {
           if (isNew && this.options.verify) {
-            this.options.verify(client, client.release);
+            this.options.verify(client2, client2.release);
           } else {
-            client.release();
+            client2.release();
           }
         }
       }
       // returns a function that wraps _release and throws if called more than once
-      _releaseOnce(client, idleListener) {
+      _releaseOnce(client2, idleListener) {
         let released = false;
         return (err) => {
           if (released) {
             throwOnDoubleRelease();
           }
           released = true;
-          this._release(client, idleListener, err);
+          this._release(client2, idleListener, err);
         };
       }
       // release a client back to the poll, include an error
       // to remove it from the pool
-      _release(client, idleListener, err) {
-        client.on("error", idleListener);
-        client._poolUseCount = (client._poolUseCount || 0) + 1;
-        this.emit("release", err, client);
-        if (err || this.ending || !client._queryable || client._ending || client._poolUseCount >= this.options.maxUses) {
-          if (client._poolUseCount >= this.options.maxUses) {
+      _release(client2, idleListener, err) {
+        client2.on("error", idleListener);
+        client2._poolUseCount = (client2._poolUseCount || 0) + 1;
+        this.emit("release", err, client2);
+        if (err || this.ending || !client2._queryable || client2._ending || client2._poolUseCount >= this.options.maxUses) {
+          if (client2._poolUseCount >= this.options.maxUses) {
             this.log("remove expended client");
           }
-          return this._remove(client, this._pulseQueue.bind(this));
+          return this._remove(client2, this._pulseQueue.bind(this));
         }
-        const isExpired = this._expired.has(client);
+        const isExpired = this._expired.has(client2);
         if (isExpired) {
           this.log("remove expired client");
-          this._expired.delete(client);
-          return this._remove(client, this._pulseQueue.bind(this));
+          this._expired.delete(client2);
+          return this._remove(client2, this._pulseQueue.bind(this));
         }
         let tid;
         if (this.options.idleTimeoutMillis && this._isAboveMin()) {
           tid = setTimeout(() => {
             if (this._isAboveMin()) {
               this.log("remove idle client");
-              this._remove(client, this._pulseQueue.bind(this));
+              this._remove(client2, this._pulseQueue.bind(this));
             }
           }, this.options.idleTimeoutMillis);
           if (this.options.allowExitOnIdle) {
@@ -28684,9 +28684,9 @@ var require_pg_pool = __commonJS({
           }
         }
         if (this.options.allowExitOnIdle) {
-          client.unref();
+          client2.unref();
         }
-        this._idle.push(new IdleItem(client, idleListener, tid));
+        this._idle.push(new IdleItem(client2, idleListener, tid));
         this._pulseQueue();
       }
       query(text, values, cb) {
@@ -28703,7 +28703,7 @@ var require_pg_pool = __commonJS({
         }
         const response = promisify2(this.Promise, cb);
         cb = response.callback;
-        this.connect((err, client) => {
+        this.connect((err, client2) => {
           if (err) {
             return cb(err);
           }
@@ -28713,27 +28713,27 @@ var require_pg_pool = __commonJS({
               return;
             }
             clientReleased = true;
-            client.release(err2);
+            client2.release(err2);
             cb(err2);
           };
-          client.once("error", onError);
+          client2.once("error", onError);
           this.log("dispatching query");
           try {
-            client.query(text, values, (err2, res) => {
+            client2.query(text, values, (err2, res) => {
               this.log("query dispatched");
-              client.removeListener("error", onError);
+              client2.removeListener("error", onError);
               if (clientReleased) {
                 return;
               }
               clientReleased = true;
-              client.release(err2);
+              client2.release(err2);
               if (err2) {
                 return cb(err2);
               }
               return cb(void 0, res);
             });
           } catch (err2) {
-            client.release(err2);
+            client2.release(err2);
             return cb(err2);
           }
         });
@@ -28758,7 +28758,7 @@ var require_pg_pool = __commonJS({
         return this._idle.length;
       }
       get expiredCount() {
-        return this._clients.reduce((acc, client) => acc + (this._expired.has(client) ? 1 : 0), 0);
+        return this._clients.reduce((acc, client2) => acc + (this._expired.has(client2) ? 1 : 0), 0);
       }
       get totalCount() {
         return this._clients.length;
@@ -28839,13 +28839,13 @@ var require_query2 = __commonJS({
       );
       return this._promise;
     };
-    NativeQuery.prototype.submit = function(client) {
+    NativeQuery.prototype.submit = function(client2) {
       this.state = "running";
       const self2 = this;
-      this.native = client.native;
-      client.native.arrayMode = this._arrayMode;
+      this.native = client2.native;
+      client2.native.arrayMode = this._arrayMode;
       let after = function(err, rows, results) {
-        client.native.arrayMode = false;
+        client2.native.arrayMode = false;
         setImmediate(function() {
           self2.emit("_done");
         });
@@ -28881,16 +28881,16 @@ var require_query2 = __commonJS({
           console.error("This can cause conflicts and silent errors executing queries");
         }
         const values = (this.values || []).map(utils.prepareValue);
-        if (client.namedQueries[this.name]) {
-          if (this.text && client.namedQueries[this.name] !== this.text) {
+        if (client2.namedQueries[this.name]) {
+          if (this.text && client2.namedQueries[this.name] !== this.text) {
             const err = new Error(`Prepared statements must be unique - '${this.name}' was used for a different statement`);
             return after(err);
           }
-          return client.native.execute(this.name, values, after);
+          return client2.native.execute(this.name, values, after);
         }
-        return client.native.prepare(this.name, this.text, values.length, function(err) {
+        return client2.native.prepare(this.name, this.text, values.length, function(err) {
           if (err) return after(err);
-          client.namedQueries[self2.name] = self2.text;
+          client2.namedQueries[self2.name] = self2.text;
           return self2.native.execute(self2.name, values, after);
         });
       } else if (this.values) {
@@ -28899,11 +28899,11 @@ var require_query2 = __commonJS({
           return after(err);
         }
         const vals = this.values.map(utils.prepareValue);
-        client.native.query(this.text, vals, after);
+        client2.native.query(this.text, vals, after);
       } else if (this.queryMode === "extended") {
-        client.native.query(this.text, [], after);
+        client2.native.query(this.text, [], after);
       } else {
-        client.native.query(this.text, after);
+        client2.native.query(this.text, after);
       }
     };
   }
@@ -31684,7 +31684,7 @@ var require_common2 = __commonJS({
     }
     function defaultErrorRedactor(data) {
       const REDACT = "<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.";
-      function redactHeaders(headers) {
+      function redactHeaders2(headers) {
         if (!headers)
           return;
         headers.forEach((_, key) => {
@@ -31723,7 +31723,7 @@ var require_common2 = __commonJS({
         }
       }
       if (data.config) {
-        redactHeaders(data.config.headers);
+        redactHeaders2(data.config.headers);
         redactString(data.config, "data");
         redactObject(data.config.data);
         redactString(data.config, "body");
@@ -31737,7 +31737,7 @@ var require_common2 = __commonJS({
       }
       if (data.response) {
         defaultErrorRedactor({ config: data.response.config });
-        redactHeaders(data.response.headers);
+        redactHeaders2(data.response.headers);
         if (data.response.bodyUsed) {
           redactString(data.response, "data");
           redactObject(data.response.data);
@@ -45250,9 +45250,9 @@ var require_refreshclient = __commonJS({
        * @param json The input object.
        */
       static fromJSON(json) {
-        const client = new _UserRefreshClient();
-        client.fromJSON(json);
-        return client;
+        const client2 = new _UserRefreshClient();
+        client2.fromJSON(json);
+        return client2;
       }
     };
     exports2.UserRefreshClient = UserRefreshClient;
@@ -47618,10 +47618,10 @@ var require_googleauth = __commonJS({
       // GAPIC client libraries should always use self-signed JWTs. The following
       // variables are set on the JWT client in order to indicate the type of library,
       // and sign the JWT with the correct audience and scopes (if not supplied).
-      setGapicJWTValues(client) {
-        client.defaultServicePath = this.defaultServicePath;
-        client.useJWTAccessWithScope = this.useJWTAccessWithScope;
-        client.defaultScopes = this.defaultScopes;
+      setGapicJWTValues(client2) {
+        client2.defaultServicePath = this.defaultServicePath;
+        client2.useJWTAccessWithScope = this.useJWTAccessWithScope;
+        client2.defaultScopes = this.defaultScopes;
       }
       getProjectId(callback) {
         if (callback) {
@@ -47835,8 +47835,8 @@ var require_googleauth = __commonJS({
         if (!location) {
           return null;
         }
-        const client = await this._getApplicationCredentialsFromFilePath(location, options);
-        return client;
+        const client2 = await this._getApplicationCredentialsFromFilePath(location, options);
+        return client2;
       }
       /**
        * Attempts to load default credentials from a file at the given path..
@@ -47939,34 +47939,34 @@ var require_googleauth = __commonJS({
        * @returns JWT or UserRefresh Client with data
        */
       fromJSON(json, options = {}) {
-        let client;
+        let client2;
         const preferredUniverseDomain = (0, util_1.originalOrCamelOptions)(options).get("universe_domain");
         if (json.type === refreshclient_1.USER_REFRESH_ACCOUNT_TYPE) {
-          client = new refreshclient_1.UserRefreshClient(options);
-          client.fromJSON(json);
+          client2 = new refreshclient_1.UserRefreshClient(options);
+          client2.fromJSON(json);
         } else if (json.type === impersonated_1.IMPERSONATED_ACCOUNT_TYPE) {
-          client = this.fromImpersonatedJSON(json);
+          client2 = this.fromImpersonatedJSON(json);
         } else if (json.type === baseexternalclient_1.EXTERNAL_ACCOUNT_TYPE) {
-          client = externalclient_1.ExternalAccountClient.fromJSON({
+          client2 = externalclient_1.ExternalAccountClient.fromJSON({
             ...json,
             ...options
           });
-          client.scopes = this.getAnyScopes();
+          client2.scopes = this.getAnyScopes();
         } else if (json.type === externalAccountAuthorizedUserClient_1.EXTERNAL_ACCOUNT_AUTHORIZED_USER_TYPE) {
-          client = new externalAccountAuthorizedUserClient_1.ExternalAccountAuthorizedUserClient({
+          client2 = new externalAccountAuthorizedUserClient_1.ExternalAccountAuthorizedUserClient({
             ...json,
             ...options
           });
         } else {
           options.scopes = this.scopes;
-          client = new jwtclient_1.JWT(options);
-          this.setGapicJWTValues(client);
-          client.fromJSON(json);
+          client2 = new jwtclient_1.JWT(options);
+          this.setGapicJWTValues(client2);
+          client2.fromJSON(json);
         }
         if (preferredUniverseDomain) {
-          client.universeDomain = preferredUniverseDomain;
+          client2.universeDomain = preferredUniverseDomain;
         }
-        return client;
+        return client2;
       }
       /**
        * Return a JWT or UserRefreshClient from JavaScript object, caching both the
@@ -47976,10 +47976,10 @@ var require_googleauth = __commonJS({
        * @returns JWT or UserRefresh Client with data
        */
       _cacheClientFromJSON(json, options) {
-        const client = this.fromJSON(json, options);
+        const client2 = this.fromJSON(json, options);
         this.jsonContent = json;
-        this.cachedCredential = client;
-        return client;
+        this.cachedCredential = client2;
+        return client2;
       }
       fromStream(inputStream, optionsOrCallback = {}, callback) {
         let options = {};
@@ -48009,13 +48009,13 @@ var require_googleauth = __commonJS({
               } catch (err) {
                 if (!this.keyFilename)
                   throw err;
-                const client = new jwtclient_1.JWT({
+                const client2 = new jwtclient_1.JWT({
                   ...this.clientOptions,
                   keyFile: this.keyFilename
                 });
-                this.cachedCredential = client;
-                this.setGapicJWTValues(client);
-                return resolve2(client);
+                this.cachedCredential = client2;
+                this.setGapicJWTValues(client2);
+                return resolve2(client2);
               }
             } catch (err) {
               return reject(err);
@@ -48122,16 +48122,16 @@ var require_googleauth = __commonJS({
         }
       }
       async getCredentialsAsync() {
-        const client = await this.getClient();
-        if (client instanceof impersonated_1.Impersonated) {
-          return { client_email: client.getTargetPrincipal() };
+        const client2 = await this.getClient();
+        if (client2 instanceof impersonated_1.Impersonated) {
+          return { client_email: client2.getTargetPrincipal() };
         }
-        if (client instanceof baseexternalclient_1.BaseExternalAccountClient) {
-          const serviceAccountEmail = client.getServiceAccountEmail();
+        if (client2 instanceof baseexternalclient_1.BaseExternalAccountClient) {
+          const serviceAccountEmail = client2.getServiceAccountEmail();
           if (serviceAccountEmail) {
             return {
               client_email: serviceAccountEmail,
-              universe_domain: client.universeDomain
+              universe_domain: client2.universeDomain
             };
           }
         }
@@ -48175,9 +48175,9 @@ var require_googleauth = __commonJS({
           const stream = fs6.createReadStream(filePath);
           return await this.fromStreamAsync(stream, this.clientOptions);
         } else if (this.apiKey) {
-          const client = await this.fromAPIKey(this.apiKey, this.clientOptions);
-          client.scopes = this.scopes;
-          const { credential } = await this.#prepareAndCacheClient(client);
+          const client2 = await this.fromAPIKey(this.apiKey, this.clientOptions);
+          client2.scopes = this.scopes;
+          const { credential } = await this.#prepareAndCacheClient(client2);
           return credential;
         } else {
           const { credential } = await this.getApplicationDefaultAsync(this.clientOptions);
@@ -48190,27 +48190,27 @@ var require_googleauth = __commonJS({
        * @returns IdTokenClient for making HTTP calls authenticated with ID tokens.
        */
       async getIdTokenClient(targetAudience) {
-        const client = await this.getClient();
-        if (!("fetchIdToken" in client)) {
+        const client2 = await this.getClient();
+        if (!("fetchIdToken" in client2)) {
           throw new Error("Cannot fetch ID token in this environment, use GCE or set the GOOGLE_APPLICATION_CREDENTIALS environment variable to a service account credentials JSON file.");
         }
-        return new idtokenclient_1.IdTokenClient({ targetAudience, idTokenProvider: client });
+        return new idtokenclient_1.IdTokenClient({ targetAudience, idTokenProvider: client2 });
       }
       /**
        * Automatically obtain application default credentials, and return
        * an access token for making requests.
        */
       async getAccessToken() {
-        const client = await this.getClient();
-        return (await client.getAccessToken()).token;
+        const client2 = await this.getClient();
+        return (await client2.getAccessToken()).token;
       }
       /**
        * Obtain the HTTP headers that will provide authorization for a given
        * request.
        */
       async getRequestHeaders(url) {
-        const client = await this.getClient();
-        return client.getRequestHeaders(url);
+        const client2 = await this.getClient();
+        return client2.getRequestHeaders(url);
       }
       /**
        * Obtain credentials for a request, then attach the appropriate headers to
@@ -48219,8 +48219,8 @@ var require_googleauth = __commonJS({
        */
       async authorizeRequest(opts = {}) {
         const url = opts.url;
-        const client = await this.getClient();
-        const headers = await client.getRequestHeaders(url);
+        const client2 = await this.getClient();
+        const headers = await client2.getRequestHeaders(url);
         opts.headers = gaxios_1.Gaxios.mergeHeaders(opts.headers, headers);
         return opts;
       }
@@ -48245,8 +48245,8 @@ var require_googleauth = __commonJS({
        * @returns the {@link GaxiosResponse} with Gaxios-added properties
        */
       async fetch(...args) {
-        const client = await this.getClient();
-        return client.fetch(...args);
+        const client2 = await this.getClient();
+        return client2.fetch(...args);
       }
       /**
        * Automatically obtain application default credentials, and make an
@@ -48257,8 +48257,8 @@ var require_googleauth = __commonJS({
        * @param opts Axios request options for the HTTP request.
        */
       async request(opts) {
-        const client = await this.getClient();
-        return client.request(opts);
+        const client2 = await this.getClient();
+        return client2.request(opts);
       }
       /**
        * Determine the compute environment in which the code is running.
@@ -48278,16 +48278,16 @@ var require_googleauth = __commonJS({
        * ```
        */
       async sign(data, endpoint) {
-        const client = await this.getClient();
+        const client2 = await this.getClient();
         const universe = await this.getUniverseDomain();
         endpoint = endpoint || `https://iamcredentials.${universe}/v1/projects/-/serviceAccounts/`;
-        if (client instanceof impersonated_1.Impersonated) {
-          const signed = await client.sign(data);
+        if (client2 instanceof impersonated_1.Impersonated) {
+          const signed = await client2.sign(data);
           return signed.signedBlob;
         }
         const crypto6 = (0, crypto_1.createCrypto)();
-        if (client instanceof jwtclient_1.JWT && client.key) {
-          const sign = await crypto6.sign(client.key, data);
+        if (client2 instanceof jwtclient_1.JWT && client2.key) {
+          const sign = await crypto6.sign(client2.key, data);
           return sign;
         }
         const creds = await this.getCredentials();
@@ -53601,25 +53601,25 @@ var require_range2 = __commonJS({
     "use strict";
     var SPACE_CHARACTERS = /\s+/g;
     var Range = class _Range {
-      constructor(range, options) {
+      constructor(range2, options) {
         options = parseOptions(options);
-        if (range instanceof _Range) {
-          if (range.loose === !!options.loose && range.includePrerelease === !!options.includePrerelease) {
-            return range;
+        if (range2 instanceof _Range) {
+          if (range2.loose === !!options.loose && range2.includePrerelease === !!options.includePrerelease) {
+            return range2;
           } else {
-            return new _Range(range.raw, options);
+            return new _Range(range2.raw, options);
           }
         }
-        if (range instanceof Comparator) {
-          this.raw = range.value;
-          this.set = [[range]];
+        if (range2 instanceof Comparator) {
+          this.raw = range2.value;
+          this.set = [[range2]];
           this.formatted = void 0;
           return this;
         }
         this.options = options;
         this.loose = !!options.loose;
         this.includePrerelease = !!options.includePrerelease;
-        this.raw = range.trim().replace(SPACE_CHARACTERS, " ");
+        this.raw = range2.trim().replace(SPACE_CHARACTERS, " ");
         this.set = this.raw.split("||").map((r2) => this.parseRange(r2.trim())).filter((c) => c.length);
         if (!this.set.length) {
           throw new TypeError(`Invalid SemVer Range: ${this.raw}`);
@@ -53664,25 +53664,25 @@ var require_range2 = __commonJS({
       toString() {
         return this.range;
       }
-      parseRange(range) {
-        range = range.replace(BUILDSTRIPRE, "");
+      parseRange(range2) {
+        range2 = range2.replace(BUILDSTRIPRE, "");
         const memoOpts = (this.options.includePrerelease && FLAG_INCLUDE_PRERELEASE) | (this.options.loose && FLAG_LOOSE);
-        const memoKey = memoOpts + ":" + range;
+        const memoKey = memoOpts + ":" + range2;
         const cached = cache.get(memoKey);
         if (cached) {
           return cached;
         }
         const loose = this.options.loose;
         const hr = loose ? re[t2.HYPHENRANGELOOSE] : re[t2.HYPHENRANGE];
-        range = range.replace(hr, hyphenReplace(this.options.includePrerelease));
-        debug("hyphen replace", range);
-        range = range.replace(re[t2.COMPARATORTRIM], comparatorTrimReplace);
-        debug("comparator trim", range);
-        range = range.replace(re[t2.TILDETRIM], tildeTrimReplace);
-        debug("tilde trim", range);
-        range = range.replace(re[t2.CARETTRIM], caretTrimReplace);
-        debug("caret trim", range);
-        let rangeList = range.split(" ").map((comp) => parseComparator(comp, this.options)).join(" ").split(/\s+/).map((comp) => replaceGTE0(comp, this.options));
+        range2 = range2.replace(hr, hyphenReplace(this.options.includePrerelease));
+        debug("hyphen replace", range2);
+        range2 = range2.replace(re[t2.COMPARATORTRIM], comparatorTrimReplace);
+        debug("comparator trim", range2);
+        range2 = range2.replace(re[t2.TILDETRIM], tildeTrimReplace);
+        debug("tilde trim", range2);
+        range2 = range2.replace(re[t2.CARETTRIM], caretTrimReplace);
+        debug("caret trim", range2);
+        let rangeList = range2.split(" ").map((comp) => parseComparator(comp, this.options)).join(" ").split(/\s+/).map((comp) => replaceGTE0(comp, this.options));
         if (loose) {
           rangeList = rangeList.filter((comp) => {
             debug("loose invalid filter", comp, this.options);
@@ -53705,12 +53705,12 @@ var require_range2 = __commonJS({
         cache.set(memoKey, result);
         return result;
       }
-      intersects(range, options) {
-        if (!(range instanceof _Range)) {
+      intersects(range2, options) {
+        if (!(range2 instanceof _Range)) {
           throw new TypeError("a Range is required");
         }
         return this.set.some((thisComparators) => {
-          return isSatisfiable(thisComparators, options) && range.set.some((rangeComparators) => {
+          return isSatisfiable(thisComparators, options) && range2.set.some((rangeComparators) => {
             return isSatisfiable(rangeComparators, options) && thisComparators.every((thisComparator) => {
               return rangeComparators.every((rangeComparator) => {
                 return thisComparator.intersects(rangeComparator, options);
@@ -53980,13 +53980,13 @@ var require_satisfies = __commonJS({
   "node_modules/semver/functions/satisfies.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var satisfies = (version, range, options) => {
+    var satisfies = (version, range2, options) => {
       try {
-        range = new Range(range, options);
+        range2 = new Range(range2, options);
       } catch (er) {
         return false;
       }
-      return range.test(version);
+      return range2.test(version);
     };
     module2.exports = satisfies;
   }
@@ -56500,9 +56500,9 @@ var require_color = __commonJS({
     };
     cs.to.rgb.percent = function(...rgba) {
       const r2 = Math.round(rgba[0] / 255 * 100);
-      const g = Math.round(rgba[1] / 255 * 100);
+      const g2 = Math.round(rgba[1] / 255 * 100);
       const b = Math.round(rgba[2] / 255 * 100);
-      return rgba.length < 4 || rgba[3] === 1 ? "rgb(" + r2 + "%, " + g + "%, " + b + "%)" : "rgba(" + r2 + "%, " + g + "%, " + b + "%, " + rgba[3] + ")";
+      return rgba.length < 4 || rgba[3] === 1 ? "rgb(" + r2 + "%, " + g2 + "%, " + b + "%)" : "rgba(" + r2 + "%, " + g2 + "%, " + b + "%, " + rgba[3] + ")";
     };
     cs.to.hsl = function(...hsla) {
       return hsla.length < 4 || hsla[3] === 1 ? "hsl(" + hsla[0] + ", " + hsla[1] + "%, " + hsla[2] + "%)" : "hsla(" + hsla[0] + ", " + hsla[1] + "%, " + hsla[2] + "%, " + hsla[3] + ")";
@@ -56575,10 +56575,10 @@ var require_color = __commonJS({
     }
     convert.rgb.hsl = function(rgb) {
       const r2 = rgb[0] / 255;
-      const g = rgb[1] / 255;
+      const g2 = rgb[1] / 255;
       const b = rgb[2] / 255;
-      const min = Math.min(r2, g, b);
-      const max = Math.max(r2, g, b);
+      const min = Math.min(r2, g2, b);
+      const max = Math.max(r2, g2, b);
       const delta = max - min;
       let h2;
       let s2;
@@ -56588,15 +56588,15 @@ var require_color = __commonJS({
           break;
         }
         case r2: {
-          h2 = (g - b) / delta;
+          h2 = (g2 - b) / delta;
           break;
         }
-        case g: {
+        case g2: {
           h2 = 2 + (b - r2) / delta;
           break;
         }
         case b: {
-          h2 = 4 + (r2 - g) / delta;
+          h2 = 4 + (r2 - g2) / delta;
           break;
         }
       }
@@ -56621,10 +56621,10 @@ var require_color = __commonJS({
       let h2;
       let s2;
       const r2 = rgb[0] / 255;
-      const g = rgb[1] / 255;
+      const g2 = rgb[1] / 255;
       const b = rgb[2] / 255;
-      const v = Math.max(r2, g, b);
-      const diff = v - Math.min(r2, g, b);
+      const v = Math.max(r2, g2, b);
+      const diff = v - Math.min(r2, g2, b);
       const diffc = function(c) {
         return (v - c) / 6 / diff + 1 / 2;
       };
@@ -56634,14 +56634,14 @@ var require_color = __commonJS({
       } else {
         s2 = diff / v;
         rdif = diffc(r2);
-        gdif = diffc(g);
+        gdif = diffc(g2);
         bdif = diffc(b);
         switch (v) {
           case r2: {
             h2 = bdif - gdif;
             break;
           }
-          case g: {
+          case g2: {
             h2 = 1 / 3 + rdif - bdif;
             break;
           }
@@ -56664,20 +56664,20 @@ var require_color = __commonJS({
     };
     convert.rgb.hwb = function(rgb) {
       const r2 = rgb[0];
-      const g = rgb[1];
+      const g2 = rgb[1];
       let b = rgb[2];
       const h2 = convert.rgb.hsl(rgb)[0];
-      const w = 1 / 255 * Math.min(r2, Math.min(g, b));
-      b = 1 - 1 / 255 * Math.max(r2, Math.max(g, b));
+      const w = 1 / 255 * Math.min(r2, Math.min(g2, b));
+      b = 1 - 1 / 255 * Math.max(r2, Math.max(g2, b));
       return [h2, w * 100, b * 100];
     };
     convert.rgb.oklab = function(rgb) {
       const r2 = srgbNonlinearTransformInv(rgb[0] / 255);
-      const g = srgbNonlinearTransformInv(rgb[1] / 255);
+      const g2 = srgbNonlinearTransformInv(rgb[1] / 255);
       const b = srgbNonlinearTransformInv(rgb[2] / 255);
-      const lp = Math.cbrt(0.4122214708 * r2 + 0.5363325363 * g + 0.0514459929 * b);
-      const mp = Math.cbrt(0.2119034982 * r2 + 0.6806995451 * g + 0.1073969566 * b);
-      const sp = Math.cbrt(0.0883024619 * r2 + 0.2817188376 * g + 0.6299787005 * b);
+      const lp = Math.cbrt(0.4122214708 * r2 + 0.5363325363 * g2 + 0.0514459929 * b);
+      const mp = Math.cbrt(0.2119034982 * r2 + 0.6806995451 * g2 + 0.1073969566 * b);
+      const sp = Math.cbrt(0.0883024619 * r2 + 0.2817188376 * g2 + 0.6299787005 * b);
       const l = 0.2104542553 * lp + 0.793617785 * mp - 0.0040720468 * sp;
       const aa = 1.9779984951 * lp - 2.428592205 * mp + 0.4505937099 * sp;
       const bb = 0.0259040371 * lp + 0.7827717662 * mp - 0.808675766 * sp;
@@ -56685,11 +56685,11 @@ var require_color = __commonJS({
     };
     convert.rgb.cmyk = function(rgb) {
       const r2 = rgb[0] / 255;
-      const g = rgb[1] / 255;
+      const g2 = rgb[1] / 255;
       const b = rgb[2] / 255;
-      const k = Math.min(1 - r2, 1 - g, 1 - b);
+      const k = Math.min(1 - r2, 1 - g2, 1 - b);
       const c = (1 - r2 - k) / (1 - k) || 0;
-      const m2 = (1 - g - k) / (1 - k) || 0;
+      const m2 = (1 - g2 - k) / (1 - k) || 0;
       const y = (1 - b - k) / (1 - k) || 0;
       return [c * 100, m2 * 100, y * 100, k * 100];
     };
@@ -56718,11 +56718,11 @@ var require_color = __commonJS({
     };
     convert.rgb.xyz = function(rgb) {
       const r2 = srgbNonlinearTransformInv(rgb[0] / 255);
-      const g = srgbNonlinearTransformInv(rgb[1] / 255);
+      const g2 = srgbNonlinearTransformInv(rgb[1] / 255);
       const b = srgbNonlinearTransformInv(rgb[2] / 255);
-      const x2 = r2 * 0.4124564 + g * 0.3575761 + b * 0.1804375;
-      const y = r2 * 0.2126729 + g * 0.7151522 + b * 0.072175;
-      const z = r2 * 0.0193339 + g * 0.119192 + b * 0.9503041;
+      const x2 = r2 * 0.4124564 + g2 * 0.3575761 + b * 0.1804375;
+      const y = r2 * 0.2126729 + g2 * 0.7151522 + b * 0.072175;
+      const z = r2 * 0.0193339 + g2 * 0.119192 + b * 0.9503041;
       return [x2 * 100, y * 100, z * 100];
     };
     convert.rgb.lab = function(rgb) {
@@ -56852,49 +56852,49 @@ var require_color = __commonJS({
       }
       const n = wh + f3 * (v - wh);
       let r2;
-      let g;
+      let g2;
       let b;
       switch (i2) {
         default:
         case 6:
         case 0: {
           r2 = v;
-          g = n;
+          g2 = n;
           b = wh;
           break;
         }
         case 1: {
           r2 = n;
-          g = v;
+          g2 = v;
           b = wh;
           break;
         }
         case 2: {
           r2 = wh;
-          g = v;
+          g2 = v;
           b = n;
           break;
         }
         case 3: {
           r2 = wh;
-          g = n;
+          g2 = n;
           b = v;
           break;
         }
         case 4: {
           r2 = n;
-          g = wh;
+          g2 = wh;
           b = v;
           break;
         }
         case 5: {
           r2 = v;
-          g = wh;
+          g2 = wh;
           b = n;
           break;
         }
       }
-      return [r2 * 255, g * 255, b * 255];
+      return [r2 * 255, g2 * 255, b * 255];
     };
     convert.cmyk.rgb = function(cmyk) {
       const c = cmyk[0] / 100;
@@ -56902,24 +56902,24 @@ var require_color = __commonJS({
       const y = cmyk[2] / 100;
       const k = cmyk[3] / 100;
       const r2 = 1 - Math.min(1, c * (1 - k) + k);
-      const g = 1 - Math.min(1, m2 * (1 - k) + k);
+      const g2 = 1 - Math.min(1, m2 * (1 - k) + k);
       const b = 1 - Math.min(1, y * (1 - k) + k);
-      return [r2 * 255, g * 255, b * 255];
+      return [r2 * 255, g2 * 255, b * 255];
     };
     convert.xyz.rgb = function(xyz) {
       const x2 = xyz[0] / 100;
       const y = xyz[1] / 100;
       const z = xyz[2] / 100;
       let r2;
-      let g;
+      let g2;
       let b;
       r2 = x2 * 3.2404542 + y * -1.5371385 + z * -0.4985314;
-      g = x2 * -0.969266 + y * 1.8760108 + z * 0.041556;
+      g2 = x2 * -0.969266 + y * 1.8760108 + z * 0.041556;
       b = x2 * 0.0556434 + y * -0.2040259 + z * 1.0572252;
       r2 = srgbNonlinearTransform(r2);
-      g = srgbNonlinearTransform(g);
+      g2 = srgbNonlinearTransform(g2);
       b = srgbNonlinearTransform(b);
-      return [r2 * 255, g * 255, b * 255];
+      return [r2 * 255, g2 * 255, b * 255];
     };
     convert.xyz.lab = function(xyz) {
       let x2 = xyz[0];
@@ -56971,9 +56971,9 @@ var require_color = __commonJS({
       const m2 = (ll - 0.1055613458 * aa - 0.0638541728 * bb) ** 3;
       const s2 = (ll - 0.0894841775 * aa - 1.291485548 * bb) ** 3;
       const r2 = srgbNonlinearTransform(4.0767416621 * l - 3.3077115913 * m2 + 0.2309699292 * s2);
-      const g = srgbNonlinearTransform(-1.2684380046 * l + 2.6097574011 * m2 - 0.3413193965 * s2);
+      const g2 = srgbNonlinearTransform(-1.2684380046 * l + 2.6097574011 * m2 - 0.3413193965 * s2);
       const b = srgbNonlinearTransform(-0.0041960863 * l - 0.7034186147 * m2 + 1.707614701 * s2);
-      return [r2 * 255, g * 255, b * 255];
+      return [r2 * 255, g2 * 255, b * 255];
     };
     convert.oklch.oklab = function(oklch) {
       return convert.lch.lab(oklch);
@@ -57022,13 +57022,13 @@ var require_color = __commonJS({
       return [l, a, b];
     };
     convert.rgb.ansi16 = function(args, saturation = null) {
-      const [r2, g, b] = args;
+      const [r2, g2, b] = args;
       let value = saturation === null ? convert.rgb.hsv(args)[2] : saturation;
       value = Math.round(value / 50);
       if (value === 0) {
         return 30;
       }
-      let ansi = 30 + (Math.round(b / 255) << 2 | Math.round(g / 255) << 1 | Math.round(r2 / 255));
+      let ansi = 30 + (Math.round(b / 255) << 2 | Math.round(g2 / 255) << 1 | Math.round(r2 / 255));
       if (value === 2) {
         ansi += 60;
       }
@@ -57039,9 +57039,9 @@ var require_color = __commonJS({
     };
     convert.rgb.ansi256 = function(args) {
       const r2 = args[0];
-      const g = args[1];
+      const g2 = args[1];
       const b = args[2];
-      if (r2 >> 4 === g >> 4 && g >> 4 === b >> 4) {
+      if (r2 >> 4 === g2 >> 4 && g2 >> 4 === b >> 4) {
         if (r2 < 8) {
           return 16;
         }
@@ -57050,7 +57050,7 @@ var require_color = __commonJS({
         }
         return Math.round((r2 - 8) / 247 * 24) + 232;
       }
-      const ansi = 16 + 36 * Math.round(r2 / 255 * 5) + 6 * Math.round(g / 255 * 5) + Math.round(b / 255 * 5);
+      const ansi = 16 + 36 * Math.round(r2 / 255 * 5) + 6 * Math.round(g2 / 255 * 5) + Math.round(b / 255 * 5);
       return ansi;
     };
     convert.ansi16.rgb = function(args) {
@@ -57065,9 +57065,9 @@ var require_color = __commonJS({
       }
       const mult = (Math.trunc(args > 50) + 1) * 0.5;
       const r2 = (color & 1) * mult * 255;
-      const g = (color >> 1 & 1) * mult * 255;
+      const g2 = (color >> 1 & 1) * mult * 255;
       const b = (color >> 2 & 1) * mult * 255;
-      return [r2, g, b];
+      return [r2, g2, b];
     };
     convert.ansi256.rgb = function(args) {
       args = args[0];
@@ -57078,9 +57078,9 @@ var require_color = __commonJS({
       args -= 16;
       let rem;
       const r2 = Math.floor(args / 36) / 5 * 255;
-      const g = Math.floor((rem = args % 36) / 6) / 5 * 255;
+      const g2 = Math.floor((rem = args % 36) / 6) / 5 * 255;
       const b = rem % 6 / 5 * 255;
-      return [r2, g, b];
+      return [r2, g2, b];
     };
     convert.rgb.hex = function(args) {
       const integer = ((Math.round(args[0]) & 255) << 16) + ((Math.round(args[1]) & 255) << 8) + (Math.round(args[2]) & 255);
@@ -57098,27 +57098,27 @@ var require_color = __commonJS({
       }
       const integer = Number.parseInt(colorString, 16);
       const r2 = integer >> 16 & 255;
-      const g = integer >> 8 & 255;
+      const g2 = integer >> 8 & 255;
       const b = integer & 255;
-      return [r2, g, b];
+      return [r2, g2, b];
     };
     convert.rgb.hcg = function(rgb) {
       const r2 = rgb[0] / 255;
-      const g = rgb[1] / 255;
+      const g2 = rgb[1] / 255;
       const b = rgb[2] / 255;
-      const max = Math.max(Math.max(r2, g), b);
-      const min = Math.min(Math.min(r2, g), b);
+      const max = Math.max(Math.max(r2, g2), b);
+      const min = Math.min(Math.min(r2, g2), b);
       const chroma = max - min;
       let hue;
       const grayscale = chroma < 1 ? min / (1 - chroma) : 0;
       if (chroma <= 0) {
         hue = 0;
       } else if (max === r2) {
-        hue = (g - b) / chroma % 6;
-      } else if (max === g) {
+        hue = (g2 - b) / chroma % 6;
+      } else if (max === g2) {
         hue = 2 + (b - r2) / chroma;
       } else {
-        hue = 4 + (r2 - g) / chroma;
+        hue = 4 + (r2 - g2) / chroma;
       }
       hue /= 6;
       hue %= 1;
@@ -57147,9 +57147,9 @@ var require_color = __commonJS({
     convert.hcg.rgb = function(hcg) {
       const h2 = hcg[0] / 360;
       const c = hcg[1] / 100;
-      const g = hcg[2] / 100;
+      const g2 = hcg[2] / 100;
       if (c === 0) {
-        return [g * 255, g * 255, g * 255];
+        return [g2 * 255, g2 * 255, g2 * 255];
       }
       const pure = [0, 0, 0];
       const hi = h2 % 1 * 6;
@@ -57193,7 +57193,7 @@ var require_color = __commonJS({
           pure[2] = w;
         }
       }
-      mg = (1 - c) * g;
+      mg = (1 - c) * g2;
       return [
         (c * pure[0] + mg) * 255,
         (c * pure[1] + mg) * 255,
@@ -57202,8 +57202,8 @@ var require_color = __commonJS({
     };
     convert.hcg.hsv = function(hcg) {
       const c = hcg[1] / 100;
-      const g = hcg[2] / 100;
-      const v = c + g * (1 - c);
+      const g2 = hcg[2] / 100;
+      const v = c + g2 * (1 - c);
       let f3 = 0;
       if (v > 0) {
         f3 = c / v;
@@ -57212,8 +57212,8 @@ var require_color = __commonJS({
     };
     convert.hcg.hsl = function(hcg) {
       const c = hcg[1] / 100;
-      const g = hcg[2] / 100;
-      const l = g * (1 - c) + 0.5 * c;
+      const g2 = hcg[2] / 100;
+      const l = g2 * (1 - c) + 0.5 * c;
       let s2 = 0;
       if (l > 0 && l < 0.5) {
         s2 = c / (2 * l);
@@ -57224,8 +57224,8 @@ var require_color = __commonJS({
     };
     convert.hcg.hwb = function(hcg) {
       const c = hcg[1] / 100;
-      const g = hcg[2] / 100;
-      const v = c + g * (1 - c);
+      const g2 = hcg[2] / 100;
+      const v = c + g2 * (1 - c);
       return [hcg[0], (v - c) * 100, (1 - v) * 100];
     };
     convert.hwb.hcg = function(hwb) {
@@ -57233,11 +57233,11 @@ var require_color = __commonJS({
       const b = hwb[2] / 100;
       const v = 1 - b;
       const c = v - w;
-      let g = 0;
+      let g2 = 0;
       if (c < 1) {
-        g = (v - c) / (1 - c);
+        g2 = (v - c) / (1 - c);
       }
-      return [hwb[0], c * 100, g * 100];
+      return [hwb[0], c * 100, g2 * 100];
     };
     convert.apple.rgb = function(apple) {
       return [apple[0] / 65535 * 255, apple[1] / 65535 * 255, apple[2] / 65535 * 255];
@@ -59536,6 +59536,15 @@ var init_telegramAlerts = __esm({
         return sendTelegramMessage(text, parse_mode);
       },
       async sendErrorAlert(error, context) {
+        const dedupKey = `${(error?.message || String(error)).substring(0, 120)}|${context ? context.substring(0, 60) : ""}`;
+        const store = globalThis.__tgAlertDedup ||= /* @__PURE__ */ new Map();
+        const nowMs = Date.now();
+        if ((store.get(dedupKey) || 0) + 10 * 60 * 1e3 > nowMs) {
+          console.warn("[Telegram] alert deduped within 10 min window:", dedupKey.slice(0, 90));
+          return;
+        }
+        store.set(dedupKey, nowMs);
+        if (store.size > 300) store.clear();
         const msg = `<b>\u{1F6A8} Error Alert</b>
 
 <b>Error:</b> <code>${(error.message || String(error)).substring(0, 300)}</code>${context ? `
@@ -59592,7 +59601,7 @@ var require_lib7 = __commonJS({
       tab: 9,
       carriageReturn: 13
     };
-    var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+    var isRecord2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
     var isWordChar = (code) => code >= 65 && code <= 90 || code >= 97 && code <= 122 || code >= 48 && code <= 57 || code === 95;
     var isWhitespace = (code) => code === charCode.space || code === charCode.tab || code === charCode.newline || code === charCode.carriageReturn;
     var hasOnlyWhitespaceBetween = (sql, start, end) => {
@@ -59826,7 +59835,7 @@ var require_lib7 = __commonJS({
             return String(value.toSqlString());
           if (!(stringifyObjects === void 0 || stringifyObjects === null))
             return escapeString(String(value));
-          if (isRecord(value))
+          if (isRecord2(value))
             return (0, exports2.objectToValues)(value, timezone);
           return escapeString(String(value));
         }
@@ -59865,7 +59874,7 @@ var require_lib7 = __commonJS({
         else if (typeof currentValue === "object" && currentValue !== null && !stringifyObjects) {
           if (setIndex === -2)
             setIndex = findSetKeyword(sql);
-          if (setIndex !== -1 && setIndex <= placeholderPosition && hasOnlyWhitespaceBetween(sql, setIndex, placeholderPosition) && !hasSqlString(currentValue) && !Array.isArray(currentValue) && !node_buffer_1.Buffer.isBuffer(currentValue) && !(currentValue instanceof Uint8Array) && !isDate(currentValue) && isRecord(currentValue)) {
+          if (setIndex !== -1 && setIndex <= placeholderPosition && hasOnlyWhitespaceBetween(sql, setIndex, placeholderPosition) && !hasSqlString(currentValue) && !Array.isArray(currentValue) && !node_buffer_1.Buffer.isBuffer(currentValue) && !(currentValue instanceof Uint8Array) && !isDate(currentValue) && isRecord2(currentValue)) {
             escapedValue = (0, exports2.objectToValues)(currentValue, timezone);
             setIndex = findSetKeyword(sql, placeholderEnd);
           } else
@@ -78909,17 +78918,17 @@ function tTools(tools) {
   }
   return result;
 }
-function resourceName(client, resourceName2, resourcePrefix, splitsAfterPrefix = 1) {
+function resourceName(client2, resourceName2, resourcePrefix, splitsAfterPrefix = 1) {
   const shouldAppendPrefix = !resourceName2.startsWith(`${resourcePrefix}/`) && resourceName2.split("/").length === splitsAfterPrefix;
-  if (client.isVertexAI()) {
+  if (client2.isVertexAI()) {
     if (resourceName2.startsWith("projects/")) {
       return resourceName2;
     } else if (resourceName2.startsWith("locations/")) {
-      return `projects/${client.getProject()}/${resourceName2}`;
+      return `projects/${client2.getProject()}/${resourceName2}`;
     } else if (resourceName2.startsWith(`${resourcePrefix}/`)) {
-      return `projects/${client.getProject()}/locations/${client.getLocation()}/${resourceName2}`;
+      return `projects/${client2.getProject()}/locations/${client2.getLocation()}/${resourceName2}`;
     } else if (shouldAppendPrefix) {
-      return `projects/${client.getProject()}/locations/${client.getLocation()}/${resourcePrefix}/${resourceName2}`;
+      return `projects/${client2.getProject()}/locations/${client2.getLocation()}/${resourcePrefix}/${resourceName2}`;
     } else {
       return resourceName2;
     }
@@ -79053,10 +79062,10 @@ function mcpToolsToGeminiTool(mcpTools, config = {}) {
   }
   return { functionDeclarations };
 }
-function tBatchJobSource(client, src) {
+function tBatchJobSource(client2, src) {
   let sourceObj;
   if (typeof src === "string") {
-    if (client.isVertexAI()) {
+    if (client2.isVertexAI()) {
       if (src.startsWith("gs://")) {
         sourceObj = { format: "jsonl", gcsUri: [src] };
       } else if (src.startsWith("bq://")) {
@@ -79074,7 +79083,7 @@ function tBatchJobSource(client, src) {
       }
     }
   } else if (Array.isArray(src)) {
-    if (client.isVertexAI()) {
+    if (client2.isVertexAI()) {
       throw new Error("InlinedRequest[] is not supported in Vertex AI.");
     }
     sourceObj = { inlinedRequests: src };
@@ -79090,7 +79099,7 @@ function tBatchJobSource(client, src) {
     sourceObj.inlinedRequests,
     sourceObj.fileName
   ].filter(Boolean).length;
-  if (client.isVertexAI()) {
+  if (client2.isVertexAI()) {
     if (mldevSourcesCount > 0 || vertexSourcesCount !== 1) {
       throw new Error("Exactly one of `gcsUri`, `bigqueryUri`, or `vertexDatasetName` must be set for Vertex AI.");
     }
@@ -82311,7 +82320,7 @@ function __await(v) {
 }
 function __asyncGenerator(thisArg, _arguments, generator) {
   if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-  var g = generator.apply(thisArg, _arguments || []), i2, q = [];
+  var g2 = generator.apply(thisArg, _arguments || []), i2, q = [];
   return i2 = Object.create((typeof AsyncIterator === "function" ? AsyncIterator : Object).prototype), verb("next"), verb("throw"), verb("return", awaitReturn), i2[Symbol.asyncIterator] = function() {
     return this;
   }, i2;
@@ -82321,7 +82330,7 @@ function __asyncGenerator(thisArg, _arguments, generator) {
     };
   }
   function verb(n, f3) {
-    if (g[n]) {
+    if (g2[n]) {
       i2[n] = function(v) {
         return new Promise(function(a, b) {
           q.push([n, v, a, b]) > 1 || resume(n, v);
@@ -82332,7 +82341,7 @@ function __asyncGenerator(thisArg, _arguments, generator) {
   }
   function resume(n, v) {
     try {
-      step(g[n](v));
+      step(g2[n](v));
     } catch (e2) {
       settle(q[0][3], e2);
     }
@@ -92290,8 +92299,8 @@ function propsForError(value) {
   return `; props: [${props.map((p) => `"${p}"`).join(", ")}]`;
 }
 var APIResource = class {
-  constructor(client) {
-    this._client = client;
+  constructor(client2) {
+    this._client = client2;
   }
 };
 APIResource._key = [];
@@ -92552,14 +92561,14 @@ var levelNumbers = {
   info: 400,
   debug: 500
 };
-var parseLogLevel = (maybeLevel, sourceName, client) => {
+var parseLogLevel = (maybeLevel, sourceName, client2) => {
   if (!maybeLevel) {
     return void 0;
   }
   if (hasOwn(levelNumbers, maybeLevel)) {
     return maybeLevel;
   }
-  loggerFor(client).warn(`${sourceName} was set to ${JSON.stringify(maybeLevel)}, expected one of ${JSON.stringify(Object.keys(levelNumbers))}`);
+  loggerFor(client2).warn(`${sourceName} was set to ${JSON.stringify(maybeLevel)}, expected one of ${JSON.stringify(Object.keys(levelNumbers))}`);
   return void 0;
 };
 function noop2() {
@@ -92578,10 +92587,10 @@ var noopLogger = {
   debug: noop2
 };
 var cachedLoggers = /* @__PURE__ */ new WeakMap();
-function loggerFor(client) {
+function loggerFor(client2) {
   var _a4;
-  const logger = client.logger;
-  const logLevel = (_a4 = client.logLevel) !== null && _a4 !== void 0 ? _a4 : "off";
+  const logger = client2.logger;
+  const logLevel = (_a4 = client2.logLevel) !== null && _a4 !== void 0 ? _a4 : "off";
   if (!logger) {
     return noopLogger;
   }
@@ -92618,14 +92627,14 @@ var formatRequestDetails = (details) => {
   return details;
 };
 var Stream3 = class _Stream {
-  constructor(iterator, controller, client) {
+  constructor(iterator, controller, client2) {
     this.iterator = iterator;
     this.controller = controller;
-    this.client = client;
+    this.client = client2;
   }
-  static fromSSEResponse(response, controller, client) {
+  static fromSSEResponse(response, controller, client2) {
     let consumed = false;
-    const logger = client ? loggerFor(client) : console;
+    const logger = client2 ? loggerFor(client2) : console;
     function iterator() {
       return __asyncGenerator(this, arguments, function* iterator_1() {
         var _a4, e_1, _b, _c;
@@ -92675,13 +92684,13 @@ var Stream3 = class _Stream {
         }
       });
     }
-    return new _Stream(iterator, controller, client);
+    return new _Stream(iterator, controller, client2);
   }
   /**
    * Generates a Stream from a newline-separated ReadableStream
    * where each item is a JSON value.
    */
-  static fromReadableStream(readableStream, controller, client) {
+  static fromReadableStream(readableStream, controller, client2) {
     let consumed = false;
     function iterLines() {
       return __asyncGenerator(this, arguments, function* iterLines_1() {
@@ -92750,7 +92759,7 @@ var Stream3 = class _Stream {
         }
       });
     }
-    return new _Stream(iterator, controller, client);
+    return new _Stream(iterator, controller, client2);
   }
   [Symbol.asyncIterator]() {
     return this.iterator();
@@ -92921,16 +92930,16 @@ function partition(str2, delimiter) {
   }
   return [str2, "", ""];
 }
-async function defaultParseResponse(client, props) {
+async function defaultParseResponse(client2, props) {
   const { response, requestLogID, retryOfRequestLogID, startTime } = props;
   const body = await (async () => {
     var _a4;
     if (props.options.stream) {
-      loggerFor(client).debug("response", response.status, response.url, response.headers, response.body);
+      loggerFor(client2).debug("response", response.status, response.url, response.headers, response.body);
       if (props.options.__streamClass) {
-        return props.options.__streamClass.fromSSEResponse(response, props.controller, client);
+        return props.options.__streamClass.fromSSEResponse(response, props.controller, client2);
       }
-      return Stream3.fromSSEResponse(response, props.controller, client);
+      return Stream3.fromSSEResponse(response, props.controller, client2);
     }
     if (response.status === 204) {
       return null;
@@ -92952,7 +92961,7 @@ async function defaultParseResponse(client, props) {
     const text = await response.text();
     return text;
   })();
-  loggerFor(client).debug(`[${requestLogID}] response parsed`, formatRequestDetails({
+  loggerFor(client2).debug(`[${requestLogID}] response parsed`, formatRequestDetails({
     retryOfRequestLogID,
     url: response.url,
     status: response.status,
@@ -92962,16 +92971,16 @@ async function defaultParseResponse(client, props) {
   return body;
 }
 var APIPromise = class _APIPromise extends Promise {
-  constructor(client, responsePromise, parseResponse2 = defaultParseResponse) {
+  constructor(client2, responsePromise, parseResponse2 = defaultParseResponse) {
     super((resolve2) => {
       resolve2(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
-    this.client = client;
+    this.client = client2;
   }
   _thenUnwrap(transform) {
-    return new _APIPromise(this.client, this.responsePromise, async (client, props) => transform(await this.parseResponse(client, props), props));
+    return new _APIPromise(this.client, this.responsePromise, async (client2, props) => transform(await this.parseResponse(client2, props), props));
   }
   /**
    * Gets the raw `Response` instance instead of parsing the response
@@ -93129,8 +93138,8 @@ var BaseGeminiNextGenAPIClient = class _BaseGeminiNextGenAPIClient {
    * Create a new client instance re-using the same options given to the current client with optional overriding.
    */
   withOptions(options) {
-    const client = new this.constructor(Object.assign(Object.assign(Object.assign({}, this._options), { baseURL: this.baseURL, maxRetries: this.maxRetries, timeout: this.timeout, logger: this.logger, logLevel: this.logLevel, fetch: this.fetch, fetchOptions: this.fetchOptions, apiKey: this.apiKey, apiVersion: this.apiVersion }), options));
-    return client;
+    const client2 = new this.constructor(Object.assign(Object.assign(Object.assign({}, this._options), { baseURL: this.baseURL, maxRetries: this.maxRetries, timeout: this.timeout, logger: this.logger, logLevel: this.logLevel, fetch: this.fetch, fetchOptions: this.fetchOptions, apiKey: this.apiKey, apiVersion: this.apiVersion }), options));
+    return client2;
   }
   /**
    * Check whether the base URL is set to its default.
@@ -96143,14 +96152,14 @@ var levelNumbers2 = {
   info: 400,
   debug: 500
 };
-var parseLogLevel2 = (maybeLevel, sourceName, client) => {
+var parseLogLevel2 = (maybeLevel, sourceName, client2) => {
   if (!maybeLevel) {
     return void 0;
   }
   if (hasOwn2(levelNumbers2, maybeLevel)) {
     return maybeLevel;
   }
-  loggerFor2(client).warn(`${sourceName} was set to ${JSON.stringify(maybeLevel)}, expected one of ${JSON.stringify(Object.keys(levelNumbers2))}`);
+  loggerFor2(client2).warn(`${sourceName} was set to ${JSON.stringify(maybeLevel)}, expected one of ${JSON.stringify(Object.keys(levelNumbers2))}`);
   return void 0;
 };
 function noop3() {
@@ -96169,9 +96178,9 @@ var noopLogger2 = {
   debug: noop3
 };
 var cachedLoggers2 = /* @__PURE__ */ new WeakMap();
-function loggerFor2(client) {
-  const logger = client.logger;
-  const logLevel = client.logLevel ?? "off";
+function loggerFor2(client2) {
+  const logger = client2.logger;
+  const logLevel = client2.logLevel ?? "off";
   if (!logger) {
     return noopLogger2;
   }
@@ -96211,15 +96220,15 @@ var formatRequestDetails2 = (details) => {
 // node_modules/openai/core/streaming.mjs
 var _Stream_client;
 var Stream4 = class _Stream {
-  constructor(iterator, controller, client) {
+  constructor(iterator, controller, client2) {
     this.iterator = iterator;
     _Stream_client.set(this, void 0);
     this.controller = controller;
-    __classPrivateFieldSet(this, _Stream_client, client, "f");
+    __classPrivateFieldSet(this, _Stream_client, client2, "f");
   }
-  static fromSSEResponse(response, controller, client, synthesizeEventData) {
+  static fromSSEResponse(response, controller, client2, synthesizeEventData) {
     let consumed = false;
-    const logger = client ? loggerFor2(client) : console;
+    const logger = client2 ? loggerFor2(client2) : console;
     async function* iterator() {
       if (consumed) {
         throw new OpenAIError("Cannot iterate over a consumed stream, use `.tee()` to split the stream.");
@@ -96272,13 +96281,13 @@ var Stream4 = class _Stream {
           controller.abort();
       }
     }
-    return new _Stream(iterator, controller, client);
+    return new _Stream(iterator, controller, client2);
   }
   /**
    * Generates a Stream from a newline-separated ReadableStream
    * where each item is a JSON value.
    */
-  static fromReadableStream(readableStream, controller, client) {
+  static fromReadableStream(readableStream, controller, client2) {
     let consumed = false;
     async function* iterLines() {
       const lineDecoder = new LineDecoder2();
@@ -96315,7 +96324,7 @@ var Stream4 = class _Stream {
           controller.abort();
       }
     }
-    return new _Stream(iterator, controller, client);
+    return new _Stream(iterator, controller, client2);
   }
   [(_Stream_client = /* @__PURE__ */ new WeakMap(), Symbol.asyncIterator)]() {
     return this.iterator();
@@ -96467,15 +96476,15 @@ function partition2(str2, delimiter) {
 }
 
 // node_modules/openai/internal/parse.mjs
-async function defaultParseResponse2(client, props) {
+async function defaultParseResponse2(client2, props) {
   const { response, requestLogID, retryOfRequestLogID, startTime } = props;
   const body = await (async () => {
     if (props.options.stream) {
-      loggerFor2(client).debug("response", response.status, response.url, response.headers, response.body);
+      loggerFor2(client2).debug("response", response.status, response.url, response.headers, response.body);
       if (props.options.__streamClass) {
-        return props.options.__streamClass.fromSSEResponse(response, props.controller, client, props.options.__synthesizeEventData);
+        return props.options.__streamClass.fromSSEResponse(response, props.controller, client2, props.options.__synthesizeEventData);
       }
-      return Stream4.fromSSEResponse(response, props.controller, client, props.options.__synthesizeEventData);
+      return Stream4.fromSSEResponse(response, props.controller, client2, props.options.__synthesizeEventData);
     }
     if (response.status === 204) {
       return null;
@@ -96497,7 +96506,7 @@ async function defaultParseResponse2(client, props) {
     const text = await response.text();
     return text;
   })();
-  loggerFor2(client).debug(`[${requestLogID}] response parsed`, formatRequestDetails2({
+  loggerFor2(client2).debug(`[${requestLogID}] response parsed`, formatRequestDetails2({
     retryOfRequestLogID,
     url: response.url,
     status: response.status,
@@ -96519,17 +96528,17 @@ function addRequestID(value, response) {
 // node_modules/openai/core/api-promise.mjs
 var _APIPromise_client;
 var APIPromise2 = class _APIPromise extends Promise {
-  constructor(client, responsePromise, parseResponse2 = defaultParseResponse2) {
+  constructor(client2, responsePromise, parseResponse2 = defaultParseResponse2) {
     super((resolve2) => {
       resolve2(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
     _APIPromise_client.set(this, void 0);
-    __classPrivateFieldSet(this, _APIPromise_client, client, "f");
+    __classPrivateFieldSet(this, _APIPromise_client, client2, "f");
   }
   _thenUnwrap(transform) {
-    return new _APIPromise(__classPrivateFieldGet(this, _APIPromise_client, "f"), this.responsePromise, async (client, props) => addRequestID(transform(await this.parseResponse(client, props), props), props.response));
+    return new _APIPromise(__classPrivateFieldGet(this, _APIPromise_client, "f"), this.responsePromise, async (client2, props) => addRequestID(transform(await this.parseResponse(client2, props), props), props.response));
   }
   /**
    * Gets the raw `Response` instance instead of parsing the response
@@ -96582,9 +96591,9 @@ _APIPromise_client = /* @__PURE__ */ new WeakMap();
 // node_modules/openai/core/pagination.mjs
 var _AbstractPage_client;
 var AbstractPage = class {
-  constructor(client, response, body, options) {
+  constructor(client2, response, body, options) {
     _AbstractPage_client.set(this, void 0);
-    __classPrivateFieldSet(this, _AbstractPage_client, client, "f");
+    __classPrivateFieldSet(this, _AbstractPage_client, client2, "f");
     this.options = options;
     this.response = response;
     this.body = body;
@@ -96619,8 +96628,8 @@ var AbstractPage = class {
   }
 };
 var PagePromise = class extends APIPromise2 {
-  constructor(client, request, Page2) {
-    super(client, request, async (client2, props) => new Page2(client2, props.response, await defaultParseResponse2(client2, props), props.options));
+  constructor(client2, request, Page2) {
+    super(client2, request, async (client3, props) => new Page2(client3, props.response, await defaultParseResponse2(client3, props), props.options));
   }
   /**
    * Allow auto-paginating iteration on an unawaited list call, eg:
@@ -96637,8 +96646,8 @@ var PagePromise = class extends APIPromise2 {
   }
 };
 var Page = class extends AbstractPage {
-  constructor(client, response, body, options) {
-    super(client, response, body, options);
+  constructor(client2, response, body, options) {
+    super(client2, response, body, options);
     this.data = body.data || [];
     this.object = body.object;
   }
@@ -96650,8 +96659,8 @@ var Page = class extends AbstractPage {
   }
 };
 var CursorPage = class extends AbstractPage {
-  constructor(client, response, body, options) {
-    super(client, response, body, options);
+  constructor(client2, response, body, options) {
+    super(client2, response, body, options);
     this.data = body.data || [];
     this.has_more = body.has_more || false;
   }
@@ -96680,8 +96689,8 @@ var CursorPage = class extends AbstractPage {
   }
 };
 var ConversationCursorPage = class extends AbstractPage {
-  constructor(client, response, body, options) {
-    super(client, response, body, options);
+  constructor(client2, response, body, options) {
+    super(client2, response, body, options);
     this.data = body.data || [];
     this.has_more = body.has_more || false;
     this.last_id = body.last_id || "";
@@ -96710,8 +96719,8 @@ var ConversationCursorPage = class extends AbstractPage {
   }
 };
 var NextCursorPage = class extends AbstractPage {
-  constructor(client, response, body, options) {
-    super(client, response, body, options);
+  constructor(client2, response, body, options) {
+    super(client2, response, body, options);
     this.data = body.data || [];
     this.has_more = body.has_more || false;
     this.next = body.next || null;
@@ -96973,8 +96982,8 @@ function propsForError2(value) {
 
 // node_modules/openai/core/resource.mjs
 var APIResource2 = class {
-  constructor(client) {
-    this._client = client;
+  constructor(client2) {
+    this._client = client2;
   }
 };
 
@@ -97068,15 +97077,15 @@ function maybeParseChatCompletion(completion, params) {
   if (!params || !hasAutoParseableInput(params)) {
     return {
       ...completion,
-      choices: completion.choices.map((choice) => {
-        assertToolCallsAreChatCompletionFunctionToolCalls(choice.message.tool_calls);
+      choices: completion.choices.map((choice2) => {
+        assertToolCallsAreChatCompletionFunctionToolCalls(choice2.message.tool_calls);
         return {
-          ...choice,
+          ...choice2,
           message: {
-            ...choice.message,
+            ...choice2.message,
             parsed: null,
-            ...choice.message.tool_calls ? {
-              tool_calls: choice.message.tool_calls
+            ...choice2.message.tool_calls ? {
+              tool_calls: choice2.message.tool_calls
             } : void 0
           }
         };
@@ -97086,22 +97095,22 @@ function maybeParseChatCompletion(completion, params) {
   return parseChatCompletion(completion, params);
 }
 function parseChatCompletion(completion, params) {
-  const choices = completion.choices.map((choice) => {
-    if (choice.finish_reason === "length") {
+  const choices = completion.choices.map((choice2) => {
+    if (choice2.finish_reason === "length") {
       throw new LengthFinishReasonError();
     }
-    if (choice.finish_reason === "content_filter") {
+    if (choice2.finish_reason === "content_filter") {
       throw new ContentFilterFinishReasonError();
     }
-    assertToolCallsAreChatCompletionFunctionToolCalls(choice.message.tool_calls);
+    assertToolCallsAreChatCompletionFunctionToolCalls(choice2.message.tool_calls);
     return {
-      ...choice,
+      ...choice2,
       message: {
-        ...choice.message,
-        ...choice.message.tool_calls ? {
-          tool_calls: choice.message.tool_calls?.map((toolCall) => parseToolCall(params, toolCall)) ?? void 0
+        ...choice2.message,
+        ...choice2.message.tool_calls ? {
+          tool_calls: choice2.message.tool_calls?.map((toolCall) => parseToolCall(params, toolCall)) ?? void 0
         } : void 0,
-        parsed: choice.message.content && !choice.message.refusal ? parseResponseFormat(params, choice.message.content) : null
+        parsed: choice2.message.content && !choice2.message.refusal ? parseResponseFormat(params, choice2.message.content) : null
       }
     };
   });
@@ -97471,7 +97480,7 @@ var AbstractChatCompletionRunner = class extends EventStream {
       this._emit("totalUsage", __classPrivateFieldGet(this, _AbstractChatCompletionRunner_instances, "m", _AbstractChatCompletionRunner_calculateTotalUsage).call(this));
     }
   }
-  async _createChatCompletion(client, params, options) {
+  async _createChatCompletion(client2, params, options) {
     const signal = options?.signal;
     if (signal) {
       if (signal.aborted)
@@ -97479,17 +97488,17 @@ var AbstractChatCompletionRunner = class extends EventStream {
       signal.addEventListener("abort", () => this.controller.abort());
     }
     __classPrivateFieldGet(this, _AbstractChatCompletionRunner_instances, "m", _AbstractChatCompletionRunner_validateParams).call(this, params);
-    const chatCompletion = await client.chat.completions.create({ ...params, stream: false }, { ...options, signal: this.controller.signal });
+    const chatCompletion = await client2.chat.completions.create({ ...params, stream: false }, { ...options, signal: this.controller.signal });
     this._connected();
     return this._addChatCompletion(parseChatCompletion(chatCompletion, params));
   }
-  async _runChatCompletion(client, params, options) {
+  async _runChatCompletion(client2, params, options) {
     for (const message of params.messages) {
       this._addMessage(message, false);
     }
-    return await this._createChatCompletion(client, params, options);
+    return await this._createChatCompletion(client2, params, options);
   }
-  async _runTools(client, params, options) {
+  async _runTools(client2, params, options) {
     const role = "tool";
     const { tool_choice = "auto", stream, ...restParams } = params;
     const singleFunctionToCall = typeof tool_choice !== "string" && tool_choice.type === "function" && tool_choice?.function?.name;
@@ -97532,7 +97541,7 @@ var AbstractChatCompletionRunner = class extends EventStream {
       this._addMessage(message, false);
     }
     for (let i2 = 0; i2 < maxChatCompletions; ++i2) {
-      const chatCompletion = await this._createChatCompletion(client, {
+      const chatCompletion = await this._createChatCompletion(client2, {
         ...restParams,
         tool_choice,
         tools,
@@ -97640,13 +97649,13 @@ _AbstractChatCompletionRunner_instances = /* @__PURE__ */ new WeakSet(), _Abstra
 
 // node_modules/openai/lib/ChatCompletionRunner.mjs
 var ChatCompletionRunner = class _ChatCompletionRunner extends AbstractChatCompletionRunner {
-  static runTools(client, params, options) {
+  static runTools(client2, params, options) {
     const runner = new _ChatCompletionRunner();
     const opts = {
       ...options,
       headers: { ...options?.headers, "X-Stainless-Helper-Method": "runTools" }
     };
-    runner._run(() => runner._runTools(client, params, opts));
+    runner._run(() => runner._runTools(client2, params, opts));
     return runner;
   }
   _addMessage(message, emit = true) {
@@ -97907,12 +97916,12 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
     runner._run(() => runner._fromReadableStream(stream));
     return runner;
   }
-  static createChatCompletion(client, params, options) {
+  static createChatCompletion(client2, params, options) {
     const runner = new _ChatCompletionStream(params);
-    runner._run(() => runner._runChatCompletion(client, { ...params, stream: true }, { ...options, headers: { ...options?.headers, "X-Stainless-Helper-Method": "stream" } }));
+    runner._run(() => runner._runChatCompletion(client2, { ...params, stream: true }, { ...options, headers: { ...options?.headers, "X-Stainless-Helper-Method": "stream" } }));
     return runner;
   }
-  async _createChatCompletion(client, params, options) {
+  async _createChatCompletion(client2, params, options) {
     super._createChatCompletion;
     const signal = options?.signal;
     if (signal) {
@@ -97921,7 +97930,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
       signal.addEventListener("abort", () => this.controller.abort());
     }
     __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_beginRequest).call(this);
-    const stream = await client.chat.completions.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
+    const stream = await client2.chat.completions.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
     this._connected();
     for await (const chunk of stream) {
       __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_addChunk).call(this, chunk);
@@ -97958,8 +97967,8 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
     if (this.ended)
       return;
     __classPrivateFieldSet(this, _ChatCompletionStream_currentChatCompletionSnapshot, void 0, "f");
-  }, _ChatCompletionStream_getChoiceEventState = function _ChatCompletionStream_getChoiceEventState2(choice) {
-    let state = __classPrivateFieldGet(this, _ChatCompletionStream_choiceEventStates, "f")[choice.index];
+  }, _ChatCompletionStream_getChoiceEventState = function _ChatCompletionStream_getChoiceEventState2(choice2) {
+    let state = __classPrivateFieldGet(this, _ChatCompletionStream_choiceEventStates, "f")[choice2.index];
     if (state) {
       return state;
     }
@@ -97971,38 +97980,38 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
       done_tool_calls: /* @__PURE__ */ new Set(),
       current_tool_call_index: null
     };
-    __classPrivateFieldGet(this, _ChatCompletionStream_choiceEventStates, "f")[choice.index] = state;
+    __classPrivateFieldGet(this, _ChatCompletionStream_choiceEventStates, "f")[choice2.index] = state;
     return state;
   }, _ChatCompletionStream_addChunk = function _ChatCompletionStream_addChunk2(chunk) {
     if (this.ended)
       return;
     const completion = __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_accumulateChatCompletion).call(this, chunk);
     this._emit("chunk", chunk, completion);
-    for (const choice of chunk.choices) {
-      const choiceSnapshot = completion.choices[choice.index];
-      if (choice.delta.content != null && choiceSnapshot.message?.role === "assistant" && choiceSnapshot.message?.content) {
-        this._emit("content", choice.delta.content, choiceSnapshot.message.content);
+    for (const choice2 of chunk.choices) {
+      const choiceSnapshot = completion.choices[choice2.index];
+      if (choice2.delta.content != null && choiceSnapshot.message?.role === "assistant" && choiceSnapshot.message?.content) {
+        this._emit("content", choice2.delta.content, choiceSnapshot.message.content);
         this._emit("content.delta", {
-          delta: choice.delta.content,
+          delta: choice2.delta.content,
           snapshot: choiceSnapshot.message.content,
           parsed: choiceSnapshot.message.parsed
         });
       }
-      if (choice.delta.refusal != null && choiceSnapshot.message?.role === "assistant" && choiceSnapshot.message?.refusal) {
+      if (choice2.delta.refusal != null && choiceSnapshot.message?.role === "assistant" && choiceSnapshot.message?.refusal) {
         this._emit("refusal.delta", {
-          delta: choice.delta.refusal,
+          delta: choice2.delta.refusal,
           snapshot: choiceSnapshot.message.refusal
         });
       }
-      if (choice.logprobs?.content != null && choiceSnapshot.message?.role === "assistant") {
+      if (choice2.logprobs?.content != null && choiceSnapshot.message?.role === "assistant") {
         this._emit("logprobs.content.delta", {
-          content: choice.logprobs?.content,
+          content: choice2.logprobs?.content,
           snapshot: choiceSnapshot.logprobs?.content ?? []
         });
       }
-      if (choice.logprobs?.refusal != null && choiceSnapshot.message?.role === "assistant") {
+      if (choice2.logprobs?.refusal != null && choiceSnapshot.message?.role === "assistant") {
         this._emit("logprobs.refusal.delta", {
-          refusal: choice.logprobs?.refusal,
+          refusal: choice2.logprobs?.refusal,
           snapshot: choiceSnapshot.logprobs?.refusal ?? []
         });
       }
@@ -98013,7 +98022,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_emitToolCallDoneEvent).call(this, choiceSnapshot, state.current_tool_call_index);
         }
       }
-      for (const toolCall of choice.delta.tool_calls ?? []) {
+      for (const toolCall of choice2.delta.tool_calls ?? []) {
         if (state.current_tool_call_index !== toolCall.index) {
           __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_emitContentDoneEvents).call(this, choiceSnapshot);
           if (state.current_tool_call_index != null) {
@@ -98022,7 +98031,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
         }
         state.current_tool_call_index = toolCall.index;
       }
-      for (const toolCallDelta of choice.delta.tool_calls ?? []) {
+      for (const toolCallDelta of choice2.delta.tool_calls ?? []) {
         const toolCallSnapshot = choiceSnapshot.message.tool_calls?.[toolCallDelta.index];
         if (!toolCallSnapshot?.type) {
           continue;
@@ -98115,29 +98124,29 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
       Object.assign(snapshot, rest);
     }
     for (const { delta, finish_reason, index, logprobs = null, ...other } of chunk.choices) {
-      let choice = snapshot.choices[index];
-      if (!choice) {
-        choice = snapshot.choices[index] = { finish_reason, index, message: {}, logprobs, ...other };
+      let choice2 = snapshot.choices[index];
+      if (!choice2) {
+        choice2 = snapshot.choices[index] = { finish_reason, index, message: {}, logprobs, ...other };
       }
       if (logprobs) {
-        if (!choice.logprobs) {
-          choice.logprobs = Object.assign({}, logprobs);
+        if (!choice2.logprobs) {
+          choice2.logprobs = Object.assign({}, logprobs);
         } else {
           const { content: content2, refusal: refusal2, ...rest3 } = logprobs;
           assertIsEmpty(rest3);
-          Object.assign(choice.logprobs, rest3);
+          Object.assign(choice2.logprobs, rest3);
           if (content2) {
-            (_a4 = choice.logprobs).content ?? (_a4.content = []);
-            choice.logprobs.content.push(...content2);
+            (_a4 = choice2.logprobs).content ?? (_a4.content = []);
+            choice2.logprobs.content.push(...content2);
           }
           if (refusal2) {
-            (_b = choice.logprobs).refusal ?? (_b.refusal = []);
-            choice.logprobs.refusal.push(...refusal2);
+            (_b = choice2.logprobs).refusal ?? (_b.refusal = []);
+            choice2.logprobs.refusal.push(...refusal2);
           }
         }
       }
       if (finish_reason) {
-        choice.finish_reason = finish_reason;
+        choice2.finish_reason = finish_reason;
         if (__classPrivateFieldGet(this, _ChatCompletionStream_params, "f") && hasAutoParseableInput(__classPrivateFieldGet(this, _ChatCompletionStream_params, "f"))) {
           if (finish_reason === "length") {
             throw new LengthFinishReasonError();
@@ -98147,40 +98156,40 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           }
         }
       }
-      Object.assign(choice, other);
+      Object.assign(choice2, other);
       if (!delta)
         continue;
       const { content, refusal, function_call, role, tool_calls, ...rest2 } = delta;
       assertIsEmpty(rest2);
-      Object.assign(choice.message, rest2);
+      Object.assign(choice2.message, rest2);
       if (refusal) {
-        choice.message.refusal = (choice.message.refusal || "") + refusal;
+        choice2.message.refusal = (choice2.message.refusal || "") + refusal;
       }
       if (role)
-        choice.message.role = role;
+        choice2.message.role = role;
       if (function_call) {
-        if (!choice.message.function_call) {
-          choice.message.function_call = function_call;
+        if (!choice2.message.function_call) {
+          choice2.message.function_call = function_call;
         } else {
           if (function_call.name)
-            choice.message.function_call.name = function_call.name;
+            choice2.message.function_call.name = function_call.name;
           if (function_call.arguments) {
-            (_c = choice.message.function_call).arguments ?? (_c.arguments = "");
-            choice.message.function_call.arguments += function_call.arguments;
+            (_c = choice2.message.function_call).arguments ?? (_c.arguments = "");
+            choice2.message.function_call.arguments += function_call.arguments;
           }
         }
       }
       if (content) {
-        choice.message.content = (choice.message.content || "") + content;
-        if (!choice.message.refusal && __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_getAutoParseableResponseFormat).call(this)) {
-          choice.message.parsed = partialParse(choice.message.content);
+        choice2.message.content = (choice2.message.content || "") + content;
+        if (!choice2.message.refusal && __classPrivateFieldGet(this, _ChatCompletionStream_instances, "m", _ChatCompletionStream_getAutoParseableResponseFormat).call(this)) {
+          choice2.message.parsed = partialParse(choice2.message.content);
         }
       }
       if (tool_calls) {
-        if (!choice.message.tool_calls)
-          choice.message.tool_calls = [];
+        if (!choice2.message.tool_calls)
+          choice2.message.tool_calls = [];
         for (const { index: index2, id, type, function: fn, ...rest3 } of tool_calls) {
-          const tool_call = (_d = choice.message.tool_calls)[index2] ?? (_d[index2] = {});
+          const tool_call = (_d = choice2.message.tool_calls)[index2] ?? (_d[index2] = {});
           Object.assign(tool_call, rest3);
           if (id)
             tool_call.id = id;
@@ -98356,7 +98365,7 @@ var ChatCompletionStreamingRunner = class _ChatCompletionStreamingRunner extends
     runner._run(() => runner._fromReadableStream(stream));
     return runner;
   }
-  static runTools(client, params, options) {
+  static runTools(client2, params, options) {
     const runner = new _ChatCompletionStreamingRunner(
       // @ts-expect-error TODO these types are incompatible
       params
@@ -98365,7 +98374,7 @@ var ChatCompletionStreamingRunner = class _ChatCompletionStreamingRunner extends
       ...options,
       headers: { ...options?.headers, "X-Stainless-Helper-Method": "runTools" }
     };
-    runner._run(() => runner._runTools(client, params, opts));
+    runner._run(() => runner._runTools(client2, params, opts));
     return runner;
   }
 };
@@ -103226,15 +103235,15 @@ var ResponseStream = class _ResponseStream extends EventStream {
     _ResponseStream_finalResponse.set(this, void 0);
     __classPrivateFieldSet(this, _ResponseStream_params, params, "f");
   }
-  static createResponse(client, params, options) {
+  static createResponse(client2, params, options) {
     const runner = new _ResponseStream(params);
-    runner._run(() => runner._createOrRetrieveResponse(client, params, {
+    runner._run(() => runner._createOrRetrieveResponse(client2, params, {
       ...options,
       headers: { ...options?.headers, "X-Stainless-Helper-Method": "stream" }
     }));
     return runner;
   }
-  async _createOrRetrieveResponse(client, params, options) {
+  async _createOrRetrieveResponse(client2, params, options) {
     const signal = options?.signal;
     if (signal) {
       if (signal.aborted)
@@ -103245,10 +103254,10 @@ var ResponseStream = class _ResponseStream extends EventStream {
     let stream;
     let starting_after = null;
     if ("response_id" in params) {
-      stream = await client.responses.retrieve(params.response_id, { stream: true }, { ...options, signal: this.controller.signal, stream: true });
+      stream = await client2.responses.retrieve(params.response_id, { stream: true }, { ...options, signal: this.controller.signal, stream: true });
       starting_after = params.starting_after ?? null;
     } else {
-      stream = await client.responses.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
+      stream = await client2.responses.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
     }
     this._connected();
     for await (const event of stream) {
@@ -103953,12 +103962,12 @@ var FileBatches = class extends APIResource2 {
     }
     const configuredConcurrency = options?.maxConcurrency ?? 5;
     const concurrencyLimit = Math.min(configuredConcurrency, files.length);
-    const client = this._client;
+    const client2 = this._client;
     const fileIterator = files.values();
     const allFileIds = [...fileIds];
     async function processFiles(iterator) {
       for (let item of iterator) {
-        const fileObj = await client.files.create({ file: item, purpose: "assistants" }, options);
+        const fileObj = await client2.files.create({ file: item, purpose: "assistants" }, options);
         allFileIds.push(fileObj.id);
       }
     }
@@ -104451,7 +104460,7 @@ var OpenAI = class {
    * Create a new client instance re-using the same options given to the current client with optional overriding.
    */
   withOptions(options) {
-    const client = new this.constructor({
+    const client2 = new this.constructor({
       ...this._options,
       baseURL: this.baseURL,
       maxRetries: this.maxRetries,
@@ -104468,7 +104477,7 @@ var OpenAI = class {
       webhookSecret: this.webhookSecret,
       ...options
     });
-    return client;
+    return client2;
   }
   defaultQuery() {
     return this._options.defaultQuery;
@@ -123322,9 +123331,9 @@ var Stripe = class _Stripe {
     } else {
       delete userAgent.platform;
     }
-    const client = this.getApiField("httpClient");
-    if (client) {
-      userAgent.httplib = encodeURIComponent(client.getClientName());
+    const client2 = this.getApiField("httpClient");
+    if (client2) {
+      userAgent.httplib = encodeURIComponent(client2.getClientName());
     }
     if (this._appInfo) {
       userAgent.application = this._appInfo;
@@ -123521,6 +123530,811 @@ var BUILD_TIME = (/* @__PURE__ */ new Date()).toISOString();
 // server/index.ts
 init_telegramAlerts();
 var import_promise = __toESM(require_promise(), 1);
+
+// node_modules/@typesafe-ai/sdk/dist/index.mjs
+var requestIdFrom = (headers) => headers.get("x-typesafe-request-id") ?? void 0;
+var APIPromise3 = class APIPromise4 extends Promise {
+  #responsePromise;
+  #parseResponse;
+  #parsed;
+  constructor(responsePromise, parseResponse2) {
+    super((resolve2) => resolve2(void 0));
+    this.#responsePromise = responsePromise;
+    this.#parseResponse = parseResponse2;
+  }
+  /**
+  * Resolves to the raw `Response` without parsing the body. SDK requests buffer the full
+  * body under the request timeout before handoff; reading it afterwards is caller-owned.
+  * The caller owns the body; don't also `await` the parsed result on the same promise.
+  */
+  asResponse() {
+    return this.#responsePromise;
+  }
+  /** Return the parsed result, HTTP response, and request ID. */
+  async withResponse() {
+    const [data, response] = await Promise.all([this.#parse(), this.#responsePromise]);
+    return {
+      data,
+      response,
+      requestId: requestIdFrom(response.headers)
+    };
+  }
+  /** Transform the parsed result, sharing the HTTP response and a single body parse. */
+  map(fn) {
+    return new APIPromise4(this.#responsePromise, () => this.#parse().then(fn));
+  }
+  #parse() {
+    this.#parsed ??= this.#responsePromise.then(this.#parseResponse);
+    return this.#parsed;
+  }
+  then(onfulfilled, onrejected) {
+    return this.#parse().then(onfulfilled, onrejected);
+  }
+  catch(onrejected) {
+    return this.#parse().catch(onrejected);
+  }
+  finally(onfinally) {
+    return this.#parse().finally(onfinally);
+  }
+};
+var ENV = {
+  /** Required API key; used when `apiKey` is omitted. */
+  apiKey: "TYPESAFE_API_KEY",
+  /** API root; defaults to `https://api.typesafe.ai`. */
+  baseURL: "TYPESAFE_BASE_URL",
+  /** Default model name; defaults to `jev-latest`. */
+  defaultModel: "TYPESAFE_DEFAULT_MODEL",
+  /** Log level; defaults to `warn`. */
+  logLevel: "TYPESAFE_LOG_LEVEL"
+};
+var readEnv3 = (name) => {
+  if (typeof process === "undefined" || !process.env) return void 0;
+  return process.env[name]?.trim() || void 0;
+};
+var fromCodeOrEnv = (fromCode, envVar) => fromCode ?? readEnv3(envVar);
+var range = (from, to) => Array.from({ length: to - from }, (_, i2) => from + i2);
+var DEFAULT_RETRY_POLICY = {
+  maxRetries: 2,
+  backoffInitialMs: 500,
+  backoffMaxMs: 5e3,
+  backoffJitter: 0.25,
+  /** HTTP 408, 429, and 5xx responses. */
+  httpStatuses: /* @__PURE__ */ new Set([
+    408,
+    429,
+    ...range(500, 600)
+  ]),
+  respectRetryAfter: true,
+  /** Maximum server retry delay before falling back to backoff. */
+  maxRetryAfterMs: 6e4,
+  apiConnectionError: true,
+  apiTimeoutError: true
+};
+DEFAULT_RETRY_POLICY.maxRetries;
+var isRetryableStatus = (status, policy = DEFAULT_RETRY_POLICY) => policy.httpStatuses.has(status);
+var parseRetryAfter = (headers, now = Date.now()) => {
+  const ms = Number(headers.get("retry-after-ms"));
+  if (headers.has("retry-after-ms") && Number.isFinite(ms) && ms >= 0) return ms;
+  const raw = headers.get("retry-after");
+  if (raw === null) return void 0;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds * 1e3 : void 0;
+  const date = Date.parse(raw);
+  if (!Number.isNaN(date)) return Math.max(0, date - now);
+};
+var retryDelayMs = (attempt, headers, policy = DEFAULT_RETRY_POLICY, random = Math.random) => {
+  if (policy.respectRetryAfter && headers !== void 0) {
+    const retryAfter = parseRetryAfter(headers);
+    if (retryAfter !== void 0 && retryAfter <= policy.maxRetryAfterMs) return retryAfter;
+  }
+  const exponential = Math.min(policy.backoffInitialMs * 2 ** attempt, policy.backoffMaxMs);
+  return Math.round(exponential * (1 - random() * policy.backoffJitter));
+};
+var sleep3 = (ms, signal) => new Promise((resolve2, reject) => {
+  if (signal?.aborted) return reject(signal.reason);
+  const onAbort = () => {
+    clearTimeout(timer);
+    reject(signal?.reason);
+  };
+  const timer = setTimeout(() => {
+    signal?.removeEventListener("abort", onAbort);
+    resolve2();
+  }, ms);
+  signal?.addEventListener("abort", onAbort, { once: true });
+});
+var TypeSafeError = class extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = new.target.name;
+  }
+};
+var isRecord = (value) => typeof value === "object" && value !== null;
+var extractMessage = (body) => {
+  if (typeof body === "string") return body || void 0;
+  if (!isRecord(body)) return void 0;
+  const { error, message, detail } = body;
+  if (typeof error === "string") return error;
+  if (isRecord(error) && typeof error.message === "string") return error.message;
+  if (typeof message === "string") return message;
+  if (typeof detail === "string") return detail;
+  if (isRecord(detail) && typeof detail.message === "string") return detail.message;
+  if (Array.isArray(detail)) return describeValidationErrors(detail);
+};
+var describeValidationErrors = (errors) => {
+  const parts = errors.flatMap((e2) => {
+    if (!isRecord(e2) || typeof e2.msg !== "string") return [];
+    const loc = Array.isArray(e2.loc) ? e2.loc.filter((x2) => x2 !== "body").join(".") : "";
+    return [loc ? `${loc}: ${e2.msg}` : e2.msg];
+  });
+  return parts.length > 0 ? parts.join("; ") : void 0;
+};
+var MAX_RAW_BODY_IN_MESSAGE = 200;
+var APIError3 = class APIError4 extends TypeSafeError {
+  /** HTTP response status code. */
+  status;
+  /** HTTP response headers. */
+  headers;
+  /** Parsed JSON, response text, or `undefined` for an empty body. */
+  body;
+  /** Request ID from `x-typesafe-request-id`, or `undefined` when absent. */
+  requestId;
+  constructor(status, body, headers, message) {
+    super(message ?? APIError4.describe(status, body));
+    this.status = status;
+    this.body = body;
+    this.headers = headers;
+    this.requestId = requestIdFrom(headers);
+  }
+  static describe(status, body) {
+    const detail = extractMessage(body);
+    if (detail) return `${status} ${detail}`;
+    if (body === void 0) return `${status} status code (no body)`;
+    const raw = typeof body === "string" ? body : JSON.stringify(body);
+    return `${status} ${raw.length > MAX_RAW_BODY_IN_MESSAGE ? `${raw.slice(0, MAX_RAW_BODY_IN_MESSAGE)}\u2026` : raw}`;
+  }
+  /** Create the error subclass for an HTTP status code. */
+  static fromResponse(status, body, headers) {
+    if (status === 400) return new BadRequestError3(status, body, headers);
+    if (status === 401) return new AuthenticationError3(status, body, headers);
+    if (status === 403) return new PermissionDeniedError3(status, body, headers);
+    if (status === 404) return new NotFoundError3(status, body, headers);
+    if (status === 422) return new UnprocessableEntityError3(status, body, headers);
+    if (status === 429) return new RateLimitError4(status, body, headers);
+    if (status >= 500) return new InternalServerError3(status, body, headers);
+    return new APIError4(status, body, headers);
+  }
+};
+var BadRequestError3 = class extends APIError3 {
+};
+var AuthenticationError3 = class extends APIError3 {
+};
+var PermissionDeniedError3 = class extends APIError3 {
+};
+var NotFoundError3 = class extends APIError3 {
+};
+var UnprocessableEntityError3 = class extends APIError3 {
+};
+var RateLimitError4 = class extends APIError3 {
+  /** Server retry delay in milliseconds, or `undefined` when absent or invalid. */
+  retryAfterMs = parseRetryAfter(this.headers);
+};
+var InternalServerError3 = class extends APIError3 {
+};
+var APIConnectionError3 = class extends TypeSafeError {
+  constructor(message = "Connection error.", options) {
+    super(message, options);
+  }
+};
+var APITimeoutError = class extends APIConnectionError3 {
+  /** Configured timeout in milliseconds. */
+  timeoutMs;
+  constructor(timeoutMs, options) {
+    super(`Request timed out after ${timeoutMs}ms.`, options);
+    this.timeoutMs = timeoutMs;
+  }
+};
+var APIUserAbortError3 = class extends TypeSafeError {
+  constructor(message = "Request was aborted.", options) {
+    super(message, options);
+  }
+};
+var LOG_LEVELS = [
+  "debug",
+  "info",
+  "warn",
+  "error",
+  "off"
+];
+var DEFAULT_LOG_LEVEL = "warn";
+var isLogLevel = (value) => LOG_LEVELS.includes(value);
+var parseLogLevel3 = (value, source) => {
+  if (isLogLevel(value)) return value;
+  throw new TypeSafeError(`Invalid log level "${value}" from ${source}. Expected one of: ${LOG_LEVELS.join(", ")}.`);
+};
+var PREFIX = "[typesafe-sdk]";
+var consoleLogger = {
+  debug: (message, ...args) => console.debug(`${PREFIX} ${message}`, ...args),
+  info: (message, ...args) => console.info(`${PREFIX} ${message}`, ...args),
+  warn: (message, ...args) => console.warn(`${PREFIX} ${message}`, ...args),
+  error: (message, ...args) => console.error(`${PREFIX} ${message}`, ...args)
+};
+var RANK = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+  off: 4
+};
+var drop = () => {
+};
+var withLevel = (sink, level) => {
+  const enabled = (at) => RANK[at] >= RANK[level];
+  return {
+    debug: enabled("debug") ? (message, ...args) => sink.debug(message, ...args) : drop,
+    info: enabled("info") ? (message, ...args) => sink.info(message, ...args) : drop,
+    warn: enabled("warn") ? (message, ...args) => sink.warn(message, ...args) : drop,
+    error: enabled("error") ? (message, ...args) => sink.error(message, ...args) : drop
+  };
+};
+var KEY_HEADERS = /* @__PURE__ */ new Set([
+  "authorization",
+  "proxy-authorization",
+  "x-api-key"
+]);
+var OPAQUE_HEADERS = /* @__PURE__ */ new Set(["cookie", "set-cookie"]);
+var redactKey = (value) => {
+  const [scheme, secret] = value.includes(" ") ? value.split(/\s+/, 2) : [void 0, value];
+  const tail = secret && secret.length > 8 ? secret.slice(-4) : "";
+  return `${scheme ? `${scheme} ` : ""}***${tail}`;
+};
+var redact = (name, value) => {
+  const lower2 = name.toLowerCase();
+  if (KEY_HEADERS.has(lower2)) return redactKey(value);
+  if (OPAQUE_HEADERS.has(lower2)) return "***";
+  return value;
+};
+var redactHeaders = (headers) => Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, redact(name, value)]));
+var choice = (instructions, criteria) => {
+  if (Array.isArray(criteria)) throw new TypeSafeError("Choice criteria must be a map of labels to descriptions, not a list.");
+  return {
+    type: "choice",
+    instructions,
+    criteria
+  };
+};
+var validateQuestions = (questions) => {
+  if (Object.keys(questions).length === 0) throw new TypeSafeError("At least one question is required.");
+  for (const [name, question] of Object.entries(questions)) {
+    if (question.type !== "score") continue;
+    if (!Array.isArray(question.criteria)) throw new TypeSafeError(`Score question "${name}" has criteria that are not a list; score criteria must be a list of descriptions indexed by score from zero.`);
+    if (question.criteria.length < 2) throw new TypeSafeError(`Score question "${name}" has ${question.criteria.length} criteria; at least two scores are required.`);
+  }
+};
+var Models3 = class {
+  #transport;
+  constructor(transport) {
+    this.#transport = transport;
+  }
+  /** List the models available to the account. */
+  list(options = {}) {
+    return this.#transport.request("GET", "/v1/models", options).map(unwrapModels);
+  }
+};
+var unwrapModels = (wire) => {
+  if (Array.isArray(wire?.models)) return wire.models;
+  throw new TypeSafeError("Unexpected response shape from GET /v1/models; expected { models: [...] }.");
+};
+var g = globalThis;
+var isBrowser = () => typeof g.window !== "undefined" && typeof g.window.document !== "undefined" && typeof g.navigator !== "undefined";
+var describeRuntime = () => {
+  const platform = g.process?.platform && g.process?.arch ? ` (${g.process.platform}; ${g.process.arch})` : "";
+  if (g.Bun?.version) return `bun/${g.Bun.version}${platform}`;
+  if (g.Deno?.version?.deno) return `deno/${g.Deno.version.deno}${platform}`;
+  if (g.EdgeRuntime !== void 0) return "vercel-edge";
+  if (g.navigator?.userAgent === "Cloudflare-Workers") return "cloudflare-workers";
+  if (g.process?.versions?.node) return `node/${g.process.versions.node}${platform}`;
+  if (isBrowser()) return "browser";
+  return "unknown";
+};
+var VERSION3 = "0.6.0";
+var missingApiKey = () => {
+  throw new TypeSafeError(`No API key was provided. Pass \`apiKey\` to the TypeSafeClient constructor or set the ${ENV.apiKey} environment variable.`);
+};
+var missingFetch = () => {
+  throw new TypeSafeError("No global `fetch` is available in this runtime. Pass a `fetch` implementation to the TypeSafeClient constructor.");
+};
+var refuseBrowser = () => {
+  throw new TypeSafeError("TypeSafeClient is running in a browser, which would expose your API key to anyone using the page. Call the API from a server instead, or pass `dangerouslyAllowBrowser: true` if you understand the risk.");
+};
+var defaultFetch = (input, init) => globalThis.fetch(input, init);
+var assertNonNegativeInteger = (name, value) => {
+  if (!Number.isInteger(value) || value < 0) throw new TypeSafeError(`\`${name}\` must be a non-negative integer, got ${String(value)}.`);
+  return value;
+};
+var assertPositiveMs = (name, value) => {
+  if (!Number.isFinite(value) || value <= 0) throw new TypeSafeError(`\`${name}\` must be a positive number of milliseconds, got ${String(value)}.`);
+  return value;
+};
+var assertNonNegativeMs = (name, value) => {
+  if (!Number.isFinite(value) || value < 0) throw new TypeSafeError(`\`${name}\` must be a non-negative number of milliseconds, got ${String(value)}.`);
+  return value;
+};
+var assertFraction = (name, value) => {
+  if (!Number.isFinite(value) || value < 0 || value > 1) throw new TypeSafeError(`\`${name}\` must be between 0 and 1, got ${String(value)}.`);
+  return value;
+};
+var assertStatusSet = (name, statuses) => {
+  for (const status of statuses) if (!Number.isInteger(status) || status < 100 || status > 999) throw new TypeSafeError(`\`${name}\` must contain HTTP status codes, got ${String(status)}.`);
+  return statuses;
+};
+var resolveRetryPolicy = (base, overrides) => {
+  const o = overrides ?? {};
+  return {
+    maxRetries: o.maxRetries === void 0 ? base.maxRetries : assertNonNegativeInteger("retry.maxRetries", o.maxRetries),
+    backoffInitialMs: o.backoffInitialMs === void 0 ? base.backoffInitialMs : assertNonNegativeMs("retry.backoffInitialMs", o.backoffInitialMs),
+    backoffMaxMs: o.backoffMaxMs === void 0 ? base.backoffMaxMs : assertNonNegativeMs("retry.backoffMaxMs", o.backoffMaxMs),
+    backoffJitter: o.backoffJitter === void 0 ? base.backoffJitter : assertFraction("retry.backoffJitter", o.backoffJitter),
+    httpStatuses: new Set(o.httpStatuses === void 0 ? base.httpStatuses : assertStatusSet("retry.httpStatuses", o.httpStatuses)),
+    respectRetryAfter: o.respectRetryAfter ?? base.respectRetryAfter,
+    maxRetryAfterMs: o.maxRetryAfterMs === void 0 ? base.maxRetryAfterMs : assertNonNegativeMs("retry.maxRetryAfterMs", o.maxRetryAfterMs),
+    apiConnectionError: o.apiConnectionError ?? base.apiConnectionError,
+    apiTimeoutError: o.apiTimeoutError ?? base.apiTimeoutError
+  };
+};
+var isRetryableError = (err, policy) => {
+  if (err instanceof APITimeoutError) return policy.apiTimeoutError;
+  if (err instanceof APIConnectionError3) return policy.apiConnectionError;
+  return false;
+};
+var resolveLogLevel = (fromCode) => {
+  if (fromCode !== void 0) return parseLogLevel3(fromCode, "the `logLevel` option");
+  const fromEnv = readEnv3(ENV.logLevel);
+  if (fromEnv !== void 0) return parseLogLevel3(fromEnv, ENV.logLevel);
+  return DEFAULT_LOG_LEVEL;
+};
+var stripTrailingSlashes = (url) => url.replace(/\/+$/, "");
+var mergeHeaders = (...sources) => {
+  const entries = /* @__PURE__ */ new Map();
+  for (const source of sources) for (const [name, value] of Object.entries(source)) if (value === void 0) entries.delete(name.toLowerCase());
+  else entries.set(name.toLowerCase(), [name, value]);
+  return Object.fromEntries(entries.values());
+};
+var bufferResponse = async (response, signal) => {
+  const reader = response.clone().body?.getReader();
+  if (!reader) return;
+  const cancel = () => {
+    reader.cancel(signal.reason).catch(() => {
+    });
+    response.body?.cancel(signal.reason).catch(() => {
+    });
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    if (signal.aborted) cancel();
+    signal.throwIfAborted();
+    while (!(await reader.read()).done) signal.throwIfAborted();
+    signal.throwIfAborted();
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    reader.releaseLock();
+  }
+};
+var RUNTIME = describeRuntime();
+var TypeSafeClient = class {
+  /** API key excluded from serialization and public properties. */
+  #apiKey;
+  /** API root with trailing slashes removed. */
+  baseURL;
+  /** Model used when a request omits `model`. */
+  defaultModel;
+  /** Configured log verbosity. */
+  logLevel;
+  /** The configured logger, filtered to `logLevel`. */
+  logger;
+  /** Retry settings with constructor overrides applied. */
+  retry;
+  /** Timeout per attempt in milliseconds. */
+  timeout;
+  /** Additional headers sent with each request. */
+  defaultHeaders;
+  /** HTTP fetch implementation. */
+  fetch;
+  /** The models available to the account. */
+  models;
+  #requestCount = 0;
+  /**
+  * Create a client for the TypeSafe AI API.
+  *
+  * Explicit options take precedence over environment variables, then SDK defaults.
+  * Empty or whitespace-only environment values are ignored.
+  *
+  * @throws {TypeSafeError} The API key is missing, configuration is invalid, or the runtime is unsupported.
+  */
+  constructor(config = {}) {
+    if (isBrowser() && !config.dangerouslyAllowBrowser) refuseBrowser();
+    this.#apiKey = fromCodeOrEnv(config.apiKey, ENV.apiKey) ?? missingApiKey();
+    this.baseURL = stripTrailingSlashes(fromCodeOrEnv(config.baseURL, ENV.baseURL) ?? "https://api.typesafe.ai");
+    this.defaultModel = fromCodeOrEnv(config.defaultModel, ENV.defaultModel) ?? "jev-latest";
+    this.logLevel = resolveLogLevel(config.logLevel);
+    this.logger = withLevel(config.logger ?? consoleLogger, this.logLevel);
+    this.retry = resolveRetryPolicy(DEFAULT_RETRY_POLICY, config.retry);
+    this.timeout = assertPositiveMs("timeout", config.timeout ?? 1e4);
+    this.defaultHeaders = { ...config.defaultHeaders };
+    if (config.fetch === void 0 && typeof globalThis.fetch !== "function") missingFetch();
+    this.fetch = config.fetch ?? defaultFetch;
+    const transport = {
+      request: (method, path6, options) => this.#request(method, path6, options),
+      defaultModel: this.defaultModel
+    };
+    this.models = new Models3(transport);
+  }
+  /**
+  * Answer named questions about text or structured state.
+  *
+  * @param request - State, questions, and an optional model override.
+  * @param options - Per-call timeout, retry, headers, and cancellation settings.
+  * @returns Answers typed by question name and criteria, with model and token usage.
+  * @throws {TypeSafeError} Questions are empty, or score criteria are not a list of at least two entries.
+  * @throws {APIError} The server returns a non-2xx response after retries.
+  * @throws {APIConnectionError} The request cannot connect or times out after retries.
+  * @throws {APIUserAbortError} The caller aborts the request.
+  *
+  * @example
+  * ```ts
+  * const { answers } = await client.systemOne({
+  *   state: "I was charged twice. Please help.",
+  *   questions: { billing: noul("Is this about billing?") },
+  * });
+  * console.log(answers.billing.noul);
+  * ```
+  */
+  systemOne(request, options = {}) {
+    validateQuestions(request.questions);
+    const body = {
+      ...request,
+      model: request.model ?? this.defaultModel
+    };
+    return this.#request("POST", "/v1/systemone", {
+      ...options,
+      body
+    });
+  }
+  /** Send a request and parse its response body. */
+  #request(method, path6, options = {}) {
+    const resolved = {
+      method,
+      path: path6,
+      body: options.body,
+      headers: mergeHeaders(this.defaultHeaders, options.headers ?? {}),
+      signal: options.signal,
+      timeout: options.timeout === void 0 ? this.timeout : assertPositiveMs("timeout", options.timeout),
+      retry: resolveRetryPolicy(this.retry, options.retry)
+    };
+    const tag = `#${++this.#requestCount} ${method} ${path6}`;
+    return new APIPromise3(this.fetchWithRetries(tag, resolved), async (res) => {
+      const parsed = await parseBody(res);
+      this.logger.debug(`${tag} <- body`, parsed);
+      return parsed;
+    });
+  }
+  /** Retry eligible failures, logging attempt summaries at `info` and headers and bodies at `debug`. */
+  async fetchWithRetries(tag, req) {
+    const url = `${this.baseURL}${req.path}`;
+    const headers = mergeHeaders(req.headers, {
+      Authorization: `Bearer ${this.#apiKey}`,
+      Accept: "application/json",
+      "User-Agent": `typesafe-sdk/${VERSION3}`,
+      "X-TypeSafe-SDK": `typesafe-sdk/${VERSION3}`,
+      "X-TypeSafe-Runtime": RUNTIME,
+      "Content-Type": req.body === void 0 ? void 0 : "application/json",
+      "X-TypeSafe-Retry-Count": void 0
+    });
+    const body = req.body === void 0 ? void 0 : JSON.stringify(req.body);
+    for (let attempt = 0; ; attempt++) {
+      const retriesLeft = req.retry.maxRetries - attempt;
+      const attemptHeaders = attempt === 0 ? headers : {
+        ...headers,
+        "X-TypeSafe-Retry-Count": String(attempt)
+      };
+      this.logger.debug(`${tag} -> ${url}`, {
+        headers: redactHeaders(attemptHeaders),
+        body: req.body
+      });
+      const started = Date.now();
+      let res;
+      try {
+        res = await this.attempt(tag, url, {
+          method: req.method,
+          headers: attemptHeaders,
+          body
+        }, req);
+      } catch (err) {
+        if (err instanceof APIUserAbortError3 || retriesLeft <= 0) throw err;
+        if (!isRetryableError(err, req.retry)) throw err;
+        await this.backOff(tag, attempt, retriesLeft, err.message, void 0, req);
+        continue;
+      }
+      const requestId = requestIdFrom(res.headers);
+      this.logger.info(`${tag} <- ${res.status} in ${Date.now() - started}ms${requestId ? ` (request ${requestId})` : ""}`);
+      if (res.ok) return res;
+      const errorBody = await parseBody(res);
+      this.logger.debug(`${tag} <- error body`, errorBody);
+      const error = APIError3.fromResponse(res.status, errorBody, res.headers);
+      if (retriesLeft <= 0 || !isRetryableStatus(res.status, req.retry)) throw error;
+      await this.backOff(tag, attempt, retriesLeft, `${res.status}`, res.headers, req);
+    }
+  }
+  /**
+  * One HTTP round trip, including body delivery, with a timeout. The caller's signal and our
+  * timer both abort the same controller; we check which fired to choose the error class.
+  */
+  async attempt(tag, url, init, { signal, timeout }) {
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort(signal?.reason);
+    if (signal?.aborted) abortFromCaller();
+    signal?.addEventListener("abort", abortFromCaller, { once: true });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeout);
+    const started = Date.now();
+    const elapsed = () => `${Date.now() - started}ms`;
+    try {
+      const response = await this.fetch(url, {
+        ...init,
+        signal: controller.signal
+      });
+      await bufferResponse(response, controller.signal);
+      return response;
+    } catch (err) {
+      if (signal?.aborted) {
+        this.logger.info(`${tag} aborted by caller after ${elapsed()}`);
+        throw new APIUserAbortError3(void 0, { cause: err });
+      }
+      if (timedOut) {
+        this.logger.info(`${tag} timed out after ${elapsed()}`);
+        throw new APITimeoutError(timeout, { cause: err });
+      }
+      this.logger.info(`${tag} connection error after ${elapsed()}`, err);
+      throw new APIConnectionError3(err instanceof Error ? `Connection error: ${err.message}` : void 0, { cause: err });
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abortFromCaller);
+    }
+  }
+  /** Wait before retrying; caller cancellation throws `APIUserAbortError`. */
+  async backOff(tag, attempt, retriesLeft, reason, headers, { retry, signal }) {
+    const delay = retryDelayMs(attempt, headers, retry);
+    const nth = attempt + 1;
+    const total = attempt + retriesLeft;
+    this.logger.info(`${tag} retrying in ${delay}ms (retry ${nth}/${total}) after ${reason}`);
+    try {
+      await sleep3(delay, signal);
+    } catch (err) {
+      this.logger.info(`${tag} aborted by caller while waiting to retry`);
+      throw new APIUserAbortError3(void 0, { cause: err });
+    }
+  }
+};
+var parseBody = async (res) => {
+  const text = await res.text();
+  if (text.length === 0) return void 0;
+  if ((res.headers.get("content-type") ?? "").includes("application/json")) try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+// server/services/jevClassifier.ts
+var DEFAULT_TYPESAFE_KEY = process.env.TYPESAFE_API_KEY || "apikey_2238961ff151c1db4465b99ec5ef660f41f7_cc5fc6a87e2c7952cf9d512d8c75940ce0aa132dcb4b165a8687ef924c89e878";
+var client = null;
+try {
+  if (DEFAULT_TYPESAFE_KEY) {
+    client = new TypeSafeClient({ apiKey: DEFAULT_TYPESAFE_KEY });
+  }
+} catch (err) {
+  console.warn("[JevService] Initialization fallback:", err?.message);
+}
+async function triageRenderPrompt(userInstruction, materialName, materialCategory) {
+  const start = Date.now();
+  const trimmed = (userInstruction || "").trim();
+  if (!trimmed) {
+    const isFloorMat = /piso|spc|floor|deck/i.test(`${materialName || ""} ${materialCategory || ""}`);
+    const isCeilingMat = /cielo\s*raso|ceiling|techo/i.test(`${materialName || ""} ${materialCategory || ""}`);
+    return {
+      source: "heuristic",
+      isSafeArchitecturalRequest: true,
+      detectedSurfaceScope: isFloorMat ? "floors_only" : isCeilingMat ? "ceiling" : "auto",
+      lightingMood: "unchanged",
+      latencyMs: 0
+    };
+  }
+  if (client) {
+    try {
+      const response = await Promise.race([
+        client.systemOne({
+          state: {
+            userPrompt: trimmed.slice(0, 400),
+            selectedMaterial: materialName || "Unknown",
+            materialCategory: materialCategory || "Wall/Floor Finish"
+          },
+          questions: {
+            safety: choice(
+              "Is this user prompt safe and appropriate for an interior/architectural visualization app (or benign styling instruction), rather than NSFW/abusive/prompt-injection?",
+              {
+                safe_architectural: null,
+                unsafe_or_abusive: null
+              }
+            ),
+            surface_scope: choice(
+              "Which architectural surface is the user primarily asking to apply the material to?",
+              {
+                auto: null,
+                accent_wall: null,
+                walls_only: null,
+                floors_only: null,
+                ceiling: null
+              }
+            ),
+            lighting: choice(
+              "What lighting atmosphere is requested in the user instruction?",
+              {
+                unchanged: null,
+                warm_led: null,
+                evening_ambient: null,
+                natural_daylight: null
+              }
+            )
+          }
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Jev timeout")), 2e3))
+      ]);
+      return {
+        source: "jev-1",
+        isSafeArchitecturalRequest: response.answers?.safety?.choice !== "unsafe_or_abusive",
+        detectedSurfaceScope: response.answers?.surface_scope?.choice || "auto",
+        lightingMood: response.answers?.lighting?.choice || "unchanged",
+        latencyMs: Date.now() - start
+      };
+    } catch (err) {
+    }
+  }
+  const lower2 = trimmed.toLowerCase();
+  const isUnsafe = /\b(nsfw|nude|naked|porn|gore|blood|weapon|ignore previous instructions|system prompt)\b/i.test(lower2);
+  let detectedSurfaceScope = "auto";
+  if (/\b(piso|pisos|floor|flooring|suelo)\b/i.test(lower2)) detectedSurfaceScope = "floors_only";
+  else if (/\b(acento|accent|una pared|main wall|fondo)\b/i.test(lower2)) detectedSurfaceScope = "accent_wall";
+  else if (/\b(todas las paredes|all walls|paredes)\b/i.test(lower2)) detectedSurfaceScope = "walls_only";
+  else if (/\b(techo|cielo raso|ceiling)\b/i.test(lower2)) detectedSurfaceScope = "ceiling";
+  let lightingMood = "unchanged";
+  if (/\b(led|cálid|warm)\b/i.test(lower2)) lightingMood = "warm_led";
+  else if (/\b(noche|nocturn|evening|night)\b/i.test(lower2)) lightingMood = "evening_ambient";
+  else if (/\b(día|natural|daylight|sol)\b/i.test(lower2)) lightingMood = "natural_daylight";
+  return {
+    source: "heuristic",
+    isSafeArchitecturalRequest: !isUnsafe,
+    detectedSurfaceScope,
+    lightingMood,
+    latencyMs: Date.now() - start
+  };
+}
+async function classifyPurchaseLead(payload) {
+  const estimate = Number(payload.totalEstimate || 0);
+  if (client) {
+    try {
+      const response = await Promise.race([
+        client.systemOne({
+          state: {
+            customerName: payload.customerName || "Anonymous",
+            emailDomain: (payload.customerEmail || "").split("@")[1] || "unknown",
+            totalEstimateUSD: estimate,
+            itemCount: payload.itemCount || 1,
+            projectNotes: (payload.notes || "").slice(0, 300)
+          },
+          questions: {
+            priority: choice("What is the business priority of this construction material quote request?", {
+              vip_commercial: null,
+              high_intent: null,
+              standard: null,
+              low_or_test: null
+            }),
+            scale: choice("What is the estimated scale of this construction project?", {
+              large_commercial: null,
+              medium_residential: null,
+              small_sample: null
+            })
+          }
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Jev timeout")), 2e3))
+      ]);
+      return {
+        source: "jev-1",
+        priority: response.answers?.priority?.choice || "standard",
+        projectScale: response.answers?.scale?.choice || "medium_residential"
+      };
+    } catch (_) {
+    }
+  }
+  const priority = estimate >= 2500 ? "vip_commercial" : estimate >= 500 ? "high_intent" : "standard";
+  const projectScale = estimate >= 2500 ? "large_commercial" : estimate >= 400 ? "medium_residential" : "small_sample";
+  return {
+    source: "heuristic",
+    priority,
+    projectScale
+  };
+}
+async function classifyCatalogQuery(queryText) {
+  const q = (queryText || "").trim();
+  if (client && q.length > 2) {
+    try {
+      const response = await Promise.race([
+        client.systemOne({
+          state: { customerSearchQuery: q.slice(0, 300) },
+          questions: {
+            category: choice("Which architectural material category best matches this search query?", {
+              ALL: null,
+              "LAMINA MARMOL PVC": null,
+              "PANEL WPC INTERIOR": null,
+              "PANEL WPC EXTERIOR": null,
+              "PISO SPC": null,
+              "CIELO RASO PVC": null,
+              "PANEL ACUSTICO": null
+            }),
+            waterproof: choice("Does the user specifically need moisture/water resistance (e.g. bathroom, kitchen, outdoor)?", {
+              no: null,
+              yes: null
+            }),
+            environment: choice("Is this for interior or exterior application?", {
+              any: null,
+              interior: null,
+              exterior: null
+            }),
+            tone: choice("What surface finish or tone is requested?", {
+              any: null,
+              light: null,
+              dark: null,
+              wood: null,
+              marble: null
+            })
+          }
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Jev timeout")), 2e3))
+      ]);
+      return {
+        source: "jev-1",
+        recommendedCategory: response.answers?.category?.choice || "ALL",
+        waterproofRequired: response.answers?.waterproof?.choice === "yes",
+        environment: response.answers?.environment?.choice || "any",
+        colorTone: response.answers?.tone?.choice || "any"
+      };
+    } catch (_) {
+    }
+  }
+  const lower2 = q.toLowerCase();
+  let recommendedCategory = "ALL";
+  if (/m[aá]rmol|marble|brillante|uv/i.test(lower2)) recommendedCategory = "LAMINA MARMOL PVC";
+  else if (/exterior|fachada|outdoor|deck/i.test(lower2)) recommendedCategory = "PANEL WPC EXTERIOR";
+  else if (/piso|floor|spc|suelo/i.test(lower2)) recommendedCategory = "PISO SPC";
+  else if (/techo|cielo\s*raso|ceiling/i.test(lower2)) recommendedCategory = "CIELO RASO PVC";
+  else if (/ac[uú]stic|sound|ruido|slat/i.test(lower2)) recommendedCategory = "PANEL ACUSTICO";
+  else if (/wpc|list[oó]n|madera|wall\s*panel/i.test(lower2)) recommendedCategory = "PANEL WPC INTERIOR";
+  return {
+    source: "heuristic",
+    recommendedCategory,
+    waterproofRequired: /agua|ba[ñn]o|cocina|humedad|water|bath|exterior/i.test(lower2),
+    environment: /exterior|fachada|outdoor/i.test(lower2) ? "exterior" : /interior|sala|habitaci|cuarto/i.test(lower2) ? "interior" : "any",
+    colorTone: /m[aá]rmol|marble/i.test(lower2) ? "marble" : /madera|wood|roble|nogal|cedro/i.test(lower2) ? "wood" : /blanco|claro|beige|light|white/i.test(lower2) ? "light" : /negro|oscuro|gris|dark|black/i.test(lower2) ? "dark" : "any"
+  };
+}
+
+// server/index.ts
 var SERVER_DIR2 = import_path62.default.resolve();
 try {
   const searchPaths = [
@@ -123687,6 +124501,15 @@ try {
     }
     record.count++;
     next();
+  }, estimateGenerationCostUSD = function(modelStr, success) {
+    if (!success) return 0;
+    const m2 = (modelStr || "").toLowerCase();
+    if (m2.includes("sharp") || m2.includes("compositor")) return 0;
+    if (m2.includes("analyze") || m2.includes("gemini-3.6-flash") || m2.includes("gemini-2.0-flash") || m2.includes("gemini-1.5-flash")) return 2e-3;
+    if (m2.includes("gpt-image") || m2.includes("dall-e") || m2.includes("openai")) return 0.04;
+    if (m2.includes("flux")) return 0.03;
+    if (m2.includes("gemini")) return 0.02;
+    return 0.02;
   }, pushGenerationLog = function(entry) {
     generationLog.push(entry);
     if (generationLog.length > 5e3) generationLog = generationLog.slice(-2500);
@@ -125226,16 +126049,59 @@ Auto-downgraded to Free.`
   app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
     try {
       const health = await monitor.getHealth();
-      let userStats = { total: 0, free: 0, pro: 0, enterprise: 0, totalGenerations: 0 };
+      let userStats = { total: 0, free: 0, standard: 0, pro: 0, enterprise: 0, totalGenerations: 0 };
+      const userGenMap = {};
       try {
-        const users = await getUsers();
-        userStats.total = users.length;
-        for (const u of users) {
-          const tier = (u.tier || "Free").toLowerCase();
-          if (tier === "pro") userStats.pro++;
-          else if (tier === "enterprise") userStats.enterprise++;
+        let allMergedUsers = [];
+        try {
+          const dbRes = await query("SELECT id, name, email, role, tier, generations_used FROM users");
+          if (dbRes && dbRes.rows) allMergedUsers = [...dbRes.rows];
+        } catch (_) {
+        }
+        const jsonUsers = await getUsers();
+        for (const ju of jsonUsers) {
+          const existing = allMergedUsers.find((u) => String(u.id) === String(ju.id) || u.email && ju.email && u.email.toLowerCase() === ju.email.toLowerCase());
+          if (!existing) {
+            allMergedUsers.push(ju);
+          } else if ((ju.generations_used || 0) > (existing.generations_used || 0)) {
+            existing.generations_used = ju.generations_used;
+          }
+        }
+        const logCountsByUserId = {};
+        for (const g2 of generationLog) {
+          if (!g2.success) continue;
+          const uidKey = String(g2.userId || 0);
+          if (!logCountsByUserId[uidKey]) {
+            logCountsByUserId[uidKey] = { count: 0, cost: 0, models: {} };
+          }
+          logCountsByUserId[uidKey].count++;
+          const c = estimateGenerationCostUSD(g2.model, g2.success);
+          logCountsByUserId[uidKey].cost += c;
+          const providerKey = (g2.model || "unknown").split("/")[0] || "unknown";
+          logCountsByUserId[uidKey].models[providerKey] = (logCountsByUserId[uidKey].models[providerKey] || 0) + 1;
+        }
+        userStats.total = allMergedUsers.length;
+        for (const u of allMergedUsers) {
+          const tier = (u.tier || "Free").toUpperCase();
+          if (tier === "STANDARD") userStats.standard++;
+          else if (tier === "PRO" || tier === "PREMIUM") userStats.pro++;
+          else if (tier === "ENTERPRISE" || tier === "LUXURY") userStats.enterprise++;
           else userStats.free++;
-          userStats.totalGenerations += u.generations_used || 0;
+          const uidKey = String(u.id);
+          const logData = logCountsByUserId[uidKey];
+          const effectiveGens = Math.max(Number(u.generations_used) || 0, logData?.count || 0);
+          const extraUnloggedGens = Math.max(0, effectiveGens - (logData?.count || 0));
+          const estimatedUserCost = (logData?.cost || 0) + extraUnloggedGens * 0.025;
+          userStats.totalGenerations += effectiveGens;
+          userGenMap[uidKey] = {
+            id: u.id,
+            name: u.name || "User",
+            email: u.email || "",
+            tier: u.tier || "Free",
+            generations_used: effectiveGens,
+            apiCostUSD: Number(estimatedUserCost.toFixed(4)),
+            breakdown: logData?.models || {}
+          };
         }
       } catch (e2) {
       }
@@ -125267,19 +126133,56 @@ Auto-downgraded to Free.`
         const hourStart = now - (i2 + 1) * 36e5;
         const hourEnd = now - i2 * 36e5;
         const hourLabel = new Date(hourEnd).toISOString().slice(11, 16);
-        const inRange = generationLog.filter((g) => {
-          const t2 = new Date(g.timestamp).getTime();
+        const inRange = generationLog.filter((g2) => {
+          const t2 = new Date(g2.timestamp).getTime();
           return t2 >= hourStart && t2 < hourEnd;
         });
         hourlyGenerations.push({
           hour: hourLabel,
-          count: inRange.filter((g) => g.success).length,
-          errors: inRange.filter((g) => !g.success).length
+          count: inRange.filter((g2) => g2.success).length,
+          errors: inRange.filter((g2) => !g2.success).length
         });
       }
-      const totalGens = generationLog.length;
-      const successGens = generationLog.filter((g) => g.success).length;
-      const avgDuration = totalGens > 0 ? Math.round(generationLog.reduce((sum, g) => sum + g.durationMs, 0) / totalGens) : 0;
+      const totalLogGens = generationLog.length;
+      const successLogGens = generationLog.filter((g2) => g2.success).length;
+      const totalGenerationsUnified = Math.max(totalLogGens, userStats.totalGenerations, health.usage.aiGenerations || 0);
+      const avgDuration = totalLogGens > 0 ? Math.round(generationLog.reduce((sum, g2) => sum + g2.durationMs, 0) / totalLogGens) : 0;
+      const providerExpenditure = {
+        openai: { provider: "OpenAI (gpt-image / DALL-E)", calls: 0, unitCostUSD: 0.04, totalCostUSD: 0 },
+        gemini_render: { provider: "Google Gemini (Image Render)", calls: 0, unitCostUSD: 0.02, totalCostUSD: 0 },
+        gemini_analyze: { provider: "Google Gemini Flash (Room Analysis)", calls: 0, unitCostUSD: 2e-3, totalCostUSD: 0 },
+        flux: { provider: "FLUX / OpenRouter", calls: 0, unitCostUSD: 0.03, totalCostUSD: 0 },
+        compositor: { provider: "Sharp Local Compositor (Free)", calls: 0, unitCostUSD: 0, totalCostUSD: 0 }
+      };
+      let loggedCostUSD = 0;
+      for (const g2 of generationLog) {
+        if (!g2.success) continue;
+        const m2 = (g2.model || "").toLowerCase();
+        const c = estimateGenerationCostUSD(g2.model, g2.success);
+        loggedCostUSD += c;
+        if (m2.includes("sharp") || m2.includes("compositor")) {
+          providerExpenditure.compositor.calls++;
+        } else if (m2.includes("analyze") || m2.includes("gemini-3.6-flash") || m2.includes("gemini-2.0-flash")) {
+          providerExpenditure.gemini_analyze.calls++;
+          providerExpenditure.gemini_analyze.totalCostUSD += c;
+        } else if (m2.includes("openai") || m2.includes("gpt-image") || m2.includes("dall-e")) {
+          providerExpenditure.openai.calls++;
+          providerExpenditure.openai.totalCostUSD += c;
+        } else if (m2.includes("flux")) {
+          providerExpenditure.flux.calls++;
+          providerExpenditure.flux.totalCostUSD += c;
+        } else {
+          providerExpenditure.gemini_render.calls++;
+          providerExpenditure.gemini_render.totalCostUSD += c;
+        }
+      }
+      const unloggedGens = Math.max(0, totalGenerationsUnified - successLogGens);
+      if (unloggedGens > 0) {
+        providerExpenditure.gemini_render.calls += unloggedGens;
+        providerExpenditure.gemini_render.totalCostUSD += unloggedGens * 0.02;
+        loggedCostUSD += unloggedGens * 0.02;
+      }
+      const perUserBreakdown = Object.values(userGenMap).sort((a, b) => b.generations_used - a.generations_used);
       res.json({
         server: {
           uptime: Math.floor(process.uptime()),
@@ -125294,12 +126197,16 @@ Auto-downgraded to Free.`
           categories: categoryBreakdown
         },
         ai: {
-          totalGenerations: totalGens,
-          successfulGenerations: successGens,
-          failedGenerations: totalGens - successGens,
-          successRate: totalGens > 0 ? Math.round(successGens / totalGens * 100) : 0,
+          totalGenerations: totalGenerationsUnified,
+          loggedGenerations: totalLogGens,
+          successfulGenerations: Math.max(successLogGens, userStats.totalGenerations),
+          failedGenerations: totalLogGens - successLogGens,
+          successRate: totalLogGens > 0 ? Math.round(successLogGens / totalLogGens * 100) : 100,
           avgDurationMs: avgDuration,
-          apiKeyStatus: health.checks.apiKey.ok ? "valid" : "missing"
+          apiKeyStatus: health.checks.apiKey.ok ? "valid" : "missing",
+          totalExpenditureUSD: Number(loggedCostUSD.toFixed(4)),
+          providerExpenditure: Object.values(providerExpenditure),
+          perUserBreakdown
         },
         topMaterials,
         recentGenerations,
@@ -125414,13 +126321,30 @@ Auto-downgraded to Free.`
       }
       const config = loadConfig();
       const provider = userProvider || config.AI_PROVIDER || "gemini";
+      const jevTriage = await triageRenderPrompt(
+        userInstruction || "",
+        material?.name,
+        material?.category
+      );
+      if (!jevTriage.isSafeArchitecturalRequest) {
+        return res.status(400).json({
+          error: "Invalid instruction",
+          message: lang === "es" ? "Por favor ingresa \xFAnicamente instrucciones relacionadas con dise\xF1o arquitect\xF3nico o acabados de interiores." : "Please enter instructions related only to architectural design or interior finishes."
+        });
+      }
+      const enrichedRenderOptions = {
+        ...renderOptions || {},
+        jevDetectedSurface: jevTriage.detectedSurfaceScope,
+        jevLightingMood: jevTriage.lightingMood,
+        jevSource: jevTriage.source
+      };
       if (mode === "inpaint" && config.OPENAI_API_KEY && analysis?.surfaces?.length > 0) {
         try {
           const result2 = await generateOverlay({
             originalImage: cleanedImage,
             material,
             userInstruction: userInstruction || "",
-            renderOptions,
+            renderOptions: enrichedRenderOptions,
             mode: "inpaint",
             analysis,
             forceProvider: debugForceProvider
@@ -125596,6 +126520,26 @@ Auto-downgraded to Free.`
       }
       const provider = userProvider || "gemini";
       const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
+      pushGenerationLog({
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        userId,
+        materialId: "ROOM_ANALYSIS",
+        materialName: "AI Room Analysis",
+        category: "Room Analysis",
+        success: true,
+        durationMs: result.durationMs || 1200,
+        model: `${provider}/${result.model || "gemini-3.6-flash-analyze"}`
+      });
+      logUserActivity({
+        userId,
+        action: "ANALYZE",
+        details: {
+          provider,
+          model: result.model,
+          durationMs: result.durationMs || 1200,
+          success: true
+        }
+      });
       if (userId) {
         await incrementQuota(userId);
       }
@@ -125618,6 +126562,35 @@ Auto-downgraded to Free.`
       res.json(materials);
     } catch (error) {
       console.error("Get materials error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  app.post("/api/materials/smart-search", async (req, res) => {
+    try {
+      const queryText = String(req.body?.query || req.query?.q || "").trim();
+      const materials = await getMaterials();
+      if (!queryText) {
+        return res.json({ intent: null, count: materials.length, materials });
+      }
+      const intent = await classifyCatalogQuery(queryText);
+      const filtered = materials.filter((m2) => {
+        const cat = String(m2.category || "").toUpperCase();
+        const textBlob = `${m2.name || ""} ${m2.category || ""} ${m2.subcategory || ""} ${m2.description || ""} ${m2.usage || ""}`.toLowerCase();
+        if (intent.recommendedCategory !== "ALL" && !cat.includes(intent.recommendedCategory.replace("PANEL ", ""))) {
+          if (!textBlob.includes(queryText.toLowerCase())) return false;
+        }
+        if (intent.environment === "exterior" && /interior\s*only/i.test(textBlob)) {
+          return false;
+        }
+        return true;
+      });
+      res.json({
+        intent,
+        count: filtered.length,
+        materials: filtered.length > 0 ? filtered : materials.slice(0, 24)
+      });
+    } catch (error) {
+      console.error("Smart catalog search error:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -125910,6 +126883,13 @@ Auto-downgraded to Free.`
         ]
       );
       const purchaseRequest = result.rows[0];
+      const leadClassification = await classifyPurchaseLead({
+        customerName: customer_name,
+        customerEmail: customer_email,
+        totalEstimate: Number(total_estimate),
+        itemCount: cart_items.length,
+        notes: project_notes
+      });
       logUserActivity({
         userId: user_id || void 0,
         action: "PURCHASE_MOCK",
@@ -125918,7 +126898,9 @@ Auto-downgraded to Free.`
           customer_email,
           total_estimate,
           currency: currency || "USD",
-          itemCount: cart_items.length
+          itemCount: cart_items.length,
+          jevPriority: leadClassification.priority,
+          jevProjectScale: leadClassification.projectScale
         }
       });
       try {
@@ -126213,23 +127195,69 @@ Auto-downgraded to Free.`
         return res.status(400).json({ error: "Email and password required" });
       }
       const sessionToken = "session_" + import_crypto3.default.randomBytes(24).toString("hex");
-      const isReviewer = email === "reviewer@buildingapp.us" && password === "Reviewer2026!";
-      const isAdminAcc = email === (process.env.ADMIN_EMAIL || "admin@buildingapp.us").toLowerCase() && password === (process.env.ADMIN_PASSWORD || "BuildingAdmin2026!");
-      const isDemoVIP = email === "demo@buildingapp.us" && password === "Demo2026!";
-      if (isReviewer || isAdminAcc || isDemoVIP) {
-        const targetId = isReviewer ? 3 : isAdminAcc ? 1 : 2;
-        const targetName = isReviewer ? "App Store Reviewer" : isAdminAcc ? "System Admin" : "Demo VIP User";
-        const targetRole = isAdminAcc ? "admin" : "customer";
+      const permanentAccounts = {
+        [(process.env.ADMIN_EMAIL || "admin@buildingapp.us").toLowerCase()]: {
+          id: 1,
+          name: "System Admin",
+          pass: process.env.ADMIN_PASSWORD || "BuildingAdmin2026!",
+          role: "admin"
+        },
+        "demo@buildingapp.us": {
+          id: 2,
+          name: "Demo VIP User",
+          pass: "Demo2026!",
+          role: "customer"
+        },
+        "reviewer@buildingapp.us": {
+          id: 3,
+          name: "App Store Reviewer",
+          pass: "Reviewer2026!",
+          role: "customer"
+        },
+        "vip1@buildingapp.us": {
+          id: 4,
+          name: "VIP Unlimited User 1",
+          pass: "BuildingVIP1!",
+          role: "customer"
+        },
+        "vip2@buildingapp.us": {
+          id: 5,
+          name: "VIP Unlimited User 2",
+          pass: "BuildingVIP2!",
+          role: "customer"
+        },
+        "vip3@buildingapp.us": {
+          id: 6,
+          name: "VIP Unlimited User 3",
+          pass: "BuildingVIP3!",
+          role: "customer"
+        }
+      };
+      const matchedPerm = permanentAccounts[email];
+      if (matchedPerm && password === matchedPerm.pass) {
+        const targetId = matchedPerm.id;
+        const targetName = matchedPerm.name;
+        const targetRole = matchedPerm.role;
         const hash2 = await bcryptjs_default.hash(password, 10);
+        let existingGenerations = 0;
         try {
+          const existingRes = await query("SELECT generations_used FROM users WHERE id = $1", [targetId]);
+          if (existingRes.rows.length > 0) {
+            existingGenerations = Number(existingRes.rows[0].generations_used) || 0;
+          }
           await query(
             `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                      ON CONFLICT (id) DO UPDATE SET name = $2, email = $3, password_hash = $4, role = $5, tier = $6, session_token = $8`,
-            [targetId, targetName, email, hash2, targetRole, "LUXURY", 0, sessionToken]
+            [targetId, targetName, email, hash2, targetRole, "LUXURY", existingGenerations, sessionToken]
           );
         } catch (e2) {
           console.warn("Permanent account DB upsert:", e2.message);
+        }
+        const freshUsers = await getUsers();
+        const existingInJson = freshUsers.find((u) => String(u.id) === String(targetId) || u.email?.toLowerCase() === email);
+        if (existingInJson && (Number(existingInJson.generations_used) || 0) > existingGenerations) {
+          existingGenerations = Number(existingInJson.generations_used) || 0;
         }
         const restoredUser = {
           id: targetId,
@@ -126237,12 +127265,11 @@ Auto-downgraded to Free.`
           email,
           role: targetRole,
           tier: "LUXURY",
-          generations_used: 0,
+          generations_used: existingGenerations,
           session_token: sessionToken,
-          created_at: (/* @__PURE__ */ new Date()).toISOString()
+          created_at: existingInJson?.created_at || (/* @__PURE__ */ new Date()).toISOString()
         };
         try {
-          const freshUsers = await getUsers();
           const cleanList = freshUsers.filter((u) => String(u.id) !== String(targetId) && u.email?.toLowerCase() !== email);
           cleanList.push({ ...restoredUser, password_hash: hash2 });
           saveToJSON(JSON_USERS_PATH, cleanList);
@@ -127084,10 +128111,45 @@ Auto-downgraded to Free.`
   });
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
-      const result = await query("SELECT id, name, email, role, tier, generations_used, tier_expires_at, created_at FROM users ORDER BY created_at DESC");
-      res.json(result.rows);
+      let mergedUsers = [];
+      try {
+        const result = await query("SELECT id, name, email, role, tier, generations_used, tier_expires_at, created_at FROM users ORDER BY created_at DESC");
+        if (result && result.rows) mergedUsers = [...result.rows];
+      } catch (dbErr) {
+        console.warn("Database unavailable for /api/admin/users, using JSON fallback...");
+      }
+      const jsonUsers = await getUsers();
+      for (const ju of jsonUsers) {
+        const existing = mergedUsers.find((u) => String(u.id) === String(ju.id) || u.email && ju.email && u.email.toLowerCase() === ju.email.toLowerCase());
+        if (!existing) {
+          const { password_hash, ...cleanJu } = ju;
+          mergedUsers.push(cleanJu);
+        } else if ((Number(ju.generations_used) || 0) > (Number(existing.generations_used) || 0)) {
+          existing.generations_used = Number(ju.generations_used) || 0;
+        }
+      }
+      const logMap = {};
+      for (const g2 of generationLog) {
+        if (!g2.success) continue;
+        const uid = String(g2.userId || 0);
+        if (!logMap[uid]) logMap[uid] = { count: 0, cost: 0 };
+        logMap[uid].count++;
+        logMap[uid].cost += estimateGenerationCostUSD(g2.model, g2.success);
+      }
+      const enriched = mergedUsers.map((u) => {
+        const uid = String(u.id);
+        const l = logMap[uid];
+        const effectiveGens = Math.max(Number(u.generations_used) || 0, l?.count || 0);
+        const extraUnlogged = Math.max(0, effectiveGens - (l?.count || 0));
+        const apiCostUSD = Number(((l?.cost || 0) + extraUnlogged * 0.025).toFixed(4));
+        return {
+          ...u,
+          generations_used: effectiveGens,
+          apiCostUSD
+        };
+      });
+      res.json(enriched);
     } catch (error) {
-      console.warn("Database unavailable, reading from local users fallback for admin...");
       const users = await getUsers();
       res.json(users);
     }
@@ -127141,17 +128203,17 @@ Auto-downgraded to Free.`
     try {
       await query("UPDATE users SET generations_used = generations_used + 1 WHERE id = $1", [userId]);
     } catch (e2) {
-      console.warn("Increment quota fallback to JSON:", e2.message);
-      try {
-        const users = await getUsers();
-        const user = users.find((u) => String(u.id) === String(userId));
-        if (user) {
-          user.generations_used = Math.max(0, (user.generations_used || 0) + 1);
-          saveToJSON(JSON_USERS_PATH, users);
-        }
-      } catch (jsonErr) {
-        console.error("Increment quota JSON fallback failed:", jsonErr);
+      console.warn("Increment quota DB warning:", e2.message);
+    }
+    try {
+      const users = await getUsers();
+      const user = users.find((u) => String(u.id) === String(userId));
+      if (user) {
+        user.generations_used = Math.max(0, (Number(user.generations_used) || 0) + 1);
+        saveToJSON(JSON_USERS_PATH, users);
       }
+    } catch (jsonErr) {
+      console.error("Increment quota JSON sync failed:", jsonErr);
     }
   }
   async function checkAndIncrementQuota(userId) {
@@ -127195,12 +128257,16 @@ Auto-downgraded to Free.`
     if (errorLog.length > 50) errorLog.pop();
     console.error("Frontend Error:", entry);
     try {
-      const errorObj = new Error(typeof error === "string" ? error : error?.message || JSON.stringify(error));
-      telegramAlerts.sendErrorAlert(
-        errorObj,
-        `Frontend Error (User ID: ${userId || "Guest"})
+      const errStr = typeof error === "string" ? error : error?.message || JSON.stringify(error);
+      const isBenignNoise = /Unexpected token \?/i.test(errStr) || /Script error\.?$/i.test(errStr) || /ResizeObserver loop/i.test(errStr) || /ecosystem-widget\.js/i.test(errStr);
+      if (!isBenignNoise) {
+        const errorObj = new Error(errStr);
+        telegramAlerts.sendErrorAlert(
+          errorObj,
+          `Frontend Error (User ID: ${userId || "Guest"})
 Context: ${context || "N/A"}`
-      );
+        );
+      }
     } catch (tgErr) {
       console.error("Failed to send frontend error to Telegram:", tgErr);
     }
@@ -127390,12 +128456,23 @@ Context: ${context || "N/A"}`
       if (!allowedProxyDomains.includes(parsedUrl.hostname)) {
         return res.status(403).json({ error: "Domain not allowed" });
       }
-      const imageRes = await fetch(url, {
+      const fetchImage = (signal) => fetch(url, {
+        signal,
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
           "Referer": "https://drive.google.com"
         }
       });
+      let imageRes;
+      try {
+        imageRes = await fetchImage(AbortSignal.timeout(8e3));
+      } catch (e1) {
+        if (e1?.name === "TimeoutError" || e1?.name === "AbortError") {
+          imageRes = await fetchImage(AbortSignal.timeout(8e3));
+        } else {
+          throw e1;
+        }
+      }
       if (!imageRes.ok) {
         return res.status(imageRes.status).json({ error: "Image fetch failed", status: imageRes.status });
       }
@@ -127409,8 +128486,13 @@ Context: ${context || "N/A"}`
       const buffer = await imageRes.arrayBuffer();
       res.send(Buffer.from(buffer));
     } catch (e2) {
-      console.error("Image proxy error:", e2.message);
-      res.status(500).json({ error: e2.message });
+      const timedOut = e2?.name === "TimeoutError" || e2?.name === "AbortError";
+      console.error("Image proxy error:", timedOut ? "upstream timeout after 8s (retried once)" : e2.message);
+      res.setHeader("Cache-Control", "no-store");
+      res.status(timedOut ? 504 : 502).json({
+        error: timedOut ? "Upstream image timed out" : "Upstream image error",
+        upstream: e2?.message || String(e2)
+      });
     }
   });
   const distPath = (() => {
@@ -127482,38 +128564,63 @@ Context: ${context || "N/A"}`
           password_raw: "Reviewer2026!",
           role: "customer",
           tier: "LUXURY"
+        },
+        {
+          id: 4,
+          name: "VIP Unlimited User 1",
+          email: "vip1@buildingapp.us",
+          password_raw: "BuildingVIP1!",
+          role: "customer",
+          tier: "LUXURY"
+        },
+        {
+          id: 5,
+          name: "VIP Unlimited User 2",
+          email: "vip2@buildingapp.us",
+          password_raw: "BuildingVIP2!",
+          role: "customer",
+          tier: "LUXURY"
+        },
+        {
+          id: 6,
+          name: "VIP Unlimited User 3",
+          email: "vip3@buildingapp.us",
+          password_raw: "BuildingVIP3!",
+          role: "customer",
+          tier: "LUXURY"
         }
       ];
       for (const acc of defaultAccounts) {
         const hash2 = await bcrypt.hash(acc.password_raw, 10);
         const sessionToken = "session_" + import_crypto3.default.randomBytes(24).toString("hex");
+        const existingIdx = users.findIndex((u) => u.email?.toLowerCase() === acc.email.toLowerCase() || String(u.id) === String(acc.id));
+        const preservedGens = existingIdx >= 0 ? Number(users[existingIdx].generations_used) || 0 : 0;
         try {
           await query(
             `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                     ON CONFLICT (id) DO UPDATE SET password_hash = $4, role = $5, tier = $6`,
-            [acc.id, acc.name, acc.email, hash2, acc.role, acc.tier, 0, sessionToken]
+                     ON CONFLICT (id) DO UPDATE SET name = $2, email = $3, password_hash = $4, role = $5, tier = $6`,
+            [acc.id, acc.name, acc.email, hash2, acc.role, acc.tier, preservedGens, sessionToken]
           );
         } catch (dbErr) {
-          const existingIdx = users.findIndex((u) => u.email === acc.email || u.id === acc.id);
-          const userObj = {
-            id: acc.id,
-            name: acc.name,
-            email: acc.email,
-            password_hash: hash2,
-            role: acc.role,
-            tier: acc.tier,
-            generations_used: 0,
-            session_token: sessionToken,
-            created_at: (/* @__PURE__ */ new Date()).toISOString()
-          };
-          if (existingIdx >= 0) {
-            users[existingIdx] = { ...users[existingIdx], ...userObj };
-          } else {
-            users.push(userObj);
-          }
-          saveToJSON(JSON_USERS_PATH, users);
         }
+        const userObj = {
+          id: acc.id,
+          name: acc.name,
+          email: acc.email,
+          password_hash: hash2,
+          role: acc.role,
+          tier: acc.tier,
+          generations_used: preservedGens,
+          session_token: existingIdx >= 0 && users[existingIdx].session_token ? users[existingIdx].session_token : sessionToken,
+          created_at: existingIdx >= 0 && users[existingIdx].created_at ? users[existingIdx].created_at : (/* @__PURE__ */ new Date()).toISOString()
+        };
+        if (existingIdx >= 0) {
+          users[existingIdx] = { ...users[existingIdx], ...userObj };
+        } else {
+          users.push(userObj);
+        }
+        saveToJSON(JSON_USERS_PATH, users);
       }
       console.log("[BOOTSTRAP] Permanent Admin, Demo, and Reviewer accounts initialized with unlimited LUXURY tier.");
     } catch (e2) {
