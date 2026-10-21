@@ -2789,26 +2789,95 @@ const App: React.FC = () => {
                         ) : analyticsData ? (
                             <>
                                 {/* KPI Cards */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Tiempo en Línea" : "Server Uptime"}</div>
                                         <div className="text-2xl font-black text-gray-800">{Math.floor((analyticsData.server?.uptime || 0) / 3600)}h {Math.floor(((analyticsData.server?.uptime || 0) % 3600) / 60)}m</div>
                                         <div className="text-[10px] text-green-600 font-bold mt-1">● {lang === "es" ? "En Línea" : "Online"}</div>
                                     </div>
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Generaciones IA" : "AI Generations"}</div>
-                                        <div className="text-2xl font-black text-blue-600">{analyticsData.ai?.totalGenerations || 0}</div>
-                                        <div className="text-[10px] text-gray-500 mt-1">{analyticsData.ai?.successRate || 0}% {lang === "es" ? "éxito" : "success rate"}</div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Total Generaciones (Todos)" : "Total Generations (All Users)"}</div>
+                                        <div className="text-2xl font-black text-blue-600">{Math.max(analyticsData.ai?.totalGenerations || 0, analyticsData.users?.totalGenerations || 0)}</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">{analyticsData.ai?.successRate || 100}% {lang === "es" ? "éxito" : "success rate"}</div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-sm">
+                                        <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-1">{lang === "es" ? "Gasto Total API (Est.)" : "Est. Total API Expenditure"}</div>
+                                        <div className="text-2xl font-black text-emerald-600">${Number(analyticsData.ai?.totalExpenditureUSD || 0).toFixed(2)} USD</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">{lang === "es" ? "OpenAI + Gemini + FLUX" : "OpenAI + Gemini + FLUX"}</div>
                                     </div>
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Tiempo Promedio" : "Avg Render Time"}</div>
                                         <div className="text-2xl font-black text-purple-600">{analyticsData.ai?.avgDurationMs ? (analyticsData.ai.avgDurationMs / 1000).toFixed(1) + 's' : '—'}</div>
-                                        <div className="text-[10px] text-gray-500 mt-1">Gemini AI Model</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">Multi-Provider AI</div>
                                     </div>
                                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                                         <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{lang === "es" ? "Productos Totales" : "Total Products"}</div>
                                         <div className="text-2xl font-black text-gray-800">{analyticsData.products?.total || 0}</div>
                                         <div className="text-[10px] text-gray-500 mt-1">{Object.keys(analyticsData.products?.categories || {}).length} {lang === "es" ? "categorías" : "categories"}</div>
+                                    </div>
+                                </div>
+
+                                {/* API Expenditure Breakdown by Provider & Per-User Usage */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">
+                                            {lang === "es" ? "Desglose de Gasto API por Proveedor" : "API Expenditure Breakdown by Provider"}
+                                        </h3>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="text-[10px] uppercase text-gray-400 border-b border-gray-100">
+                                                    <tr>
+                                                        <th className="py-2 px-2">{lang === "es" ? "Proveedor / Motor" : "Provider / Engine"}</th>
+                                                        <th className="py-2 px-2 text-right">{lang === "es" ? "Llamadas" : "Calls"}</th>
+                                                        <th className="py-2 px-2 text-right">{lang === "es" ? "Costo Unit." : "Unit Cost"}</th>
+                                                        <th className="py-2 px-2 text-right">{lang === "es" ? "Gasto Total" : "Total Cost"}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                    {(analyticsData.ai?.providerExpenditure || []).map((p: any, idx: number) => (
+                                                        <tr key={idx} className="hover:bg-gray-50">
+                                                            <td className="py-2 px-2 font-semibold text-gray-700">{p.provider}</td>
+                                                            <td className="py-2 px-2 text-right font-bold text-blue-600">{p.calls}</td>
+                                                            <td className="py-2 px-2 text-right text-gray-500">${Number(p.unitCostUSD || 0).toFixed(3)}</td>
+                                                            <td className="py-2 px-2 text-right font-black text-emerald-600">${Number(p.totalCostUSD || 0).toFixed(3)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                        <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wider">
+                                            {lang === "es" ? "Generaciones y Gasto API por Usuario" : "Generations & API Expenditure per User"}
+                                        </h3>
+                                        <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="text-[10px] uppercase text-gray-400 border-b border-gray-100 sticky top-0 bg-white">
+                                                    <tr>
+                                                        <th className="py-2 px-2">{lang === "es" ? "Usuario" : "User"}</th>
+                                                        <th className="py-2 px-2">{lang === "es" ? "Plan" : "Tier"}</th>
+                                                        <th className="py-2 px-2 text-right">{lang === "es" ? "Generaciones" : "Generations"}</th>
+                                                        <th className="py-2 px-2 text-right">{lang === "es" ? "Gasto API Est." : "Est. API Cost"}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                    {(analyticsData.ai?.perUserBreakdown || []).map((u: any) => (
+                                                        <tr key={u.id} className="hover:bg-gray-50">
+                                                            <td className="py-2 px-2">
+                                                                <div className="font-bold text-gray-800">{u.name}</div>
+                                                                <div className="text-[10px] text-gray-400">{u.email}</div>
+                                                            </td>
+                                                            <td className="py-2 px-2">
+                                                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-blue-50 text-blue-700">{u.tier}</span>
+                                                            </td>
+                                                            <td className="py-2 px-2 text-right font-black text-blue-600">{u.generations_used || 0}</td>
+                                                            <td className="py-2 px-2 text-right font-bold text-emerald-600">${Number(u.apiCostUSD || 0).toFixed(2)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -4114,11 +4183,14 @@ const App: React.FC = () => {
                                                 <div className="w-24 bg-gray-200 rounded-full h-1.5 mb-1">
                                                     <div 
                                                         className="bg-blue-500 h-1.5 rounded-full" 
-                                                        style={{ width: `${Math.min(100, (u.generations_used / getTierLimit(u.tier || 'Free')) * 100)}%` }}
+                                                        style={{ width: `${getTierLimit(u.tier || 'Free') >= 999999 ? 15 : Math.min(100, ((u.generations_used || 0) / getTierLimit(u.tier || 'Free')) * 100)}%` }}
                                                     ></div>
                                                 </div>
-                                                <span className="text-xs font-semibold text-gray-700">{u.generations_used} / {getTierLimit(u.tier || 'Free')}</span>
+                                                <span className="text-xs font-semibold text-gray-700">{u.generations_used || 0} / {getTierLimit(u.tier || 'Free') >= 999999 ? '∞' : getTierLimit(u.tier || 'Free')}</span>
                                                 <span className="text-[10px] text-gray-500 ml-1">gens</span>
+                                                <div className="text-[10px] font-bold text-emerald-600 mt-0.5">
+                                                    API Est: ${Number((u as any).apiCostUSD !== undefined ? (u as any).apiCostUSD : ((u.generations_used || 0) * 0.025)).toFixed(2)} USD
+                                                </div>
                                             </td>
                                             <td className="p-4 text-right flex items-center justify-end gap-2">
                                                 <button

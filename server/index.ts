@@ -2026,6 +2026,18 @@ let generationLog: Array<{
     error?: string;
 }> = loadFromJSON(JSON_GENERATION_LOG_PATH);
 
+
+function estimateGenerationCostUSD(modelStr: string, success: boolean): number {
+    if (!success) return 0;
+    const m = (modelStr || '').toLowerCase();
+    if (m.includes('sharp') || m.includes('compositor')) return 0;
+    if (m.includes('analyze') || m.includes('gemini-3.6-flash') || m.includes('gemini-2.0-flash') || m.includes('gemini-1.5-flash')) return 0.002;
+    if (m.includes('gpt-image') || m.includes('dall-e') || m.includes('openai')) return 0.04;
+    if (m.includes('flux')) return 0.03;
+    if (m.includes('gemini')) return 0.02;
+    return 0.02;
+}
+
 function pushGenerationLog(entry: typeof generationLog[0]) {
     generationLog.push(entry);
     // Keep in-memory array bounded for performance, but persist everything
@@ -2081,17 +2093,65 @@ app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response
     try {
         const health = await monitor.getHealth();
         
-        // Get user stats from JSON fallback
-        let userStats = { total: 0, free: 0, pro: 0, enterprise: 0, totalGenerations: 0 };
+        // Get unified user stats (merge PostgreSQL + JSON fallback and reconcile with generationLog)
+        let userStats = { total: 0, free: 0, standard: 0, pro: 0, enterprise: 0, totalGenerations: 0 };
+        const userGenMap: Record<string, { id: number; name: string; email: string; tier: string; generations_used: number; apiCostUSD: number; breakdown: Record<string, number> }> = {};
         try {
-            const users = await getUsers();
-            userStats.total = users.length;
-            for (const u of users) {
-                const tier = (u.tier || 'Free').toLowerCase();
-                if (tier === 'pro') userStats.pro++;
-                else if (tier === 'enterprise') userStats.enterprise++;
+            let allMergedUsers: any[] = [];
+            try {
+                const dbRes = await query('SELECT id, name, email, role, tier, generations_used FROM users');
+                if (dbRes && dbRes.rows) allMergedUsers = [...dbRes.rows];
+            } catch (_) {}
+            const jsonUsers = await getUsers();
+            for (const ju of jsonUsers) {
+                const existing = allMergedUsers.find(u => String(u.id) === String(ju.id) || (u.email && ju.email && u.email.toLowerCase() === ju.email.toLowerCase()));
+                if (!existing) {
+                    allMergedUsers.push(ju);
+                } else if ((ju.generations_used || 0) > (existing.generations_used || 0)) {
+                    existing.generations_used = ju.generations_used;
+                }
+            }
+
+            // Count per-user logs from generationLog
+            const logCountsByUserId: Record<string, { count: number; cost: number; models: Record<string, number> }> = {};
+            for (const g of generationLog) {
+                if (!g.success) continue;
+                const uidKey = String(g.userId || 0);
+                if (!logCountsByUserId[uidKey]) {
+                    logCountsByUserId[uidKey] = { count: 0, cost: 0, models: {} };
+                }
+                logCountsByUserId[uidKey].count++;
+                const c = estimateGenerationCostUSD(g.model, g.success);
+                logCountsByUserId[uidKey].cost += c;
+                const providerKey = (g.model || 'unknown').split('/')[0] || 'unknown';
+                logCountsByUserId[uidKey].models[providerKey] = (logCountsByUserId[uidKey].models[providerKey] || 0) + 1;
+            }
+
+            userStats.total = allMergedUsers.length;
+            for (const u of allMergedUsers) {
+                const tier = (u.tier || 'Free').toUpperCase();
+                if (tier === 'STANDARD') userStats.standard++;
+                else if (tier === 'PRO' || tier === 'PREMIUM') userStats.pro++;
+                else if (tier === 'ENTERPRISE' || tier === 'LUXURY') userStats.enterprise++;
                 else userStats.free++;
-                userStats.totalGenerations += (u.generations_used || 0);
+
+                const uidKey = String(u.id);
+                const logData = logCountsByUserId[uidKey];
+                const effectiveGens = Math.max(Number(u.generations_used) || 0, logData?.count || 0);
+                // If user has generations_used > logData.count, estimate remaining at $0.025 avg
+                const extraUnloggedGens = Math.max(0, effectiveGens - (logData?.count || 0));
+                const estimatedUserCost = (logData?.cost || 0) + (extraUnloggedGens * 0.025);
+
+                userStats.totalGenerations += effectiveGens;
+                userGenMap[uidKey] = {
+                    id: u.id,
+                    name: u.name || 'User',
+                    email: u.email || '',
+                    tier: u.tier || 'Free',
+                    generations_used: effectiveGens,
+                    apiCostUSD: Number(estimatedUserCost.toFixed(4)),
+                    breakdown: logData?.models || {},
+                };
             }
         } catch (e) {}
         
@@ -2143,12 +2203,55 @@ app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response
             });
         }
         
-        // Success rate
-        const totalGens = generationLog.length;
-        const successGens = generationLog.filter(g => g.success).length;
-        const avgDuration = totalGens > 0 
-            ? Math.round(generationLog.reduce((sum, g) => sum + g.durationMs, 0) / totalGens)
+        // Success rate & API expenditure calculation
+        const totalLogGens = generationLog.length;
+        const successLogGens = generationLog.filter(g => g.success).length;
+        const totalGenerationsUnified = Math.max(totalLogGens, userStats.totalGenerations, health.usage.aiGenerations || 0);
+        const avgDuration = totalLogGens > 0 
+            ? Math.round(generationLog.reduce((sum, g) => sum + g.durationMs, 0) / totalLogGens)
             : 0;
+
+        // Calculate API Expenditure by provider
+        const providerExpenditure: Record<string, { provider: string; calls: number; unitCostUSD: number; totalCostUSD: number }> = {
+            openai: { provider: 'OpenAI (gpt-image / DALL-E)', calls: 0, unitCostUSD: 0.04, totalCostUSD: 0 },
+            gemini_render: { provider: 'Google Gemini (Image Render)', calls: 0, unitCostUSD: 0.02, totalCostUSD: 0 },
+            gemini_analyze: { provider: 'Google Gemini Flash (Room Analysis)', calls: 0, unitCostUSD: 0.002, totalCostUSD: 0 },
+            flux: { provider: 'FLUX / OpenRouter', calls: 0, unitCostUSD: 0.03, totalCostUSD: 0 },
+            compositor: { provider: 'Sharp Local Compositor (Free)', calls: 0, unitCostUSD: 0, totalCostUSD: 0 },
+        };
+
+        let loggedCostUSD = 0;
+        for (const g of generationLog) {
+            if (!g.success) continue;
+            const m = (g.model || '').toLowerCase();
+            const c = estimateGenerationCostUSD(g.model, g.success);
+            loggedCostUSD += c;
+            if (m.includes('sharp') || m.includes('compositor')) {
+                providerExpenditure.compositor.calls++;
+            } else if (m.includes('analyze') || m.includes('gemini-3.6-flash') || m.includes('gemini-2.0-flash')) {
+                providerExpenditure.gemini_analyze.calls++;
+                providerExpenditure.gemini_analyze.totalCostUSD += c;
+            } else if (m.includes('openai') || m.includes('gpt-image') || m.includes('dall-e')) {
+                providerExpenditure.openai.calls++;
+                providerExpenditure.openai.totalCostUSD += c;
+            } else if (m.includes('flux')) {
+                providerExpenditure.flux.calls++;
+                providerExpenditure.flux.totalCostUSD += c;
+            } else {
+                providerExpenditure.gemini_render.calls++;
+                providerExpenditure.gemini_render.totalCostUSD += c;
+            }
+        }
+
+        // Include any historical unlogged user generations in total expenditure
+        const unloggedGens = Math.max(0, totalGenerationsUnified - successLogGens);
+        if (unloggedGens > 0) {
+            providerExpenditure.gemini_render.calls += unloggedGens;
+            providerExpenditure.gemini_render.totalCostUSD += unloggedGens * 0.02;
+            loggedCostUSD += unloggedGens * 0.02;
+        }
+
+        const perUserBreakdown = Object.values(userGenMap).sort((a, b) => b.generations_used - a.generations_used);
 
         res.json({
             server: {
@@ -2164,12 +2267,16 @@ app.get('/api/admin/analytics', requireAdmin, async (req: Request, res: Response
                 categories: categoryBreakdown,
             },
             ai: {
-                totalGenerations: totalGens,
-                successfulGenerations: successGens,
-                failedGenerations: totalGens - successGens,
-                successRate: totalGens > 0 ? Math.round((successGens / totalGens) * 100) : 0,
+                totalGenerations: totalGenerationsUnified,
+                loggedGenerations: totalLogGens,
+                successfulGenerations: Math.max(successLogGens, userStats.totalGenerations),
+                failedGenerations: totalLogGens - successLogGens,
+                successRate: totalLogGens > 0 ? Math.round((successLogGens / totalLogGens) * 100) : 100,
                 avgDurationMs: avgDuration,
                 apiKeyStatus: health.checks.apiKey.ok ? 'valid' : 'missing',
+                totalExpenditureUSD: Number(loggedCostUSD.toFixed(4)),
+                providerExpenditure: Object.values(providerExpenditure),
+                perUserBreakdown,
             },
             topMaterials,
             recentGenerations,
@@ -2558,6 +2665,27 @@ app.post("/api/ai/analyze-room", optionalAuth, async (req: Request, res: Respons
         const provider = (userProvider as AIProvider) || "gemini";
 
         const result = await analyzeRoom({ image: cleanedImage, lang }, provider, config);
+
+        pushGenerationLog({
+            timestamp: new Date().toISOString(),
+            userId,
+            materialId: 'ROOM_ANALYSIS',
+            materialName: 'AI Room Analysis',
+            category: 'Room Analysis',
+            success: true,
+            durationMs: (result as any).durationMs || 1200,
+            model: `${provider}/${result.model || 'gemini-3.6-flash-analyze'}`,
+        });
+        logUserActivity({
+            userId,
+            action: 'ANALYZE',
+            details: {
+                provider,
+                model: result.model,
+                durationMs: (result as any).durationMs || 1200,
+                success: true,
+            },
+        });
 
         if (userId) {
             await incrementQuota(userId);
@@ -3287,26 +3415,72 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         }
 
         const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
-        const isReviewer = email === 'reviewer@buildingapp.us' && password === 'Reviewer2026!';
-        const isAdminAcc = email === (process.env.ADMIN_EMAIL || 'admin@buildingapp.us').toLowerCase() && password === (process.env.ADMIN_PASSWORD || 'BuildingAdmin2026!');
-        const isDemoVIP = email === 'demo@buildingapp.us' && password === 'Demo2026!';
+        const permanentAccounts: Record<string, { id: number; name: string; pass: string; role: string }> = {
+            [(process.env.ADMIN_EMAIL || 'admin@buildingapp.us').toLowerCase()]: {
+                id: 1,
+                name: 'System Admin',
+                pass: process.env.ADMIN_PASSWORD || 'BuildingAdmin2026!',
+                role: 'admin',
+            },
+            'demo@buildingapp.us': {
+                id: 2,
+                name: 'Demo VIP User',
+                pass: 'Demo2026!',
+                role: 'customer',
+            },
+            'reviewer@buildingapp.us': {
+                id: 3,
+                name: 'App Store Reviewer',
+                pass: 'Reviewer2026!',
+                role: 'customer',
+            },
+            'vip1@buildingapp.us': {
+                id: 4,
+                name: 'VIP Unlimited User 1',
+                pass: 'BuildingVIP1!',
+                role: 'customer',
+            },
+            'vip2@buildingapp.us': {
+                id: 5,
+                name: 'VIP Unlimited User 2',
+                pass: 'BuildingVIP2!',
+                role: 'customer',
+            },
+            'vip3@buildingapp.us': {
+                id: 6,
+                name: 'VIP Unlimited User 3',
+                pass: 'BuildingVIP3!',
+                role: 'customer',
+            },
+        };
 
-        // If reviewer, admin, or demo VIP, ensure they exist in DB / JSON before anything else
-        if (isReviewer || isAdminAcc || isDemoVIP) {
-            const targetId = isReviewer ? 3 : isAdminAcc ? 1 : 2;
-            const targetName = isReviewer ? 'App Store Reviewer' : isAdminAcc ? 'System Admin' : 'Demo VIP User';
-            const targetRole = isAdminAcc ? 'admin' : 'customer';
+        const matchedPerm = permanentAccounts[email];
+        if (matchedPerm && password === matchedPerm.pass) {
+            const targetId = matchedPerm.id;
+            const targetName = matchedPerm.name;
+            const targetRole = matchedPerm.role;
             const hash = await bcrypt.hash(password, 10);
+            let existingGenerations = 0;
 
             try {
+                const existingRes = await query('SELECT generations_used FROM users WHERE id = $1', [targetId]);
+                if (existingRes.rows.length > 0) {
+                    existingGenerations = Number(existingRes.rows[0].generations_used) || 0;
+                }
                 await query(
                     `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                      ON CONFLICT (id) DO UPDATE SET name = $2, email = $3, password_hash = $4, role = $5, tier = $6, session_token = $8`,
-                    [targetId, targetName, email, hash, targetRole, 'LUXURY', 0, sessionToken]
+                    [targetId, targetName, email, hash, targetRole, 'LUXURY', existingGenerations, sessionToken]
                 );
             } catch (e: any) {
                 console.warn('Permanent account DB upsert:', e.message);
+            }
+
+            const freshUsers = await getUsers();
+            const existingInJson = freshUsers.find((u: any) => String(u.id) === String(targetId) || u.email?.toLowerCase() === email);
+            if (existingInJson && (Number(existingInJson.generations_used) || 0) > existingGenerations) {
+                existingGenerations = Number(existingInJson.generations_used) || 0;
             }
 
             const restoredUser = {
@@ -3315,13 +3489,12 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
                 email: email,
                 role: targetRole,
                 tier: 'LUXURY',
-                generations_used: 0,
+                generations_used: existingGenerations,
                 session_token: sessionToken,
-                created_at: new Date().toISOString()
+                created_at: existingInJson?.created_at || new Date().toISOString()
             };
 
             try {
-                const freshUsers = await getUsers();
                 const cleanList = freshUsers.filter((u: any) => String(u.id) !== String(targetId) && u.email?.toLowerCase() !== email);
                 cleanList.push({ ...restoredUser, password_hash: hash });
                 saveToJSON(JSON_USERS_PATH, cleanList);
@@ -4325,13 +4498,53 @@ app.post('/api/admin/users/create-admin', requireAdmin, async (req: Request, res
     }
 });
 
-// Get all users (Admin only)
+// Get all users (Admin only) — merges PostgreSQL + JSON fallback + generationLog reconciliation & API expenditure
 app.get('/api/admin/users', requireAdmin, async (req: Request, res: Response) => {
     try {
-        const result = await query('SELECT id, name, email, role, tier, generations_used, tier_expires_at, created_at FROM users ORDER BY created_at DESC');
-        res.json(result.rows);
+        let mergedUsers: any[] = [];
+        try {
+            const result = await query('SELECT id, name, email, role, tier, generations_used, tier_expires_at, created_at FROM users ORDER BY created_at DESC');
+            if (result && result.rows) mergedUsers = [...result.rows];
+        } catch (dbErr) {
+            console.warn('Database unavailable for /api/admin/users, using JSON fallback...');
+        }
+
+        const jsonUsers = await getUsers();
+        for (const ju of jsonUsers) {
+            const existing = mergedUsers.find(u => String(u.id) === String(ju.id) || (u.email && ju.email && u.email.toLowerCase() === ju.email.toLowerCase()));
+            if (!existing) {
+                const { password_hash, ...cleanJu } = ju;
+                mergedUsers.push(cleanJu);
+            } else if ((Number(ju.generations_used) || 0) > (Number(existing.generations_used) || 0)) {
+                existing.generations_used = Number(ju.generations_used) || 0;
+            }
+        }
+
+        // Reconcile against generationLog and attach apiCostUSD per user
+        const logMap: Record<string, { count: number; cost: number }> = {};
+        for (const g of generationLog) {
+            if (!g.success) continue;
+            const uid = String(g.userId || 0);
+            if (!logMap[uid]) logMap[uid] = { count: 0, cost: 0 };
+            logMap[uid].count++;
+            logMap[uid].cost += estimateGenerationCostUSD(g.model, g.success);
+        }
+
+        const enriched = mergedUsers.map(u => {
+            const uid = String(u.id);
+            const l = logMap[uid];
+            const effectiveGens = Math.max(Number(u.generations_used) || 0, l?.count || 0);
+            const extraUnlogged = Math.max(0, effectiveGens - (l?.count || 0));
+            const apiCostUSD = Number(((l?.cost || 0) + extraUnlogged * 0.025).toFixed(4));
+            return {
+                ...u,
+                generations_used: effectiveGens,
+                apiCostUSD,
+            };
+        });
+
+        res.json(enriched);
     } catch (error: any) {
-        console.warn('Database unavailable, reading from local users fallback for admin...');
         const users = await getUsers();
         res.json(users);
     }
@@ -4402,17 +4615,17 @@ async function incrementQuota(userId: number): Promise<void> {
     try {
         await query('UPDATE users SET generations_used = generations_used + 1 WHERE id = $1', [userId]);
     } catch (e: any) {
-        console.warn('Increment quota fallback to JSON:', e.message);
-        try {
-            const users = await getUsers();
-            const user = users.find((u: any) => String(u.id) === String(userId));
-            if (user) {
-                user.generations_used = Math.max(0, (user.generations_used || 0) + 1);
-                saveToJSON(JSON_USERS_PATH, users);
-            }
-        } catch (jsonErr) {
-            console.error('Increment quota JSON fallback failed:', jsonErr);
+        console.warn('Increment quota DB warning:', e.message);
+    }
+    try {
+        const users = await getUsers();
+        const user = users.find((u: any) => String(u.id) === String(userId));
+        if (user) {
+            user.generations_used = Math.max(0, (Number(user.generations_used) || 0) + 1);
+            saveToJSON(JSON_USERS_PATH, users);
         }
+    } catch (jsonErr) {
+        console.error('Increment quota JSON sync failed:', jsonErr);
     }
 }
 
@@ -4826,42 +5039,67 @@ app.listen(PORT, async () => {
                 password_raw: 'Reviewer2026!',
                 role: 'customer',
                 tier: 'LUXURY',
+            },
+            {
+                id: 4,
+                name: 'VIP Unlimited User 1',
+                email: 'vip1@buildingapp.us',
+                password_raw: 'BuildingVIP1!',
+                role: 'customer',
+                tier: 'LUXURY',
+            },
+            {
+                id: 5,
+                name: 'VIP Unlimited User 2',
+                email: 'vip2@buildingapp.us',
+                password_raw: 'BuildingVIP2!',
+                role: 'customer',
+                tier: 'LUXURY',
+            },
+            {
+                id: 6,
+                name: 'VIP Unlimited User 3',
+                email: 'vip3@buildingapp.us',
+                password_raw: 'BuildingVIP3!',
+                role: 'customer',
+                tier: 'LUXURY',
             }
         ];
 
         for (const acc of defaultAccounts) {
             const hash = await bcrypt.hash(acc.password_raw, 10);
             const sessionToken = 'session_' + crypto.randomBytes(24).toString('hex');
-            
+            const existingIdx = users.findIndex((u: any) => u.email?.toLowerCase() === acc.email.toLowerCase() || String(u.id) === String(acc.id));
+            const preservedGens = existingIdx >= 0 ? (Number(users[existingIdx].generations_used) || 0) : 0;
+
             // Try DB first
             try {
                 await query(
                     `INSERT INTO users (id, name, email, password_hash, role, tier, generations_used, session_token)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                     ON CONFLICT (id) DO UPDATE SET password_hash = $4, role = $5, tier = $6`,
-                    [acc.id, acc.name, acc.email, hash, acc.role, acc.tier, 0, sessionToken]
+                     ON CONFLICT (id) DO UPDATE SET name = $2, email = $3, password_hash = $4, role = $5, tier = $6`,
+                    [acc.id, acc.name, acc.email, hash, acc.role, acc.tier, preservedGens, sessionToken]
                 );
-            } catch (dbErr) {
-                // Fallback to JSON store
-                const existingIdx = users.findIndex((u: any) => u.email === acc.email || u.id === acc.id);
-                const userObj = {
-                    id: acc.id,
-                    name: acc.name,
-                    email: acc.email,
-                    password_hash: hash,
-                    role: acc.role,
-                    tier: acc.tier,
-                    generations_used: 0,
-                    session_token: sessionToken,
-                    created_at: new Date().toISOString()
-                };
-                if (existingIdx >= 0) {
-                    users[existingIdx] = { ...users[existingIdx], ...userObj };
-                } else {
-                    users.push(userObj);
-                }
-                saveToJSON(JSON_USERS_PATH, users);
+            } catch (dbErr) {}
+
+            // Always ensure JSON store also has the account without wiping generations_used
+            const userObj = {
+                id: acc.id,
+                name: acc.name,
+                email: acc.email,
+                password_hash: hash,
+                role: acc.role,
+                tier: acc.tier,
+                generations_used: preservedGens,
+                session_token: existingIdx >= 0 && users[existingIdx].session_token ? users[existingIdx].session_token : sessionToken,
+                created_at: existingIdx >= 0 && users[existingIdx].created_at ? users[existingIdx].created_at : new Date().toISOString()
+            };
+            if (existingIdx >= 0) {
+                users[existingIdx] = { ...users[existingIdx], ...userObj };
+            } else {
+                users.push(userObj);
             }
+            saveToJSON(JSON_USERS_PATH, users);
         }
         console.log('[BOOTSTRAP] Permanent Admin, Demo, and Reviewer accounts initialized with unlimited LUXURY tier.');
     } catch (e: any) {
