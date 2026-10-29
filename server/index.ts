@@ -16,6 +16,7 @@ import { sendPurchaseNotifications } from './emailService';
 import crypto from 'crypto';
 import { BUILD_COMMIT, BUILD_TIME } from './buildInfo';
 import { telegramAlerts } from './telegramAlerts';
+import { notifyRenderLead } from './leadAlerts';
 import mysql from 'mysql2/promise';
 import { triageRenderPrompt, classifyPurchaseLead, classifyCatalogQuery } from './services/jevClassifier.js';
 
@@ -949,6 +950,39 @@ async function getUsers() {
             return JSON.parse(data);
         }
         return [];
+    }
+}
+
+// Aviso de ventas tras un render real: nombre, email, teléfono y el material EXACTO.
+// Fire-and-forget a propósito: nunca debe añadir latencia ni romper la respuesta del render.
+async function fireRenderLead(userId: any, material: any, mode: string, provider?: string, model?: string) {
+    try {
+        let userName: string | undefined;
+        let userEmail: string | undefined;
+        let userPhone: string | undefined;
+        if (userId) {
+            const users = await getUsers();
+            const u = users.find((x: any) => String(x.id) === String(userId) || String(x.user_id) === String(userId));
+            if (u) {
+                userName = u.name || u.full_name || undefined;
+                userEmail = u.email || undefined;
+                userPhone = u.phone || undefined;
+            }
+        }
+        await notifyRenderLead({
+            userId,
+            userName,
+            userEmail,
+            userPhone,
+            materialName: material?.name,
+            materialRef: material?.refCode || material?.id,
+            category: material?.category,
+            mode,
+            provider,
+            model,
+        });
+    } catch (e: any) {
+        console.warn('[LeadAlerts] hook failed:', e?.message);
     }
 }
 
@@ -2492,6 +2526,7 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
                     },
                 });
                 if (userId) await incrementQuota(userId);
+                void fireRenderLead(userId, material, "inpaint", result.provider, result.model);
                 return res.json({ success: true, image: result.image, provider: result.provider, model: result.model, mode: "inpaint" });
             } catch (inpaintError: any) {
                 console.warn("[AI] Inpaint render encountered an error, falling back to sharp compositor:", inpaintError?.message);
@@ -2545,6 +2580,7 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
                 },
             });
             if (userId) await incrementQuota(userId);
+            void fireRenderLead(userId, material, "compositor", "compositor", "sharp");
             return res.json({ success: true, image: compositeResult.image, provider: "compositor", model: "sharp" });
         }
 
@@ -2583,6 +2619,7 @@ app.post("/api/ai/generate-overlay", optionalAuth, async (req: Request, res: Res
         });
         
         if (userId) await incrementQuota(userId);
+        void fireRenderLead(userId, material, "ai", provider, result.model);
         res.json({ success: true, image: result.image, provider, model: result.model });
         
     } catch (error: any) {
