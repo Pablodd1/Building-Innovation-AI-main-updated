@@ -119,6 +119,10 @@ export async function sendEmailViaProvider(subject: string, html: string, to: st
                 body: JSON.stringify({
                     from: process.env.RESEND_FROM || 'BuildingApp <alertas@cedexx.net>',
                     to: [to], subject, html,
+                    // Responder a una alerta debe llegar a una bandeja real, no al remitente técnico.
+                    ...(process.env.RESEND_REPLY_TO || process.env.ADMIN_EMAIL
+                        ? { reply_to: process.env.RESEND_REPLY_TO || process.env.ADMIN_EMAIL }
+                        : {}),
                 }),
             });
             if (r.ok) return { sent: true };
